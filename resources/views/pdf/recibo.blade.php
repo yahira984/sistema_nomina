@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Recibo de Sueldo</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; }
+        .table-main { width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #000; }
+        .table-main th, .table-main td { border: 1px solid #000; padding: 5px; text-align: left; }
+        .header-title { text-align: center; font-size: 16px; font-weight: bold; letter-spacing: 1px; }
+        .center { text-align: center; }
+        .right { text-align: right; }
+        .semana-info { font-weight: bold; font-size: 14px; }
+        .no-border { border: none !important; }
+        
+        /* Estilos para la cabecera de logos */
+        .logos-container { padding: 10px; }
+        .logos-container img { height: 50px; margin-right: 20px; vertical-align: middle; }
+        .address-text { font-size: 10px; text-align: right; padding: 10px; vertical-align: top; }
+    </style>
+</head>
+<body>
+
+    <table class="table-main">
+        <tr>
+            <td colspan="2" class="no-border logos-container">
+                <img src="{{ public_path('img/promatec.png') }}" alt="Promatec">
+                <img src="{{ public_path('img/lugarth.png') }}" alt="Lugarth">
+            </td>
+            <td colspan="2" class="no-border address-text">
+                BARRIO DE SANTO TOMAS C.P. 43860<br><br>
+                PACHUCA DE SOTO, HGO
+            </td>
+        </tr>
+        
+        <tr>
+            <td colspan="4" class="header-title" style="border-top: 1px solid #000;">
+                RECIBO DE SUELDO PACHUCA
+            </td>
+        </tr>
+
+        <tr>
+            <td colspan="2" style="padding: 15px 5px;">
+                <span style="color: #666; font-size: 10px;">Nombre del empleado.</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+                <span style="color: #2e8b57; font-weight: bold;">{{ $empleado->numero_empleado ?? 'S/N' }}</span> <br><br><br>
+                <div class="center" style="font-weight: bold;">{{ strtoupper($empleado->nombre_completo) }}</div>
+            </td>
+            <td colspan="2" class="center" style="padding: 15px 5px;">
+                <span class="semana-info">SEMANA {{ $nomina->numero_semana }}</span><br><br>
+                DEL {{ strtoupper(\Carbon\Carbon::parse($nomina->fecha_inicio)->locale('es')->isoFormat('DD MMMM')) }} 
+                AL {{ strtoupper(\Carbon\Carbon::parse($nomina->fecha_fin)->locale('es')->isoFormat('DD MMMM YYYY')) }}
+            </td>
+        </tr>
+
+        <tr>
+            <th colspan="2" class="center" style="background-color: #f8f9fa;">PERCEPCIONES</th>
+            <th colspan="2" class="center" style="background-color: #f8f9fa;">DEDUCCIONES</th>
+        </tr>
+        <tr>
+            <td class="center" style="width: 25%; font-size: 10px;">SUELDOS</td>
+            <td class="center" style="width: 25%; font-size: 10px;">TOTAL</td>
+            <td colspan="2" class="center" style="font-size: 10px;">TOTAL</td>
+        </tr>
+        <tr>
+            <td style="vertical-align: top; padding-top: 10px;">
+                <b>SUELDO</b><br>
+                HORAS LABORADAS <span style="float:right;">{{ $nomina->horas_normales + $nomina->horas_extra }}</span><br><br>
+                <span style="color: #2e8b57; font-size: 10px;">COMPENSACION</span><br>
+                INCAP - 60%<br>
+                <span style="font-size: 8px;">D.P. VACACION + 25% P.V.</span> <span style="color: blue; float:right;">0</span>
+            </td>
+            <td style="vertical-align: top; padding-top: 10px;" class="right">
+                <br>
+                $ {{ number_format($nomina->total_percepciones, 2) }}<br><br>
+                $ -<br>
+                $ -<br>
+                $ 0.00
+            </td>
+            <td style="vertical-align: top; padding-top: 10px; width: 25%;">
+                Falta (s)<br>
+                P. Personal<br>
+                Retardo<br>
+                Salida Prematura<br>
+                IMSS<br>
+                INFONAVIT
+            </td>
+            <td style="vertical-align: top; padding-top: 10px; width: 25%;" class="right">
+                $ <br>
+                $ 0.00<br>
+                $ <br>
+                $ <br>
+                $ <br>
+                $ 0.00
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2">TOTAL DE PERCEPCIONES: <span style="float:right">$ {{ number_format($nomina->total_percepciones, 2) }}</span></td>
+            <td colspan="2">TOTAL DE DEDUCCIONES: <span style="float:right">$ {{ number_format($nomina->total_deducciones, 2) }}</span></td>
+        </tr>
+        <tr>
+            <td colspan="4" class="right"><b>$ {{ number_format($nomina->pago_neto, 2) }}</b></td>
+        </tr>
+
+        <tr>
+            <td colspan="2" style="font-size: 9px; padding: 10px; text-align: justify;">
+                Recibí de: PROMATEC, LUGARTH la cantidad anotada en este Recibo de pago de mi sueldo; además<br><br>
+                certifico que no se me adeuda a la fecha cantidad alguna por tiempo extra.
+            </td>
+            <td colspan="2" class="center" style="vertical-align: bottom;">
+                ___________________________________<br>
+                Firma del empleado
+            </td>
+        </tr>
+    </table>
+
+</body>
+</html>
