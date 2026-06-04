@@ -9,14 +9,14 @@ const props = defineProps({
 
 const editando = ref(false);
 const empleadoId = ref(null);
-const searchQuery = ref(''); 
+const searchQuery = ref('');
 
 const form = useForm({
     numero_empleado: '',
     nombre_completo: '',
     puesto: '',
     sueldo_por_hora: '',
-    banco: '', // <-- Nuevo campo
+    banco: '',
     numero_cuenta: '',
     nss: '',
     rfc: ''
@@ -51,11 +51,11 @@ const editarEmpleado = (empleado) => {
     form.nombre_completo = empleado.nombre_completo;
     form.puesto = empleado.puesto || '';
     form.sueldo_por_hora = empleado.sueldo_por_hora;
-    form.banco = empleado.banco || ''; // <-- Cargamos el banco
+    form.banco = empleado.banco || '';
     form.numero_cuenta = empleado.numero_cuenta || '';
     form.nss = empleado.nss || '';
     form.rfc = empleado.rfc || '';
-    
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
@@ -78,162 +78,175 @@ const eliminarEmpleado = (id, nombre) => {
     <AuthenticatedLayout>
         <template #header>
             <div class="flex items-center gap-4">
-                <Link :href="route('dashboard')" class="text-gray-400 hover:text-gray-700 transition">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                <Link :href="route('dashboard')" class="icon-button" aria-label="Volver al panel">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19 3 12m0 0 7-7m-7 7h18" />
+                    </svg>
                 </Link>
-                <h2 class="font-bold text-2xl text-gray-800 leading-tight">Directorio de Personal</h2>
+                <div>
+                    <p class="text-sm font-semibold text-teal-700">Gestión de personal</p>
+                    <h2 class="text-2xl font-semibold text-slate-950">Directorio de Personal</h2>
+                </div>
             </div>
         </template>
 
-        <div class="py-10 bg-gray-50 min-h-screen">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-8">
-                
-                <!-- Panel de Registro / Edición -->
-                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-all duration-300" :class="editando ? 'ring-2 ring-orange-400' : ''">
-                    <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                        <div class="flex items-center gap-2">
-                            <div class="p-2 rounded-lg" :class="editando ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+        <div class="page-shell">
+            <div class="content-wrap space-y-8">
+                <section class="app-panel" :class="editando ? 'ring-2 ring-amber-400/70' : ''">
+                    <div class="panel-header">
+                        <div class="flex items-start gap-3">
+                            <div :class="editando ? 'soft-icon-amber' : 'soft-icon-blue'">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM3 20a6 6 0 0 1 12 0v1H3v-1Z" />
+                                </svg>
                             </div>
-                            <h3 class="text-lg font-bold text-gray-800">
-                                {{ editando ? 'Actualizar Expediente' : 'Alta de Nuevo Trabajador' }}
-                            </h3>
+                            <div>
+                                <h3 class="panel-title">{{ editando ? 'Actualizar expediente' : 'Alta de trabajador' }}</h3>
+                                <p class="panel-subtitle">Captura los datos base para asistencia, pago y recibos.</p>
+                            </div>
                         </div>
-                        <button v-if="editando" @click="cancelarEdicion" class="text-sm font-medium text-red-500 hover:text-red-700">
-                            Cancelar Edición
+
+                        <button v-if="editando" @click="cancelarEdicion" class="btn-secondary" type="button">
+                            Cancelar edición
                         </button>
                     </div>
-                    
-                    <div class="p-6">
-                        <form @submit.prevent="submitForm" class="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            
-                            <!-- Fila 1 -->
-                            <div class="md:col-span-1">
-                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">No. Empleado</label>
-                                <input v-model="form.numero_empleado" type="text" class="w-full rounded-xl border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 transition-colors" placeholder="Ej. 84" />
+
+                    <div class="p-5 sm:p-6">
+                        <form @submit.prevent="submitForm" class="grid grid-cols-1 gap-5 md:grid-cols-4">
+                            <div>
+                                <label class="field-label">No. empleado</label>
+                                <input v-model="form.numero_empleado" type="text" class="field-input-soft" placeholder="Ej. 84" />
                             </div>
 
                             <div class="md:col-span-2">
-                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Nombre Completo <span class="text-red-500">*</span></label>
-                                <input v-model="form.nombre_completo" type="text" required class="w-full rounded-xl border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 transition-colors" />
+                                <label class="field-label">Nombre completo <span class="text-rose-500">*</span></label>
+                                <input v-model="form.nombre_completo" type="text" required class="field-input-soft" />
                             </div>
 
-                            <div class="md:col-span-1">
-                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Puesto</label>
-                                <input v-model="form.puesto" type="text" class="w-full rounded-xl border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 transition-colors" />
+                            <div>
+                                <label class="field-label">Puesto</label>
+                                <input v-model="form.puesto" type="text" class="field-input-soft" />
                             </div>
 
-                            <!-- Fila 2 (Sueldo y Banco) -->
-                            <div class="md:col-span-1">
-                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Sueldo / Hora ($) <span class="text-red-500">*</span></label>
-                                <input v-model="form.sueldo_por_hora" type="number" step="0.01" required class="w-full rounded-xl border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 transition-colors" />
+                            <div>
+                                <label class="field-label">Sueldo / hora ($) <span class="text-rose-500">*</span></label>
+                                <input v-model="form.sueldo_por_hora" type="number" step="0.01" required class="field-input-soft" />
                             </div>
 
-                            <div class="md:col-span-1">
-                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Banco</label>
-                                <input v-model="form.banco" type="text" class="w-full rounded-xl border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 transition-colors" placeholder="Ej. BBVA, Banamex..." />
-                            </div>
-
-                            <div class="md:col-span-2">
-                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Cuenta Bancaria o CLABE</label>
-                                <input v-model="form.numero_cuenta" type="text" class="w-full rounded-xl border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 transition-colors" placeholder="18 dígitos o Tarjeta" />
-                            </div>
-
-                            <!-- Fila 3 -->
-                            <div class="md:col-span-2">
-                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">NSS</label>
-                                <input v-model="form.nss" type="text" class="w-full rounded-xl border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 transition-colors" />
+                            <div>
+                                <label class="field-label">Banco</label>
+                                <input v-model="form.banco" type="text" class="field-input-soft" placeholder="BBVA, Banamex..." />
                             </div>
 
                             <div class="md:col-span-2">
-                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">RFC</label>
-                                <input v-model="form.rfc" type="text" class="w-full rounded-xl border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 transition-colors" />
+                                <label class="field-label">Cuenta bancaria o CLABE</label>
+                                <input v-model="form.numero_cuenta" type="text" class="field-input-soft" placeholder="18 dígitos o tarjeta" />
                             </div>
 
-                            <!-- Botón -->
-                            <div class="md:col-span-4 flex justify-end mt-2">
-                                <button type="submit" :disabled="form.processing" 
-                                        :class="editando ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 focus:ring-orange-500' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:ring-blue-500'" 
-                                        class="inline-flex items-center gap-2 px-6 py-2.5 text-white text-sm font-bold rounded-xl shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all">
-                                    <svg v-if="!form.processing" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
-                                    {{ form.processing ? 'Guardando...' : (editando ? 'Actualizar Expediente' : 'Registrar Empleado') }}
+                            <div class="md:col-span-2">
+                                <label class="field-label">NSS</label>
+                                <input v-model="form.nss" type="text" class="field-input-soft" />
+                            </div>
+
+                            <div class="md:col-span-2">
+                                <label class="field-label">RFC</label>
+                                <input v-model="form.rfc" type="text" class="field-input-soft" />
+                            </div>
+
+                            <div class="flex justify-end md:col-span-4">
+                                <button
+                                    type="submit"
+                                    :disabled="form.processing"
+                                    :class="editando ? 'btn-warning' : 'btn-accent'"
+                                >
+                                    <svg v-if="!form.processing" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3m-1 4-3 3m0 0-3-3m3 3V4" />
+                                    </svg>
+                                    {{ form.processing ? 'Guardando...' : (editando ? 'Actualizar expediente' : 'Registrar empleado') }}
                                 </button>
                             </div>
                         </form>
                     </div>
-                </div>
+                </section>
 
-                <!-- Lista de Personal -->
-                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div class="px-6 py-5 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <h3 class="text-lg font-bold text-gray-800">Directorio Activo</h3>
-                        
-                        <div class="relative w-full md:w-96">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                <section class="app-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h3 class="panel-title">Directorio activo</h3>
+                            <p class="panel-subtitle">{{ empleadosFiltrados.length }} trabajador(es) encontrados</p>
+                        </div>
+
+                        <div class="relative w-full lg:w-96">
+                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
+                                </svg>
                             </div>
-                            <input v-model="searchQuery" type="text" class="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-xl leading-5 bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-colors sm:text-sm" placeholder="Buscar por nombre o número..." />
+                            <input v-model="searchQuery" type="text" class="field-input-soft pl-10" placeholder="Buscar por nombre o número..." />
                         </div>
                     </div>
 
                     <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
+                        <table class="table-premium">
+                            <thead>
                                 <tr>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Empleado</th>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Puesto / Cuenta Bancaria</th>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Tarifa (Hr)</th>
-                                    <th class="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Acciones</th>
+                                    <th>Empleado</th>
+                                    <th>Puesto / cuenta bancaria</th>
+                                    <th>Tarifa</th>
+                                    <th class="text-right">Acciones</th>
                                 </tr>
                             </thead>
-                            <tbody class="bg-white divide-y divide-gray-100">
-                                <tr v-for="empleado in empleadosFiltrados" :key="empleado.id" class="hover:bg-gray-50/50 transition-colors group">
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <div class="flex items-center">
-                                            <div class="flex-shrink-0 h-10 w-10 bg-gradient-to-br from-blue-100 to-blue-200 rounded-full flex items-center justify-center text-blue-700 font-bold border border-blue-200">
+                            <tbody>
+                                <tr v-for="empleado in empleadosFiltrados" :key="empleado.id">
+                                    <td class="whitespace-nowrap">
+                                        <div class="flex items-center gap-3">
+                                            <div class="flex h-10 min-w-10 max-w-16 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-2 text-xs font-bold text-blue-700">
                                                 {{ empleado.numero_empleado || 'S/N' }}
                                             </div>
-                                            <div class="ml-4">
-                                                <div class="text-sm font-bold text-gray-900">{{ empleado.nombre_completo }}</div>
-                                                <div class="text-xs text-gray-500">ID Sistema: #{{ empleado.id }}</div>
+                                            <div class="min-w-0">
+                                                <div class="truncate font-semibold text-slate-950">{{ empleado.nombre_completo }}</div>
+                                                <div class="text-xs text-slate-500">ID sistema: #{{ empleado.id }}</div>
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <div class="text-sm text-gray-900 font-medium">{{ empleado.puesto || 'No asignado' }}</div>
-                                        <div class="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
-                                            <!-- Aquí se imprime Banco y Cuenta -->
+                                    <td class="whitespace-nowrap">
+                                        <div class="font-medium text-slate-900">{{ empleado.puesto || 'No asignado' }}</div>
+                                        <div class="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3Z" />
+                                            </svg>
                                             {{ empleado.banco ? empleado.banco + ' - ' : '' }}{{ empleado.numero_cuenta || 'Sin cuenta registrada' }}
                                         </div>
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <span class="px-3 py-1 inline-flex text-sm leading-5 font-bold rounded-full bg-green-100 text-green-800 border border-green-200">
+                                    <td class="whitespace-nowrap">
+                                        <span class="status-pill status-success">
                                             ${{ empleado.sueldo_por_hora }}
                                         </span>
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button @click="editarEmpleado(empleado)" class="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors" title="Editar">
-                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                    <td class="whitespace-nowrap text-right">
+                                        <div class="flex items-center justify-end gap-2">
+                                            <button @click="editarEmpleado(empleado)" class="icon-button" title="Editar" type="button">
+                                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m15.232 5.232 3.536 3.536m-2.036-5.036a2.5 2.5 0 1 1 3.536 3.536L6.5 21.036H3v-3.572L16.732 3.732Z" />
+                                                </svg>
                                             </button>
-                                            <button @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors" title="Eliminar">
-                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                            <button @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="icon-button-danger" title="Eliminar" type="button">
+                                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 7-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16" />
+                                                </svg>
                                             </button>
                                         </div>
                                     </td>
                                 </tr>
                                 <tr v-if="empleadosFiltrados.length === 0">
-                                    <td colspan="4" class="px-6 py-12 text-center">
-                                        <svg class="mx-auto h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
-                                        <p class="mt-4 text-sm text-gray-500 font-medium">No se encontraron empleados con esa búsqueda.</p>
+                                    <td colspan="4" class="empty-state">
+                                        No se encontraron empleados con esa búsqueda.
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
-                </div>
-
+                </section>
             </div>
         </div>
     </AuthenticatedLayout>
