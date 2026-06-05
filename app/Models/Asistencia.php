@@ -9,13 +9,8 @@ class Asistencia extends Model
 {
     use HasFactory;
 
-    protected $fillable = [
-        'empleado_id',
-        'fecha',
-        'hora_entrada',
-        'hora_salida',
-        'horas_trabajadas'
-    ];
+    // Con esta línea vacía le decimos a Laravel: "Deja pasar TODO, no bloquees ningún campo"
+    protected $guarded = [];
 
     // Relación: Una asistencia le pertenece a un Empleado
     public function empleado()

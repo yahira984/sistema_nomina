@@ -9,18 +9,8 @@ class Nomina extends Model
 {
     use HasFactory;
 
-    protected $fillable = [
-        'empleado_id',
-        'numero_semana',
-        'fecha_inicio',
-        'fecha_fin',
-        'horas_normales',
-        'horas_extra',
-        'total_percepciones',
-        'total_deducciones',
-        'pago_neto',
-        'pagado'
-    ];
+    // AL DEJARLO VACÍO, PERMITIMOS QUE SÍ SE GUARDEN LAS MATEMÁTICAS EN LA BASE DE DATOS
+    protected $guarded = [];
 
     public function empleado()
     {

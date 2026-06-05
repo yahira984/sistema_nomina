@@ -22,6 +22,7 @@ watch(selectedCorte, (newDate) => {
     router.get(route('nominas.index'), { fecha_corte: newDate }, { preserveState: true, preserveScroll: true });
 });
 
+// 1. Primer filtro: Búsqueda por nombre o número (Este ya lo tenía tu compa, lo dejamos intacto)
 const empleadosFiltrados = computed(() => {
     if (!searchQuery.value) return props.empleados;
     return props.empleados.filter(emp => {
@@ -29,6 +30,27 @@ const empleadosFiltrados = computed(() => {
         return emp.nombre_completo.toLowerCase().includes(query) ||
                (emp.numero_empleado && emp.numero_empleado.toLowerCase().includes(query));
     });
+});
+
+// 2. LA MAGIA NUEVA: Agrupamos los filtrados por su Banco
+const empleadosAgrupados = computed(() => {
+    const grupos = {};
+    
+    empleadosFiltrados.value.forEach(empleado => {
+        // Si tiene banco lo ponemos en mayúsculas, si no, lo mandamos a Efectivo
+        const nombreBanco = empleado.banco ? empleado.banco.toUpperCase() : 'EFECTIVO / SIN BANCO';
+        
+        if (!grupos[nombreBanco]) {
+            grupos[nombreBanco] = [];
+        }
+        grupos[nombreBanco].push(empleado);
+    });
+
+    // Opcional: Ordenar alfabéticamente los bancos
+    return Object.keys(grupos).sort().reduce((obj, key) => {
+        obj[key] = grupos[key];
+        return obj;
+    }, {});
 });
 
 const copiarCuenta = (banco, cuenta) => {
@@ -91,8 +113,9 @@ const cambiarEstadoPago = (nominaId) => {
                             </div>
                         </div>
 
-                        <div class="grid w-full gap-3 md:grid-cols-2 lg:w-auto">
-                            <div class="relative">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <!-- SELECTOR DE SEMANAS -->
+                            <div class="relative w-full sm:w-auto">
                                 <select v-model="selectedCorte" class="field-input-soft appearance-none pr-10 font-semibold text-slate-800">
                                     <option v-for="sem in semanasDisponibles" :key="sem.fecha_corte" :value="sem.fecha_corte">
                                         {{ sem.etiqueta }}
@@ -105,7 +128,8 @@ const cambiarEstadoPago = (nominaId) => {
                                 </div>
                             </div>
 
-                            <div class="relative">
+                            <!-- BUSCADOR -->
+                            <div class="relative w-full sm:w-auto">
                                 <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                                     <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
@@ -113,95 +137,123 @@ const cambiarEstadoPago = (nominaId) => {
                                 </div>
                                 <input v-model="searchQuery" type="text" class="field-input-soft pl-10" placeholder="Buscar empleado..." />
                             </div>
+
+                            <!-- NUEVO BOTÓN DE EXCEL GLOBAL -->
+                            <a :href="route('nominas.reporte', semanaActual)" target="_blank" class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 w-full sm:w-auto justify-center">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                Excel Global
+                            </a>
                         </div>
                     </div>
 
-                    <div class="overflow-x-auto">
-                        <table class="table-premium">
-                            <thead>
-                                <tr>
-                                    <th>Empleado</th>
-                                    <th>Datos de depósito</th>
-                                    <th class="text-center">Estado de pago</th>
-                                    <th class="text-right">Recibo PDF</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="empleado in empleadosFiltrados" :key="empleado.id">
-                                    <td class="whitespace-nowrap">
-                                        <div class="flex items-center gap-3">
-                                            <div class="flex h-10 min-w-10 max-w-16 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 px-2 text-xs font-bold text-teal-700">
-                                                {{ empleado.numero_empleado || 'S/N' }}
-                                            </div>
-                                            <div class="min-w-0">
-                                                <div class="truncate font-semibold text-slate-950">{{ empleado.nombre_completo }}</div>
-                                                <div class="text-xs text-slate-500">{{ empleado.puesto || 'Sin puesto asignado' }}</div>
-                                            </div>
-                                        </div>
-                                    </td>
+                    <div class="p-5 sm:p-6">
+                        <div v-if="Object.keys(empleadosAgrupados).length === 0" class="empty-state rounded-xl border border-dashed border-slate-300 p-10 text-center">
+                            No se encontraron empleados para ese filtro.
+                        </div>
 
-                                    <td class="whitespace-nowrap">
-                                        <div v-if="empleado.numero_cuenta" class="flex flex-col items-start">
-                                            <span class="text-xs font-semibold uppercase text-slate-500">{{ empleado.banco || 'Banco no especificado' }}</span>
-                                            <button
-                                                @click="copiarCuenta(empleado.banco, empleado.numero_cuenta)"
-                                                class="mt-1 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700"
-                                                title="Copiar cuenta"
-                                                type="button"
-                                            >
-                                                <span class="font-mono">{{ empleado.numero_cuenta }}</span>
-                                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2m-6 12h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2Z" />
-                                                </svg>
-                                            </button>
-                                        </div>
-                                        <div v-else class="inline-flex items-center gap-1.5 text-sm font-semibold text-rose-600">
-                                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3Z" />
-                                            </svg>
-                                            Sin cuenta
-                                        </div>
-                                    </td>
+                        <div v-else>
+                            <div v-for="(empleadosBanco, nombreBanco) in empleadosAgrupados" :key="nombreBanco" class="mb-10 last:mb-0">
+                                
+                                <div class="mb-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-100/80 px-4 py-3">
+                                    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-sm">
+                                        <svg class="h-4 w-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3Z" />
+                                        </svg>
+                                    </div>
+                                    <h4 class="text-lg font-bold text-slate-800">{{ nombreBanco }}</h4>
+                                    <span class="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                                        {{ empleadosBanco.length }} empleado(s)
+                                    </span>
+                                </div>
 
-                                    <td class="whitespace-nowrap text-center">
-                                        <div v-if="!empleado.nomina_generada" class="text-xs font-medium text-slate-400">
-                                            Genera el recibo primero
-                                        </div>
-                                        <div v-else class="flex flex-col items-center justify-center gap-1.5">
-                                            <span :class="empleado.pagado ? 'status-success' : 'status-warning'" class="status-pill">
-                                                {{ empleado.pagado ? 'Liquidado' : 'Pendiente' }}
-                                            </span>
-                                            <button
-                                                @click="cambiarEstadoPago(empleado.nomina_id)"
-                                                class="text-xs font-semibold text-slate-500 underline decoration-slate-300 transition hover:text-teal-700 hover:decoration-teal-500"
-                                                type="button"
-                                            >
-                                                {{ empleado.pagado ? 'Marcar pendiente' : 'Marcar pagado' }}
-                                            </button>
-                                        </div>
-                                    </td>
+                                <div class="overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+                                    <div class="overflow-x-auto">
+                                        <table class="table-premium w-full !border-0">
+                                            <thead class="bg-slate-50">
+                                                <tr>
+                                                    <th>Empleado</th>
+                                                    <th>Datos de depósito</th>
+                                                    <th class="text-center">Estado de pago</th>
+                                                    <th class="text-right">Recibo PDF</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr v-for="empleado in empleadosBanco" :key="empleado.id" class="border-t border-slate-100 hover:bg-slate-50">
+                                                    <td class="whitespace-nowrap px-4 py-3">
+                                                        <div class="flex items-center gap-3">
+                                                            <div class="flex h-10 min-w-10 max-w-16 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 px-2 text-xs font-bold text-teal-700">
+                                                                {{ empleado.numero_empleado || 'S/N' }}
+                                                            </div>
+                                                            <div class="min-w-0">
+                                                                <div class="truncate font-semibold text-slate-950">{{ empleado.nombre_completo }}</div>
+                                                                <div class="text-xs text-slate-500">{{ empleado.puesto || 'Sin puesto asignado' }}</div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
 
-                                    <td class="whitespace-nowrap text-right">
-                                        <a
-                                            :href="route('nominas.generar', { empleado_id: empleado.id, fecha_corte: selectedCorte })"
-                                            target="_blank"
-                                            @click="marcarComoGenerado(empleado)"
-                                            :class="empleado.nomina_generada ? 'btn-warning' : 'btn-accent'"
-                                        >
-                                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2m2 4h6a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2Zm8-12V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4h10Z" />
-                                            </svg>
-                                            {{ empleado.nomina_generada ? 'Regenerar' : 'Crear recibo' }}
-                                        </a>
-                                    </td>
-                                </tr>
-                                <tr v-if="empleadosFiltrados.length === 0">
-                                    <td colspan="4" class="empty-state">
-                                        No se encontraron empleados para ese filtro.
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                                                    <td class="whitespace-nowrap px-4 py-3">
+                                                        <div v-if="empleado.numero_cuenta" class="flex flex-col items-start">
+                                                            <span class="text-xs font-semibold uppercase text-slate-500">{{ empleado.banco || 'Banco no especificado' }}</span>
+                                                            <button
+                                                                @click="copiarCuenta(empleado.banco, empleado.numero_cuenta)"
+                                                                class="mt-1 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700 shadow-sm"
+                                                                title="Copiar cuenta"
+                                                                type="button"
+                                                            >
+                                                                <span class="font-mono">{{ empleado.numero_cuenta }}</span>
+                                                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2m-6 12h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2Z" />
+                                                                </svg>
+                                                            </button>
+                                                        </div>
+                                                        <div v-else class="inline-flex items-center gap-1.5 text-sm font-semibold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-100">
+                                                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3Z" />
+                                                            </svg>
+                                                            Sin cuenta
+                                                        </div>
+                                                    </td>
+
+                                                    <td class="whitespace-nowrap px-4 py-3 text-center">
+                                                        <div v-if="!empleado.nomina_generada" class="text-xs font-medium text-slate-400">
+                                                            Genera el recibo primero
+                                                        </div>
+                                                        <div v-else class="flex flex-col items-center justify-center gap-1.5">
+                                                            <span :class="empleado.pagado ? 'status-success' : 'status-warning'" class="status-pill">
+                                                                {{ empleado.pagado ? 'Liquidado' : 'Pendiente' }}
+                                                            </span>
+                                                            <button
+                                                                @click="cambiarEstadoPago(empleado.nomina_id)"
+                                                                class="text-xs font-semibold text-slate-500 underline decoration-slate-300 transition hover:text-teal-700 hover:decoration-teal-500"
+                                                                type="button"
+                                                            >
+                                                                {{ empleado.pagado ? 'Marcar pendiente' : 'Marcar pagado' }}
+                                                            </button>
+                                                        </div>
+                                                    </td>
+
+                                                    <td class="whitespace-nowrap px-4 py-3 text-right">
+                                                        <a
+                                                            :href="route('nominas.generar', { empleado_id: empleado.id, fecha_corte: selectedCorte })"
+                                                            target="_blank"
+                                                            @click="marcarComoGenerado(empleado)"
+                                                            :class="empleado.nomina_generada ? 'btn-warning' : 'btn-accent'"
+                                                        >
+                                                            <svg class="h-4 w-4 mr-1.5 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2m2 4h6a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2Zm8-12V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4h10Z" />
+                                                            </svg>
+                                                            {{ empleado.nomina_generada ? 'Regenerar' : 'Crear recibo' }}
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 

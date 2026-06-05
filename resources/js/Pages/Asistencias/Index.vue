@@ -14,6 +14,7 @@ const asistenciaId = ref(null);
 const form = useForm({
     empleado_id: '',
     fecha: new Date().toISOString().split('T')[0],
+    tipo_asistencia: 'Normal', // NUEVO CAMPO
     hora_entrada: '08:00',
     hora_salida: '17:00'
 });
@@ -27,12 +28,10 @@ const asistenciasFiltradas = computed(() => {
 
 const formatoReloj = (horasDecimales) => {
     if (!horasDecimales) return '0 h 00 m';
-
     const horas = Math.floor(horasDecimales);
     const minutosDecimales = (horasDecimales - horas) * 60;
     const minutos = Math.round(minutosDecimales);
     const minutosFormateados = minutos < 10 ? '0' + minutos : minutos;
-
     return `${horas} h ${minutosFormateados} m`;
 };
 
@@ -44,7 +43,7 @@ const guardarAsistencia = () => {
     } else {
         form.post(route('asistencias.store'), {
             onSuccess: () => {
-                form.reset('hora_entrada', 'hora_salida', 'fecha');
+                form.reset('hora_entrada', 'hora_salida', 'fecha', 'tipo_asistencia');
             }
         });
     }
@@ -55,15 +54,16 @@ const editarAsistencia = (asistencia) => {
     asistenciaId.value = asistencia.id;
     form.empleado_id = asistencia.empleado_id;
     form.fecha = asistencia.fecha;
-    form.hora_entrada = asistencia.hora_entrada.substring(0, 5);
-    form.hora_salida = asistencia.hora_salida.substring(0, 5);
+    form.tipo_asistencia = asistencia.tipo_asistencia || 'Normal';
+    form.hora_entrada = asistencia.hora_entrada ? asistencia.hora_entrada.substring(0, 5) : '08:00';
+    form.hora_salida = asistencia.hora_salida ? asistencia.hora_salida.substring(0, 5) : '17:00';
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
 const cancelarEdicion = () => {
     editando.value = false;
     asistenciaId.value = null;
-    form.reset('hora_entrada', 'hora_salida');
+    form.reset('hora_entrada', 'hora_salida', 'tipo_asistencia');
 };
 
 const eliminarAsistencia = (id) => {
@@ -102,18 +102,18 @@ const eliminarAsistencia = (id) => {
                                 </svg>
                             </div>
                             <div>
-                                <h3 class="panel-title">{{ editando ? 'Editar registro de horas' : 'Capturar nueva asistencia' }}</h3>
-                                <p class="panel-subtitle">Selecciona empleado, fecha y horario trabajado.</p>
+                                <h3 class="panel-title">{{ editando ? 'Editar registro' : 'Capturar nueva asistencia' }}</h3>
+                                <p class="panel-subtitle">Selecciona empleado, fecha y tipo de jornada.</p>
                             </div>
                         </div>
-
                         <button v-if="editando" @click="cancelarEdicion" class="btn-secondary" type="button">
                             Cancelar edición
                         </button>
                     </div>
 
                     <div class="p-5 sm:p-6">
-                        <form @submit.prevent="guardarAsistencia" class="grid grid-cols-1 items-end gap-5 md:grid-cols-5">
+                        <form @submit.prevent="guardarAsistencia" class="grid grid-cols-1 items-end gap-5 md:grid-cols-6">
+                            
                             <div class="md:col-span-2">
                                 <label class="field-label">Empleado <span class="text-rose-500">*</span></label>
                                 <select v-model="form.empleado_id" required :disabled="editando" class="field-input-soft">
@@ -130,22 +130,31 @@ const eliminarAsistencia = (id) => {
                             </div>
 
                             <div>
-                                <label class="field-label">Entrada <span class="text-rose-500">*</span></label>
-                                <input v-model="form.hora_entrada" type="time" required class="field-input-soft" />
+                                <label class="field-label">Tipo <span class="text-rose-500">*</span></label>
+                                <select v-model="form.tipo_asistencia" required class="field-input-soft">
+                                    <option value="Normal">Normal</option>
+                                    <option value="Falta">Falta</option>
+                                    <option value="Incapacidad">Incapacidad</option>
+                                </select>
                             </div>
 
                             <div>
-                                <label class="field-label">Salida <span class="text-rose-500">*</span></label>
-                                <input v-model="form.hora_salida" type="time" required class="field-input-soft" />
+                                <label class="field-label" :class="form.tipo_asistencia !== 'Normal' ? 'text-slate-400' : ''">Entrada</label>
+                                <input v-model="form.hora_entrada" type="time" :required="form.tipo_asistencia === 'Normal'" :disabled="form.tipo_asistencia !== 'Normal'" class="field-input-soft" :class="form.tipo_asistencia !== 'Normal' ? 'opacity-50 cursor-not-allowed' : ''" />
                             </div>
 
-                            <div class="flex justify-end md:col-span-5">
+                            <div>
+                                <label class="field-label" :class="form.tipo_asistencia !== 'Normal' ? 'text-slate-400' : ''">Salida</label>
+                                <input v-model="form.hora_salida" type="time" :required="form.tipo_asistencia === 'Normal'" :disabled="form.tipo_asistencia !== 'Normal'" class="field-input-soft" :class="form.tipo_asistencia !== 'Normal' ? 'opacity-50 cursor-not-allowed' : ''" />
+                            </div>
+
+                            <div class="flex justify-end md:col-span-6 mt-2">
                                 <button
                                     type="submit"
                                     :disabled="form.processing"
                                     :class="editando ? 'btn-warning' : 'btn-accent'"
                                 >
-                                    <svg v-if="!form.processing" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg v-if="!form.processing" class="h-4 w-4 mr-2 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 13 4 4L19 7" />
                                     </svg>
                                     {{ form.processing ? 'Procesando...' : (editando ? 'Actualizar horas' : 'Guardar asistencia') }}
@@ -161,7 +170,6 @@ const eliminarAsistencia = (id) => {
                             <h3 class="panel-title">Últimos registros</h3>
                             <p class="panel-subtitle">{{ asistenciasFiltradas.length }} asistencia(s) visibles</p>
                         </div>
-
                         <div v-if="form.empleado_id" class="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
                             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v2.586a1 1 0 0 1-.293.707l-6.414 6.414a1 1 0 0 0-.293.707V17l-4 4v-6.586a1 1 0 0 0-.293-.707L3.293 7.293A1 1 0 0 1 3 6.586V4Z" />
@@ -176,8 +184,8 @@ const eliminarAsistencia = (id) => {
                                 <tr>
                                     <th>Fecha</th>
                                     <th>Empleado</th>
+                                    <th>Tipo</th>
                                     <th>Horario</th>
-                                    <th>Jornada</th>
                                     <th class="text-right">Acciones</th>
                                 </tr>
                             </thead>
@@ -185,22 +193,34 @@ const eliminarAsistencia = (id) => {
                                 <tr v-for="asistencia in asistenciasFiltradas" :key="asistencia.id">
                                     <td class="whitespace-nowrap font-semibold text-slate-950">{{ asistencia.fecha }}</td>
                                     <td class="whitespace-nowrap font-semibold text-slate-900">{{ asistencia.empleado.nombre_completo }}</td>
+                                    
                                     <td class="whitespace-nowrap">
-                                        <span class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700">
-                                            <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                                            </svg>
-                                            {{ asistencia.hora_entrada }} - {{ asistencia.hora_salida }}
+                                        <span :class="{
+                                            'bg-emerald-100 text-emerald-800 border-emerald-200': asistencia.tipo_asistencia === 'Normal',
+                                            'bg-rose-100 text-rose-800 border-rose-200': asistencia.tipo_asistencia === 'Falta',
+                                            'bg-amber-100 text-amber-800 border-amber-200': asistencia.tipo_asistencia === 'Incapacidad'
+                                        }" class="px-2.5 py-1 rounded-md text-xs font-bold border">
+                                            {{ asistencia.tipo_asistencia || 'Normal' }}
                                         </span>
                                     </td>
+
                                     <td class="whitespace-nowrap">
-                                        <div class="flex flex-col items-start">
-                                            <span class="status-pill status-info">
-                                                {{ formatoReloj(asistencia.horas_trabajadas) }}
+                                        <div v-if="asistencia.tipo_asistencia === 'Normal'">
+                                            <span class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700">
+                                                <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                                                </svg>
+                                                {{ asistencia.hora_entrada ? asistencia.hora_entrada.substring(0,5) : '--' }} - {{ asistencia.hora_salida ? asistencia.hora_salida.substring(0,5) : '--' }}
                                             </span>
-                                            <span class="mt-1 text-xs font-medium text-slate-400">Decimal: {{ asistencia.horas_trabajadas }}</span>
+                                            <div class="mt-1 text-xs font-medium text-slate-500">
+                                                {{ formatoReloj(asistencia.horas_trabajadas) }} trabajadas
+                                            </div>
+                                        </div>
+                                        <div v-else class="text-sm font-medium text-slate-400 italic">
+                                            No aplica
                                         </div>
                                     </td>
+                                    
                                     <td class="whitespace-nowrap text-right">
                                         <div class="flex items-center justify-end gap-2">
                                             <button @click="editarAsistencia(asistencia)" class="icon-button" title="Editar" type="button">
