@@ -26,7 +26,7 @@ class AsistenciaController extends Controller
         $request->validate([
             'empleado_id' => 'required|exists:empleados,id',
             'fecha' => 'required|date',
-            'tipo_asistencia' => 'required|string',
+            'tipo_asistencia' => 'required|string|in:Normal,Falta,Incapacidad,Vacaciones',
         ]);
 
         $datosCalculados = $this->calcularHoras($request->fecha, $request->hora_entrada, $request->hora_salida, $request->tipo_asistencia);
@@ -34,7 +34,7 @@ class AsistenciaController extends Controller
         Asistencia::create(array_merge([
             'empleado_id' => $request->empleado_id,
             'fecha' => $request->fecha,
-            'tipo_asistencia' => $request->tipo_asistencia, // <-- AQUÍ ESTABA EL BUG, YA ESTÁ CORREGIDO
+            'tipo_asistencia' => $request->tipo_asistencia, 
             'hora_entrada' => $request->tipo_asistencia === 'Normal' ? $request->hora_entrada : null,
             'hora_salida' => $request->tipo_asistencia === 'Normal' ? $request->hora_salida : null,
         ], $datosCalculados));
@@ -46,11 +46,10 @@ class AsistenciaController extends Controller
     {
         $request->validate([
             'fecha' => 'required|date',
-            'tipo_asistencia' => 'required|string',
+            'tipo_asistencia' => 'required|string|in:Normal,Falta,Incapacidad,Vacaciones',
         ]);
 
         $asistencia = Asistencia::findOrFail($id);
-        
         $datosCalculados = $this->calcularHoras($request->fecha, $request->hora_entrada, $request->hora_salida, $request->tipo_asistencia);
 
         $asistencia->update(array_merge([
@@ -86,6 +85,7 @@ class AsistenciaController extends Controller
             }
 
             if ($fecha_carbon->isSaturday()) {
+                // Sábado se va todo a extra
                 $horas_extra_diarias = $entrada->diffInMinutes($salida) / 60;
             } else {
                 $limite_normal = Carbon::parse($fecha . ' 17:30:00');

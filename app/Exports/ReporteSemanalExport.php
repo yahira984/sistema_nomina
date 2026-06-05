@@ -55,10 +55,15 @@ class ReporteSemanalExport implements FromCollection, WithHeadings, WithMapping,
 
     public function map($nomina): array
     {
+        // Lógica inteligente para saber qué pintar en el Banco
+        $formaPago = $nomina->empleado->forma_pago === 'Efectivo' 
+            ? 'EFECTIVO' 
+            : strtoupper($nomina->empleado->banco ?? 'S/N');
+
         return [
             $nomina->empleado->numero_empleado ?? 'S/N',
             strtoupper($nomina->empleado->nombre_completo),
-            strtoupper($nomina->empleado->banco ?? 'EFECTIVO'),
+            $formaPago, // AQUÍ METEMOS LA FORMA DE PAGO REAL
             $nomina->empleado->numero_cuenta ?? 'S/N',
             (float) $nomina->horas_normales,
             (float) $nomina->horas_extra,

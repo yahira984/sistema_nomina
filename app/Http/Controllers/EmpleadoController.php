@@ -22,34 +22,42 @@ class EmpleadoController extends Controller
             'numero_empleado' => 'nullable|string|unique:empleados,numero_empleado',
             'nombre_completo' => 'required|string|max:255',
             'puesto' => 'nullable|string|max:255',
+            'fecha_ingreso' => 'nullable|date',
+            'forma_pago' => 'required|string|in:Efectivo,Deposito', 
             
-            'sueldo_por_hora' => 'required|numeric|min:1',
-            'saldo_prestamo' => 'nullable|numeric|min:0',
-            'cuota_prestamo' => 'nullable|numeric|min:0',
-            'cuota_seguro' => 'nullable|numeric|min:0',
-            
-            'banco' => 'nullable|string|max:100',
-            'numero_cuenta' => 'nullable|string|digits_between:10,20',
-            'nss' => 'nullable|string|digits:11',
-            'rfc' => 'nullable|string|min:12|max:13',
-        ], [
-            'nss.digits' => 'El Número de Seguro Social debe tener exactamente 11 dígitos numéricos.',
-            'rfc.min' => 'El RFC debe tener al menos 12 caracteres.',
-            'rfc.max' => 'El RFC no puede tener más de 13 caracteres.',
-            'numero_cuenta.digits_between' => 'El número de cuenta debe tener entre 10 y 20 números.',
-            'numero_empleado.unique' => 'Ese número de empleado ya está asignado a otra persona.',
+            'banco' => 'nullable|required_if:forma_pago,Deposito|string|max:100',
+            'numero_cuenta' => 'nullable|required_if:forma_pago,Deposito|string|max:25',
+            'nss' => 'nullable|string|max:20',
+            'rfc' => 'nullable|string|max:20',
         ]);
 
-        // Atrapamos los datos antes de guardarlos
         $datos = $request->all();
         
-        // Si vienen vacíos (null), los forzamos a ser 0
-        $datos['saldo_prestamo'] = $datos['saldo_prestamo'] ?: 0;
-        $datos['cuota_prestamo'] = $datos['cuota_prestamo'] ?: 0;
-        $datos['cuota_seguro'] = $datos['cuota_seguro'] ?: 0;
+        $datos['saldo_prestamo'] = $request->input('saldo_prestamo', 0) ?: 0;
+        $datos['cuota_prestamo'] = $request->input('cuota_prestamo', 0) ?: 0;
+        $datos['descuento_imss'] = $request->input('descuento_imss', 0) ?: 0;
+        $datos['descuento_isr'] = $request->input('descuento_isr', 0) ?: 0;
+        $datos['descuento_infonavit'] = $request->input('descuento_infonavit', 0) ?: 0;
+
+        // 👨‍🎓 LÓGICA DE ESTUDIANTE
+        if ($request->boolean('es_estudiante')) {
+            $datos['sueldo_semanal'] = 0;
+            $datos['sueldo_por_hora'] = $request->input('sueldo_por_hora', 27.00) ?: 27.00;
+        } else {
+            $datos['sueldo_por_hora'] = 0;
+            $datos['sueldo_semanal'] = $request->input('sueldo_semanal', 0) ?: 0;
+        }
+
+        // Borramos esta llave para que MySQL no explote
+        unset($datos['es_estudiante']);
+
+        // Limpiamos la basura si le pagan en efectivo
+        if ($datos['forma_pago'] === 'Efectivo') {
+            $datos['banco'] = null;
+            $datos['numero_cuenta'] = null;
+        }
 
         Empleado::create($datos);
-        
         return redirect()->back()->with('success', 'Empleado registrado correctamente.');
     }
 
@@ -59,34 +67,41 @@ class EmpleadoController extends Controller
             'numero_empleado' => 'nullable|string|unique:empleados,numero_empleado,'.$empleado->id,
             'nombre_completo' => 'required|string|max:255',
             'puesto' => 'nullable|string|max:255',
+            'fecha_ingreso' => 'nullable|date',
+            'forma_pago' => 'required|string|in:Efectivo,Deposito',
             
-            'sueldo_por_hora' => 'required|numeric|min:1',
-            'saldo_prestamo' => 'nullable|numeric|min:0',
-            'cuota_prestamo' => 'nullable|numeric|min:0',
-            'cuota_seguro' => 'nullable|numeric|min:0',
-            
-            'banco' => 'nullable|string|max:100',
-            'numero_cuenta' => 'nullable|string|digits_between:10,20',
-            'nss' => 'nullable|string|digits:11',
-            'rfc' => 'nullable|string|min:12|max:13',
-        ], [
-            'nss.digits' => 'El Número de Seguro Social debe tener exactamente 11 dígitos numéricos.',
-            'rfc.min' => 'El RFC debe tener al menos 12 caracteres.',
-            'rfc.max' => 'El RFC no puede tener más de 13 caracteres.',
-            'numero_cuenta.digits_between' => 'El número de cuenta debe tener entre 10 y 20 números.',
-            'numero_empleado.unique' => 'Ese número de empleado ya está asignado a otra persona.',
+            'banco' => 'nullable|required_if:forma_pago,Deposito|string|max:100',
+            'numero_cuenta' => 'nullable|required_if:forma_pago,Deposito|string|max:25',
+            'nss' => 'nullable|string|max:20',
+            'rfc' => 'nullable|string|max:20',
         ]);
 
-        // Atrapamos los datos antes de guardarlos
         $datos = $request->all();
         
-        // Si vienen vacíos (null), los forzamos a ser 0
-        $datos['saldo_prestamo'] = $datos['saldo_prestamo'] ?: 0;
-        $datos['cuota_prestamo'] = $datos['cuota_prestamo'] ?: 0;
-        $datos['cuota_seguro'] = $datos['cuota_seguro'] ?: 0;
+        $datos['saldo_prestamo'] = $request->input('saldo_prestamo', 0) ?: 0;
+        $datos['cuota_prestamo'] = $request->input('cuota_prestamo', 0) ?: 0;
+        $datos['descuento_imss'] = $request->input('descuento_imss', 0) ?: 0;
+        $datos['descuento_isr'] = $request->input('descuento_isr', 0) ?: 0;
+        $datos['descuento_infonavit'] = $request->input('descuento_infonavit', 0) ?: 0;
+
+        // 👨‍🎓 LÓGICA DE ESTUDIANTE
+        if ($request->boolean('es_estudiante')) {
+            $datos['sueldo_semanal'] = 0;
+            $datos['sueldo_por_hora'] = $request->input('sueldo_por_hora', 27.00) ?: 27.00;
+        } else {
+            $datos['sueldo_por_hora'] = 0;
+            $datos['sueldo_semanal'] = $request->input('sueldo_semanal', 0) ?: 0;
+        }
+
+        // Borramos esta llave para que MySQL no explote
+        unset($datos['es_estudiante']);
+
+        if ($datos['forma_pago'] === 'Efectivo') {
+            $datos['banco'] = null;
+            $datos['numero_cuenta'] = null;
+        }
 
         $empleado->update($datos);
-        
         return redirect()->back()->with('success', 'Datos del empleado actualizados correctamente.');
     }
 
