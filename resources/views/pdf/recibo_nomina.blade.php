@@ -45,8 +45,8 @@
         <tr>
             <td colspan="2" style="padding: 15px 5px;">
                 <span class="muted">Nombre del empleado</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                <span class="money">{{ $empleado->numero_empleado ?? 'S/N' }}</span> <br><br><br>
-                <div class="center" style="font-weight: bold;">{{ strtoupper($empleado->nombre_completo) }}</div>
+                <span class="money">{{ $nomina->empleado->numero_empleado ?? 'S/N' }}</span> <br><br><br>
+                <div class="center" style="font-weight: bold;">{{ strtoupper($nomina->empleado->nombre_completo) }}</div>
             </td>
             <td colspan="2" class="center" style="padding: 15px 5px;">
                 <span class="semana-info">SEMANA {{ $nomina->numero_semana }}</span><br><br>
@@ -67,32 +67,43 @@
         <tr>
             <td style="vertical-align: top; padding-top: 10px;">
                 <b>SUELDO</b><br>
-                HORAS LABORADAS <span style="float:right;">{{ $nomina->horas_normales + $nomina->horas_extra }}</span><br><br>
-                <span class="money" style="font-size: 10px;">COMPENSACIÓN</span><br>
-                INCAP - 60%<br>
+                HORAS LABORADAS <span style="float:right;">{{ $nomina->horas_normales + $nomina->horas_extra }} hrs</span><br><br>
+                
+                @if(isset($dias_incapacidad) && $dias_incapacidad > 0)
+                <span class="money" style="font-size: 10px;">INCAPACIDAD ({{ $dias_incapacidad }} Días) al 60%</span><br>
+                @endif
+                
                 <span style="font-size: 8px;">D.P. VACACION + 25% P.V.</span> <span style="color: blue; float:right;">0</span>
             </td>
             <td style="vertical-align: top; padding-top: 10px;" class="right">
                 <br>
-                $ {{ number_format($nomina->total_percepciones, 2) }}<br><br>
-                $ -<br>
-                $ -<br>
+                $ {{ number_format($pago_normal + $pago_extra, 2) }}<br><br>
+                
+                @if(isset($dias_incapacidad) && $dias_incapacidad > 0)
+                $ {{ number_format($pago_incapacidad, 2) }}<br>
+                @endif
+                
                 $ 0.00
             </td>
+            
             <td style="vertical-align: top; padding-top: 10px; width: 25%;">
+                @if(isset($dias_falta) && $dias_falta > 0)
+                Falta(s) - {{ $dias_falta }} días<br>
+                @else
                 Falta (s)<br>
+                @endif
                 P. Personal<br>
-                Retardo<br>
-                Salida Prematura<br>
-                IMSS<br>
+                Retardos ({{ $minutos_tarde_acumulados ?? 0 }} min)<br>
+                Préstamos<br>
+                Seguro / IMSS<br>
                 INFONAVIT
             </td>
             <td style="vertical-align: top; padding-top: 10px; width: 25%;" class="right">
-                $ <br>
+                $ 0.00 <br>
                 $ 0.00<br>
-                $ <br>
-                $ <br>
-                $ <br>
+                $ {{ number_format($descuento_retardos ?? 0, 2) }} <br>
+                $ {{ number_format($nomina->empleado->cuota_prestamo, 2) }} <br>
+                $ {{ number_format($nomina->empleado->cuota_seguro, 2) }} <br>
                 $ 0.00
             </td>
         </tr>

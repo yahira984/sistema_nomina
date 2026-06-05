@@ -12,9 +12,9 @@ class AsistenciaController extends Controller
 {
     public function index()
     {
-        $empleados = Empleado::where('estatus', true)->get();
+        $empleados = Empleado::where('estatus', true)->orderBy('nombre_completo', 'asc')->get();
         $asistencias = Asistencia::with('empleado')->orderBy('fecha', 'desc')->get();
-        
+
         return Inertia::render('Asistencias/Index', [
             'empleados' => $empleados,
             'asistencias' => $asistencias
@@ -26,53 +26,82 @@ class AsistenciaController extends Controller
         $request->validate([
             'empleado_id' => 'required|exists:empleados,id',
             'fecha' => 'required|date',
-            'hora_entrada' => 'required',
-            'hora_salida' => 'required',
+            'tipo_asistencia' => 'required|string',
         ]);
 
-        $entrada = Carbon::parse($request->hora_entrada);
-        $salida = Carbon::parse($request->hora_salida);
-        $horas_trabajadas = $entrada->diffInMinutes($salida) / 60;
+        $datosCalculados = $this->calcularHoras($request->fecha, $request->hora_entrada, $request->hora_salida, $request->tipo_asistencia);
 
-        Asistencia::create([
+        Asistencia::create(array_merge([
             'empleado_id' => $request->empleado_id,
             'fecha' => $request->fecha,
-            'hora_entrada' => $request->hora_entrada,
-            'hora_salida' => $request->hora_salida,
-            'horas_trabajadas' => round($horas_trabajadas, 2),
-        ]);
+            'tipo_asistencia' => $request->tipo_asistencia, // <-- AQUÍ ESTABA EL BUG, YA ESTÁ CORREGIDO
+            'hora_entrada' => $request->tipo_asistencia === 'Normal' ? $request->hora_entrada : null,
+            'hora_salida' => $request->tipo_asistencia === 'Normal' ? $request->hora_salida : null,
+        ], $datosCalculados));
 
-        return redirect()->back();
+        return redirect()->back()->with('success', 'Asistencia registrada con éxito.');
     }
 
-    // NUEVO: Función para actualizar
-    public function update(Request $request, Asistencia $asistencia)
+    public function update(Request $request, $id)
     {
         $request->validate([
             'fecha' => 'required|date',
-            'hora_entrada' => 'required',
-            'hora_salida' => 'required',
+            'tipo_asistencia' => 'required|string',
         ]);
 
-        // Volvemos a calcular por si le corrigieron la hora
-        $entrada = Carbon::parse($request->hora_entrada);
-        $salida = Carbon::parse($request->hora_salida);
-        $horas_trabajadas = $entrada->diffInMinutes($salida) / 60;
+        $asistencia = Asistencia::findOrFail($id);
+        
+        $datosCalculados = $this->calcularHoras($request->fecha, $request->hora_entrada, $request->hora_salida, $request->tipo_asistencia);
 
-        $asistencia->update([
+        $asistencia->update(array_merge([
             'fecha' => $request->fecha,
-            'hora_entrada' => $request->hora_entrada,
-            'hora_salida' => $request->hora_salida,
-            'horas_trabajadas' => round($horas_trabajadas, 2),
-        ]);
+            'tipo_asistencia' => $request->tipo_asistencia,
+            'hora_entrada' => $request->tipo_asistencia === 'Normal' ? $request->hora_entrada : null,
+            'hora_salida' => $request->tipo_asistencia === 'Normal' ? $request->hora_salida : null,
+        ], $datosCalculados));
 
-        return redirect()->back();
+        return redirect()->back()->with('success', 'Asistencia actualizada.');
     }
 
-    // NUEVO: Función para eliminar
-    public function destroy(Asistencia $asistencia)
+    public function destroy($id)
     {
-        $asistencia->delete();
-        return redirect()->back();
+        Asistencia::destroy($id);
+        return redirect()->back()->with('success', 'Asistencia eliminada.');
+    }
+
+    private function calcularHoras($fecha, $hora_entrada, $hora_salida, $tipo_asistencia)
+    {
+        $minutos_tarde = 0;
+        $horas_normales = 0;
+        $horas_extra_diarias = 0;
+
+        if ($tipo_asistencia === 'Normal' && $hora_entrada && $hora_salida) {
+            $fecha_carbon = Carbon::parse($fecha);
+            $entrada = Carbon::parse($fecha . ' ' . $hora_entrada);
+            $salida = Carbon::parse($fecha . ' ' . $hora_salida);
+            $hora_oficial = Carbon::parse($fecha . ' 08:00:00');
+            
+            if ($entrada->greaterThan($hora_oficial)) {
+                $minutos_tarde = $hora_oficial->diffInMinutes($entrada);
+            }
+
+            if ($fecha_carbon->isSaturday()) {
+                $horas_extra_diarias = $entrada->diffInMinutes($salida) / 60;
+            } else {
+                $limite_normal = Carbon::parse($fecha . ' 17:30:00');
+                if ($salida->greaterThan($limite_normal)) {
+                    $horas_normales = $entrada->diffInMinutes($limite_normal) / 60;
+                    $horas_extra_diarias = $limite_normal->diffInMinutes($salida) / 60;
+                } else {
+                    $horas_normales = $entrada->diffInMinutes($salida) / 60;
+                }
+            }
+        }
+
+        return [
+            'minutos_tarde' => $minutos_tarde,
+            'horas_trabajadas' => $horas_normales,
+            'horas_extra' => $horas_extra_diarias
+        ];
     }
 }

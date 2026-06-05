@@ -16,6 +16,9 @@ const form = useForm({
     nombre_completo: '',
     puesto: '',
     sueldo_por_hora: '',
+    saldo_prestamo: '', // NUEVO: Deuda total a pagar
+    cuota_prestamo: '', 
+    cuota_seguro: '',   
     banco: '',
     numero_cuenta: '',
     nss: '',
@@ -51,6 +54,9 @@ const editarEmpleado = (empleado) => {
     form.nombre_completo = empleado.nombre_completo;
     form.puesto = empleado.puesto || '';
     form.sueldo_por_hora = empleado.sueldo_por_hora;
+    form.saldo_prestamo = empleado.saldo_prestamo || ''; // NUEVO
+    form.cuota_prestamo = empleado.cuota_prestamo || ''; 
+    form.cuota_seguro = empleado.cuota_seguro || '';     
     form.banco = empleado.banco || '';
     form.numero_cuenta = empleado.numero_cuenta || '';
     form.nss = empleado.nss || '';
@@ -133,6 +139,22 @@ const eliminarEmpleado = (id, nombre) => {
                                 <input v-model="form.sueldo_por_hora" type="number" step="0.01" required class="field-input-soft" />
                             </div>
 
+                            <!-- CAJA NUEVA: DEUDA TOTAL -->
+                            <div>
+                                <label class="field-label text-amber-700">Deuda Total Préstamo ($)</label>
+                                <input v-model="form.saldo_prestamo" type="number" step="0.01" class="field-input-soft border-amber-200 focus:border-amber-400 focus:ring-amber-400/20" placeholder="Ej. 1000.00" />
+                            </div>
+
+                            <div>
+                                <label class="field-label">Desc. Préstamo x Sem ($)</label>
+                                <input v-model="form.cuota_prestamo" type="number" step="0.01" class="field-input-soft" placeholder="0.00" />
+                            </div>
+
+                            <div>
+                                <label class="field-label">Desc. Seguro ($)</label>
+                                <input v-model="form.cuota_seguro" type="number" step="0.01" class="field-input-soft" placeholder="0.00" />
+                            </div>
+
                             <div>
                                 <label class="field-label">Banco</label>
                                 <input v-model="form.banco" type="text" class="field-input-soft" placeholder="BBVA, Banamex..." />
@@ -143,14 +165,14 @@ const eliminarEmpleado = (id, nombre) => {
                                 <input v-model="form.numero_cuenta" type="text" class="field-input-soft" placeholder="18 dígitos o tarjeta" />
                             </div>
 
-                            <div class="md:col-span-2">
+                            <div class="md:col-span-1">
                                 <label class="field-label">NSS</label>
-                                <input v-model="form.nss" type="text" class="field-input-soft" />
+                                <input v-model="form.nss" type="text" class="field-input-soft" placeholder="11 dígitos" />
                             </div>
 
                             <div class="md:col-span-2">
                                 <label class="field-label">RFC</label>
-                                <input v-model="form.rfc" type="text" class="field-input-soft" />
+                                <input v-model="form.rfc" type="text" class="field-input-soft" placeholder="12 o 13 caracteres" />
                             </div>
 
                             <div class="flex justify-end md:col-span-4">
@@ -159,7 +181,7 @@ const eliminarEmpleado = (id, nombre) => {
                                     :disabled="form.processing"
                                     :class="editando ? 'btn-warning' : 'btn-accent'"
                                 >
-                                    <svg v-if="!form.processing" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg v-if="!form.processing" class="h-4 w-4 mr-2 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3m-1 4-3 3m0 0-3-3m3 3V4" />
                                     </svg>
                                     {{ form.processing ? 'Guardando...' : (editando ? 'Actualizar expediente' : 'Registrar empleado') }}
@@ -192,7 +214,7 @@ const eliminarEmpleado = (id, nombre) => {
                                 <tr>
                                     <th>Empleado</th>
                                     <th>Puesto / cuenta bancaria</th>
-                                    <th>Tarifa</th>
+                                    <th>Tarifa / Deuda</th>
                                     <th class="text-right">Acciones</th>
                                 </tr>
                             </thead>
@@ -219,9 +241,14 @@ const eliminarEmpleado = (id, nombre) => {
                                         </div>
                                     </td>
                                     <td class="whitespace-nowrap">
-                                        <span class="status-pill status-success">
-                                            ${{ empleado.sueldo_por_hora }}
-                                        </span>
+                                        <div class="flex flex-col gap-1">
+                                            <span class="status-pill status-success w-max">
+                                                ${{ empleado.sueldo_por_hora }} / hr
+                                            </span>
+                                            <span v-if="empleado.saldo_prestamo > 0" class="status-pill bg-amber-100 text-amber-800 border-amber-200 w-max text-[10px]">
+                                                Debe: ${{ empleado.saldo_prestamo }}
+                                            </span>
+                                        </div>
                                     </td>
                                     <td class="whitespace-nowrap text-right">
                                         <div class="flex items-center justify-end gap-2">
