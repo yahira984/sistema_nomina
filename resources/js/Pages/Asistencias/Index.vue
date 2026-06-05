@@ -132,10 +132,11 @@ const eliminarAsistencia = (id) => {
                             <div>
                                 <label class="field-label">Tipo <span class="text-rose-500">*</span></label>
                                 <select v-model="form.tipo_asistencia" required class="field-input-soft">
-                                    <option value="Normal">Normal</option>
-                                    <option value="Falta">Falta</option>
-                                    <option value="Incapacidad">Incapacidad</option>
-                                </select>
+    <option value="Normal">Normal (Asistencia)</option>
+    <option value="Falta">Falta Injustificada</option>
+    <option value="Incapacidad">Incapacidad (60%)</option>
+    <option value="Vacaciones">Vacaciones (+25% Prima)</option>
+</select>
                             </div>
 
                             <div>

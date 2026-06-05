@@ -17,15 +17,15 @@ class NominaController extends Controller
     public function index(Request $request)
     {
         $hoy = Carbon::now();
-        $martesAutomatico = $hoy->isTuesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::TUESDAY)->endOfDay();
+        $miercolesAutomatico = $hoy->isWednesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::WEDNESDAY)->endOfDay();
         
-        $fechaCorteStr = $request->input('fecha_corte', $martesAutomatico->format('Y-m-d'));
+        $fechaCorteStr = $request->input('fecha_corte', $miercolesAutomatico->format('Y-m-d'));
         $finSemana = Carbon::parse($fechaCorteStr)->endOfDay();
         $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay();
         $semanaActual = $inicioSemana->weekOfYear;
 
         $semanasDisponibles = [];
-        $iterador = $martesAutomatico->copy();
+        $iterador = $miercolesAutomatico->copy();
         for ($i = 0; $i < 10; $i++) {
             $inicio = $iterador->copy()->subDays(6);
             $semanasDisponibles[] = [
@@ -58,9 +58,9 @@ class NominaController extends Controller
     {
         $empleado = Empleado::findOrFail($empleado_id);
         $hoy = Carbon::now();
-        $martesAutomatico = $hoy->isTuesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::TUESDAY)->endOfDay();
+        $miercolesAutomatico = $hoy->isWednesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::WEDNESDAY)->endOfDay();
         
-        $fechaCorteStr = $request->input('fecha_corte', $martesAutomatico->format('Y-m-d'));
+        $fechaCorteStr = $request->input('fecha_corte', $miercolesAutomatico->format('Y-m-d'));
         $finSemana = Carbon::parse($fechaCorteStr)->endOfDay();
         $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay();
 
@@ -85,30 +85,18 @@ class NominaController extends Controller
     public function pagar(Nomina $nomina)
     {
         $empleado = $nomina->empleado;
-
         if (!$nomina->pagado) {
-            // Si lo estamos marcando como PAGADO apenas...
             $nomina->update(['pagado' => true]);
-
-            // Le descontamos de su deuda total lo que le quitamos en esta nómina
-            // Ojo: Para saber cuánto le quitamos exactamente, calculamos qué pasó:
-            $descuento_aplicado = 0;
             if ($empleado->saldo_prestamo > 0) {
                 $descuento_aplicado = min($empleado->saldo_prestamo, $empleado->cuota_prestamo);
                 $empleado->decrement('saldo_prestamo', $descuento_aplicado);
             }
         } else {
-            // Si por error se arrepienten y lo marcan como PENDIENTE otra vez...
             $nomina->update(['pagado' => false]);
-
-            // Le devolvemos ese saldo a su deuda para que no pierda dinero la empresa
-            $descuento_aplicado = min($empleado->saldo_prestamo + $empleado->cuota_prestamo, $empleado->cuota_prestamo);
-            // Solo devolvemos si realmente tenía cuota registrada
             if ($empleado->cuota_prestamo > 0) {
                 $empleado->increment('saldo_prestamo', $empleado->cuota_prestamo);
             }
         }
-
         return back();
     }
 
@@ -117,40 +105,70 @@ class NominaController extends Controller
         return Excel::download(new ReporteSemanalExport($semana), 'Resumen_Semana_'.$semana.'.xlsx');
     }
 
-    // --- EL CEREBRO MATEMÁTICO CENTRAL CORREGIDO ---
+    // --- EL CEREBRO FINAL: ESTUDIANTES VS PLANTA ---
     private function procesarCalculosNomina($empleado_id, $numero_semana, $inicioSemana, $finSemana)
     {
         $empleado = Empleado::findOrFail($empleado_id);
-        $asistencias = Asistencia::where('empleado_id', $empleado->id)->whereBetween('fecha', [$inicioSemana, $finSemana])->get();
-
-        $total_horas_normales = $asistencias->sum('horas_trabajadas');
-        $total_horas_extra = $asistencias->sum('horas_extra');
-        $minutos_tarde_acumulados = $asistencias->sum('minutos_tarde');
         
-        $dias_falta = $asistencias->where('tipo_asistencia', 'Falta')->count();
-        $dias_incapacidad = $asistencias->where('tipo_asistencia', 'Incapacidad')->count();
+        $asistenciasSemana = Asistencia::where('empleado_id', $empleado->id)->whereBetween('fecha', [$inicioSemana, $finSemana])->get();
 
-        $pago_normal = $total_horas_normales * $empleado->sueldo_por_hora;
-        $pago_extra = $total_extra = $total_horas_extra * ($empleado->sueldo_por_hora * 2); 
-        $pago_incapacidad = $dias_incapacidad * 8 * ($empleado->sueldo_por_hora * 0.60); 
-        
-        $total_percepciones = $pago_normal + $pago_extra + $pago_incapacidad;
+        $total_horas_extra = $asistenciasSemana->filter(function($asis) use ($finSemana) {
+            return $asis->fecha !== $finSemana->format('Y-m-d');
+        })->sum('horas_extra');
 
-        $bloques_retardo = floor($minutos_tarde_acumulados / 30);
-        $descuento_retardos = $bloques_retardo * ($empleado->sueldo_por_hora * 0.5); 
+        $miercolesPasado = $inicioSemana->copy()->subDay();
+        $asistenciaMiercolesPasado = Asistencia::where('empleado_id', $empleado->id)
+            ->whereDate('fecha', $miercolesPasado->format('Y-m-d'))
+            ->first();
 
-        // --- LÓGICA INTELIGENTE DE PRÉSTAMOS ---
-        $descuento_prestamo = 0;
-        if ($empleado->saldo_prestamo > 0) {
-            // Si lo que debe es menor a su cuota normal, solo le cobramos lo que le falta
-            if ($empleado->saldo_prestamo < $empleado->cuota_prestamo) {
-                $descuento_prestamo = $empleado->saldo_prestamo;
-            } else {
-                $descuento_prestamo = $empleado->cuota_prestamo;
-            }
+        if ($asistenciaMiercolesPasado) {
+            $total_horas_extra += $asistenciaMiercolesPasado->horas_extra;
         }
 
-        $total_deducciones = $descuento_retardos + $descuento_prestamo + $empleado->cuota_seguro;
+        $minutos_tarde_acumulados = $asistenciasSemana->sum('minutos_tarde');
+        $dias_falta = $asistenciasSemana->where('tipo_asistencia', 'Falta')->count();
+        $dias_incapacidad = $asistenciasSemana->where('tipo_asistencia', 'Incapacidad')->count();
+        $dias_vacaciones = $asistenciasSemana->where('tipo_asistencia', 'Vacaciones')->count();
+
+        // MAGIA: ¿Es estudiante o es de planta?
+        $es_estudiante = $empleado->sueldo_por_hora > 0;
+
+        if ($es_estudiante) {
+            // LÓGICA ESTUDIANTE (Multiplica sus horas directas)
+            $sueldo_por_hora = $empleado->sueldo_por_hora;
+            $sueldo_diario = $sueldo_por_hora * 8; 
+            $costo_por_minuto = $sueldo_por_hora / 60;
+            
+            $total_horas_normales = $asistenciasSemana->sum('horas_trabajadas');
+            $sueldo_base = $total_horas_normales * $sueldo_por_hora; // SU PAGO REAL
+            $descuento_faltas = 0; // A los estudiantes no se les cobra la falta
+        } else {
+            // LÓGICA PLANTA (Su semana completa)
+            $sueldo_semanal = $empleado->sueldo_semanal;
+            $sueldo_diario = $sueldo_semanal > 0 ? $sueldo_semanal / 7 : 0;
+            $sueldo_por_hora = $sueldo_diario > 0 ? $sueldo_diario / 8 : 0;
+            $costo_por_minuto = $sueldo_por_hora > 0 ? $sueldo_por_hora / 60 : 0;
+
+            $sueldo_base = $sueldo_semanal; // BASE COMPLETA
+            $descuento_faltas = $dias_falta * ($sueldo_diario * 1.1875);
+            $total_horas_normales = 48; 
+        }
+        
+        $pago_extra = $total_horas_extra * ($sueldo_por_hora * 2); 
+        $pago_incapacidad = $dias_incapacidad * ($sueldo_diario * 0.60); 
+        $pago_vacaciones = $dias_vacaciones * ($sueldo_diario * 1.25); 
+        
+        $total_percepciones = $sueldo_base + $pago_extra + $pago_incapacidad + $pago_vacaciones;
+
+        $descuento_retardos = $minutos_tarde_acumulados * $costo_por_minuto; 
+
+        $descuento_prestamo = 0;
+        if ($empleado->saldo_prestamo > 0) {
+            $descuento_prestamo = min($empleado->saldo_prestamo, $empleado->cuota_prestamo);
+        }
+
+        $deducciones_ley = $empleado->descuento_imss + $empleado->descuento_isr + $empleado->descuento_infonavit;
+        $total_deducciones = $descuento_retardos + $descuento_faltas + $descuento_prestamo + $deducciones_ley;
         
         $pago_neto = $total_percepciones - $total_deducciones;
 
@@ -171,11 +189,14 @@ class NominaController extends Controller
             'nomina' => $nomina,
             'dias_falta' => $dias_falta,
             'dias_incapacidad' => $dias_incapacidad,
+            'dias_vacaciones' => $dias_vacaciones,
             'pago_incapacidad' => $pago_incapacidad,
-            'pago_normal' => $pago_normal,
+            'pago_vacaciones' => $pago_vacaciones,
+            'pago_normal' => $sueldo_base, // AHORA SÍ PASAMOS EL DINERO
             'pago_extra' => $pago_extra,
             'minutos_tarde_acumulados' => $minutos_tarde_acumulados,
             'descuento_retardos' => $descuento_retardos,
+            'descuento_faltas' => $descuento_faltas,
             'total_percepciones' => $total_percepciones,
             'total_deducciones' => $total_deducciones,
             'pago_neto' => $pago_neto

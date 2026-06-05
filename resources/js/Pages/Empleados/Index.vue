@@ -15,10 +15,16 @@ const form = useForm({
     numero_empleado: '',
     nombre_completo: '',
     puesto: '',
-    sueldo_por_hora: '',
-    saldo_prestamo: '', // NUEVO: Deuda total a pagar
+    fecha_ingreso: '', 
+    forma_pago: 'Efectivo',
+    es_estudiante: false, // NUEVO INTERRUPTOR
+    sueldo_semanal: '', 
+    sueldo_por_hora: '', 
+    saldo_prestamo: '', 
     cuota_prestamo: '', 
-    cuota_seguro: '',   
+    descuento_imss: '', 
+    descuento_isr: '', 
+    descuento_infonavit: '', 
     banco: '',
     numero_cuenta: '',
     nss: '',
@@ -53,10 +59,16 @@ const editarEmpleado = (empleado) => {
     form.numero_empleado = empleado.numero_empleado || '';
     form.nombre_completo = empleado.nombre_completo;
     form.puesto = empleado.puesto || '';
-    form.sueldo_por_hora = empleado.sueldo_por_hora;
-    form.saldo_prestamo = empleado.saldo_prestamo || ''; // NUEVO
+    form.fecha_ingreso = empleado.fecha_ingreso || '';
+    form.forma_pago = empleado.forma_pago || 'Efectivo';
+    form.es_estudiante = empleado.sueldo_por_hora > 0; // Si gana por hora, es estudiante
+    form.sueldo_semanal = empleado.sueldo_semanal || '';
+    form.sueldo_por_hora = empleado.sueldo_por_hora || '';
+    form.saldo_prestamo = empleado.saldo_prestamo || ''; 
     form.cuota_prestamo = empleado.cuota_prestamo || ''; 
-    form.cuota_seguro = empleado.cuota_seguro || '';     
+    form.descuento_imss = empleado.descuento_imss || ''; 
+    form.descuento_isr = empleado.descuento_isr || ''; 
+    form.descuento_infonavit = empleado.descuento_infonavit || ''; 
     form.banco = empleado.banco || '';
     form.numero_cuenta = empleado.numero_cuenta || '';
     form.nss = empleado.nss || '';
@@ -135,37 +147,78 @@ const eliminarEmpleado = (id, nombre) => {
                             </div>
 
                             <div>
-                                <label class="field-label">Sueldo / hora ($) <span class="text-rose-500">*</span></label>
-                                <input v-model="form.sueldo_por_hora" type="number" step="0.01" required class="field-input-soft" />
+                                <label class="field-label">Fecha de Ingreso</label>
+                                <input v-model="form.fecha_ingreso" type="date" class="field-input-soft" />
                             </div>
 
-                            <!-- CAJA NUEVA: DEUDA TOTAL -->
+                            <div>
+                                <label class="field-label">Forma de pago <span class="text-rose-500">*</span></label>
+                                <select v-model="form.forma_pago" required class="field-input-soft">
+                                    <option value="Efectivo">Efectivo</option>
+                                    <option value="Deposito">Depósito / Transferencia</option>
+                                </select>
+                            </div>
+
+                            <div class="md:col-span-2 flex items-center pl-2 pt-6">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" v-model="form.es_estudiante" class="w-5 h-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
+                                    <span class="text-sm font-semibold text-slate-700">Modalidad Estudiante (Pago por hora)</span>
+                                </label>
+                            </div>
+
+                            <template v-if="form.es_estudiante">
+                                <div class="md:col-span-2">
+                                    <label class="field-label text-teal-700">Tarifa por Hora Estudiante ($) <span class="text-rose-500">*</span></label>
+                                    <input v-model="form.sueldo_por_hora" type="number" step="0.01" class="field-input-soft border-teal-200 focus:border-teal-400 focus:ring-teal-400/20" placeholder="Ej. 27.00" />
+                                </div>
+                                <div class="md:col-span-2"></div>
+                            </template>
+                            <template v-else>
+                                <div class="md:col-span-2">
+                                    <label class="field-label text-teal-700">Sueldo Semanal Base ($) <span class="text-rose-500">*</span></label>
+                                    <input v-model="form.sueldo_semanal" type="number" step="0.01" class="field-input-soft border-teal-200 focus:border-teal-400 focus:ring-teal-400/20" placeholder="Ej. 1000.00" />
+                                </div>
+                                <div class="md:col-span-2"></div>
+                            </template>
+
                             <div>
                                 <label class="field-label text-amber-700">Deuda Total Préstamo ($)</label>
-                                <input v-model="form.saldo_prestamo" type="number" step="0.01" class="field-input-soft border-amber-200 focus:border-amber-400 focus:ring-amber-400/20" placeholder="Ej. 1000.00" />
+                                <input v-model="form.saldo_prestamo" type="number" step="0.01" class="field-input-soft border-amber-200" />
                             </div>
 
                             <div>
                                 <label class="field-label">Desc. Préstamo x Sem ($)</label>
-                                <input v-model="form.cuota_prestamo" type="number" step="0.01" class="field-input-soft" placeholder="0.00" />
+                                <input v-model="form.cuota_prestamo" type="number" step="0.01" class="field-input-soft" />
                             </div>
 
                             <div>
-                                <label class="field-label">Desc. Seguro ($)</label>
-                                <input v-model="form.cuota_seguro" type="number" step="0.01" class="field-input-soft" placeholder="0.00" />
+                                <label class="field-label">Desc. IMSS ($)</label>
+                                <input v-model="form.descuento_imss" type="number" step="0.01" class="field-input-soft" />
+                            </div>
+                            
+                            <div>
+                                <label class="field-label">Desc. ISR ($)</label>
+                                <input v-model="form.descuento_isr" type="number" step="0.01" class="field-input-soft" />
                             </div>
 
-                            <div>
-                                <label class="field-label">Banco</label>
-                                <input v-model="form.banco" type="text" class="field-input-soft" placeholder="BBVA, Banamex..." />
+                            <div class="md:col-span-4">
+                                <label class="field-label">Desc. INFONAVIT ($)</label>
+                                <input v-model="form.descuento_infonavit" type="number" step="0.01" class="field-input-soft" />
                             </div>
+
+                            <template v-if="form.forma_pago === 'Deposito'">
+                                <div class="col-span-1 md:col-span-2">
+                                    <label class="field-label">Banco <span class="text-rose-500">*</span></label>
+                                    <input v-model="form.banco" type="text" :required="form.forma_pago === 'Deposito'" class="field-input-soft" placeholder="BBVA, Banamex..." />
+                                </div>
+
+                                <div class="col-span-1 md:col-span-2">
+                                    <label class="field-label">Cuenta bancaria o CLABE <span class="text-rose-500">*</span></label>
+                                    <input v-model="form.numero_cuenta" type="text" :required="form.forma_pago === 'Deposito'" class="field-input-soft" placeholder="18 dígitos o tarjeta" />
+                                </div>
+                            </template>
 
                             <div class="md:col-span-2">
-                                <label class="field-label">Cuenta bancaria o CLABE</label>
-                                <input v-model="form.numero_cuenta" type="text" class="field-input-soft" placeholder="18 dígitos o tarjeta" />
-                            </div>
-
-                            <div class="md:col-span-1">
                                 <label class="field-label">NSS</label>
                                 <input v-model="form.nss" type="text" class="field-input-soft" placeholder="11 dígitos" />
                             </div>
@@ -175,15 +228,8 @@ const eliminarEmpleado = (id, nombre) => {
                                 <input v-model="form.rfc" type="text" class="field-input-soft" placeholder="12 o 13 caracteres" />
                             </div>
 
-                            <div class="flex justify-end md:col-span-4">
-                                <button
-                                    type="submit"
-                                    :disabled="form.processing"
-                                    :class="editando ? 'btn-warning' : 'btn-accent'"
-                                >
-                                    <svg v-if="!form.processing" class="h-4 w-4 mr-2 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3m-1 4-3 3m0 0-3-3m3 3V4" />
-                                    </svg>
+                            <div class="flex justify-end md:col-span-4 mt-2">
+                                <button type="submit" :disabled="form.processing" :class="editando ? 'btn-warning' : 'btn-accent'">
                                     {{ form.processing ? 'Guardando...' : (editando ? 'Actualizar expediente' : 'Registrar empleado') }}
                                 </button>
                             </div>
@@ -197,14 +243,8 @@ const eliminarEmpleado = (id, nombre) => {
                             <h3 class="panel-title">Directorio activo</h3>
                             <p class="panel-subtitle">{{ empleadosFiltrados.length }} trabajador(es) encontrados</p>
                         </div>
-
                         <div class="relative w-full lg:w-96">
-                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
-                                </svg>
-                            </div>
-                            <input v-model="searchQuery" type="text" class="field-input-soft pl-10" placeholder="Buscar por nombre o número..." />
+                            <input v-model="searchQuery" type="text" class="field-input-soft pl-4" placeholder="Buscar por nombre o número..." />
                         </div>
                     </div>
 
@@ -213,8 +253,9 @@ const eliminarEmpleado = (id, nombre) => {
                             <thead>
                                 <tr>
                                     <th>Empleado</th>
-                                    <th>Puesto / cuenta bancaria</th>
-                                    <th>Tarifa / Deuda</th>
+                                    <th>Puesto / Antigüedad</th>
+                                    <th>Tarifa de Pago</th>
+                                    <th>Control Vacaciones</th>
                                     <th class="text-right">Acciones</th>
                                 </tr>
                             </thead>
@@ -233,41 +274,29 @@ const eliminarEmpleado = (id, nombre) => {
                                     </td>
                                     <td class="whitespace-nowrap">
                                         <div class="font-medium text-slate-900">{{ empleado.puesto || 'No asignado' }}</div>
-                                        <div class="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3Z" />
-                                            </svg>
-                                            {{ empleado.banco ? empleado.banco + ' - ' : '' }}{{ empleado.numero_cuenta || 'Sin cuenta registrada' }}
+                                        <div class="mt-1 text-xs font-semibold text-teal-600">
+                                            {{ empleado.antiguedad_anios }} año(s) en la empresa
                                         </div>
                                     </td>
                                     <td class="whitespace-nowrap">
-                                        <div class="flex flex-col gap-1">
-                                            <span class="status-pill status-success w-max">
-                                                ${{ empleado.sueldo_por_hora }} / hr
-                                            </span>
-                                            <span v-if="empleado.saldo_prestamo > 0" class="status-pill bg-amber-100 text-amber-800 border-amber-200 w-max text-[10px]">
-                                                Debe: ${{ empleado.saldo_prestamo }}
-                                            </span>
+                                        <span class="status-pill status-success w-max">
+                                            <span v-if="empleado.sueldo_por_hora > 0">Estudiante: ${{ empleado.sueldo_por_hora }} / hr</span>
+                                            <span v-else>${{ empleado.sueldo_semanal }} / sem</span>
+                                        </span>
+                                    </td>
+                                    <td class="whitespace-nowrap">
+                                        <div v-if="empleado.fecha_ingreso" class="flex flex-col gap-1 text-xs">
+                                            <span class="font-bold text-slate-700">🌴 Totales: {{ empleado.dias_vacaciones_totales }} días</span>
+                                            <span class="text-rose-600">Tomados: {{ empleado.dias_vacaciones_tomados }}</span>
+                                            <span class="text-emerald-600 font-bold">Restan: {{ empleado.dias_vacaciones_restantes }}</span>
+                                        </div>
+                                        <div v-else class="text-xs text-slate-400 italic">
+                                            Falta fecha de ingreso
                                         </div>
                                     </td>
                                     <td class="whitespace-nowrap text-right">
-                                        <div class="flex items-center justify-end gap-2">
-                                            <button @click="editarEmpleado(empleado)" class="icon-button" title="Editar" type="button">
-                                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m15.232 5.232 3.536 3.536m-2.036-5.036a2.5 2.5 0 1 1 3.536 3.536L6.5 21.036H3v-3.572L16.732 3.732Z" />
-                                                </svg>
-                                            </button>
-                                            <button @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="icon-button-danger" title="Eliminar" type="button">
-                                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 7-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16" />
-                                                </svg>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr v-if="empleadosFiltrados.length === 0">
-                                    <td colspan="4" class="empty-state">
-                                        No se encontraron empleados con esa búsqueda.
+                                        <button @click="editarEmpleado(empleado)" class="btn-secondary text-xs mr-2">Editar</button>
+                                        <button @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="btn-danger text-xs">Eliminar</button>
                                     </td>
                                 </tr>
                             </tbody>
