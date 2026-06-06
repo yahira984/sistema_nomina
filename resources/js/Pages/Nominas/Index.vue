@@ -18,11 +18,17 @@ const toastMessage = ref('');
 
 const selectedCorte = ref(props.fechaCorteActual);
 
+// Extrae el número de semana correspondiente a la fecha de corte seleccionada actualmente
+const numeroSemanaSeleccionada = computed(() => {
+    const encontrada = props.semanasDisponibles.find(sem => sem.fecha_corte === selectedCorte.value);
+    return encontrada ? encontrada.numero_semana : props.semanaActual;
+});
+
 watch(selectedCorte, (newDate) => {
     router.get(route('nominas.index'), { fecha_corte: newDate }, { preserveState: true, preserveScroll: true });
 });
 
-// 1. Primer filtro: Búsqueda por nombre o número (Este ya lo tenía tu compa, lo dejamos intacto)
+// 1. Primer filtro: Búsqueda por nombre o número
 const empleadosFiltrados = computed(() => {
     if (!searchQuery.value) return props.empleados;
     return props.empleados.filter(emp => {
@@ -32,12 +38,11 @@ const empleadosFiltrados = computed(() => {
     });
 });
 
-// 2. LA MAGIA NUEVA: Agrupamos los filtrados por su Banco
+// 2. Agrupamos los filtrados por su Banco
 const empleadosAgrupados = computed(() => {
     const grupos = {};
     
     empleadosFiltrados.value.forEach(empleado => {
-        // Si tiene banco lo ponemos en mayúsculas, si no, lo mandamos a Efectivo
         const nombreBanco = empleado.banco ? empleado.banco.toUpperCase() : 'EFECTIVO / SIN BANCO';
         
         if (!grupos[nombreBanco]) {
@@ -46,7 +51,6 @@ const empleadosAgrupados = computed(() => {
         grupos[nombreBanco].push(empleado);
     });
 
-    // Opcional: Ordenar alfabéticamente los bancos
     return Object.keys(grupos).sort().reduce((obj, key) => {
         obj[key] = grupos[key];
         return obj;
@@ -114,7 +118,6 @@ const cambiarEstadoPago = (nominaId) => {
                         </div>
 
                         <div class="flex flex-wrap items-center gap-3">
-                            <!-- SELECTOR DE SEMANAS -->
                             <div class="relative w-full sm:w-auto">
                                 <select v-model="selectedCorte" class="field-input-soft appearance-none pr-10 font-semibold text-slate-800">
                                     <option v-for="sem in semanasDisponibles" :key="sem.fecha_corte" :value="sem.fecha_corte">
@@ -128,7 +131,6 @@ const cambiarEstadoPago = (nominaId) => {
                                 </div>
                             </div>
 
-                            <!-- BUSCADOR -->
                             <div class="relative w-full sm:w-auto">
                                 <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                                     <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -138,7 +140,6 @@ const cambiarEstadoPago = (nominaId) => {
                                 <input v-model="searchQuery" type="text" class="field-input-soft pl-10" placeholder="Buscar empleado..." />
                             </div>
 
-                            <!-- NUEVO BOTÓN DE EXCEL GLOBAL -->
                             <a :href="route('nominas.reporte', semanaActual)" target="_blank" class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 w-full sm:w-auto justify-center">
                                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -176,7 +177,7 @@ const cambiarEstadoPago = (nominaId) => {
                                                     <th>Empleado</th>
                                                     <th>Datos de depósito</th>
                                                     <th class="text-center">Estado de pago</th>
-                                                    <th class="text-right">Recibo PDF</th>
+                                                    <th class="text-right">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -235,17 +236,30 @@ const cambiarEstadoPago = (nominaId) => {
                                                     </td>
 
                                                     <td class="whitespace-nowrap px-4 py-3 text-right">
-                                                        <a
-                                                            :href="route('nominas.generar', { empleado_id: empleado.id, fecha_corte: selectedCorte })"
-                                                            target="_blank"
-                                                            @click="marcarComoGenerado(empleado)"
-                                                            :class="empleado.nomina_generada ? 'btn-warning' : 'btn-accent'"
-                                                        >
-                                                            <svg class="h-4 w-4 mr-1.5 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2m2 4h6a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2Zm8-12V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4h10Z" />
-                                                            </svg>
-                                                            {{ empleado.nomina_generada ? 'Regenerar' : 'Crear recibo' }}
-                                                        </a>
+                                                        <div class="flex items-center justify-end gap-2">
+                                                            <a
+                                                                :href="route('nominas.excel-individual', { empleado_id: empleado.id, fecha_corte: selectedCorte })"
+                                                                class="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-green-700 active:scale-95"
+                                                                title="Descargar Recibo en Excel"
+                                                            >
+                                                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                                                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8.5 19l-1.5-2.5L5.5 19H4l2-3.5L4 12h1.5l1.5 2.5L8.5 12H10l-2 3.5 2 3.5H8.5zm4.5 0h-1.3l-2-7h1.3l1.4 5.2 1.4-5.2H15l-2 7z"/>
+                                                                </svg>
+                                                                <span class="hidden md:inline">Excel</span>
+                                                            </a>
+
+                                                            <a
+                                                                :href="route('nominas.generar', { empleado_id: empleado.id, fecha_corte: selectedCorte })"
+                                                                target="_blank"
+                                                                @click="marcarComoGenerado(empleado)"
+                                                                :class="empleado.nomina_generada ? 'btn-warning' : 'btn-accent'"
+                                                            >
+                                                                <svg class="h-4 w-4 mr-1.5 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2m2 4h6a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2Zm8-12V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4h10Z" />
+                                                                </svg>
+                                                                {{ empleado.nomina_generada ? 'Regenerar' : 'Crear recibo' }}
+                                                            </a>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             </tbody>

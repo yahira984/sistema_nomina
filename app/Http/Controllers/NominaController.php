@@ -9,42 +9,52 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Inertia\Inertia;
-use Maatwebsite\Excel\Facades\Excel;
-use App\Exports\ReporteSemanalExport;
+use App\Exports\ReciboIndividualExport;
 
 class NominaController extends Controller
 {
     public function index(Request $request)
     {
         $hoy = Carbon::now();
-        // Referencia Maestra LUGARTH: La semana "global" cierra en Miércoles
-        $miercolesAutomatico = $hoy->isWednesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::WEDNESDAY)->endOfDay();
         
-        $fechaCorteStr = $request->input('fecha_corte', $miercolesAutomatico->format('Y-m-d'));
+        // 1. EL CORTE AUTOMÁTICO: Buscamos el martes más reciente
+        $martesAutomatico = $hoy->isTuesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::TUESDAY)->endOfDay();
+        
+        // 2. EL CORTE MANUAL: Si la contadora seleccionó una fecha en el sistema, la usamos. Si no, usamos la automática.
+        $fechaCorteStr = $request->input('fecha_corte', $martesAutomatico->format('Y-m-d'));
         $finSemana = Carbon::parse($fechaCorteStr)->endOfDay();
-        $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay(); 
+        $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay();
         $semanaActual = $inicioSemana->weekOfYear;
 
+        // 3. GENERAR EL MENÚ DESPLEGABLE: Creamos las últimas 10 semanas para que pueda viajar en el tiempo
         $semanasDisponibles = [];
-        $iterador = $miercolesAutomatico->copy();
+        $iterador = $martesAutomatico->copy();
         for ($i = 0; $i < 10; $i++) {
             $inicio = $iterador->copy()->subDays(6);
             $semanasDisponibles[] = [
                 'fecha_corte' => $iterador->format('Y-m-d'),
                 'etiqueta'    => 'Sem. ' . $inicio->weekOfYear . ' (' . $inicio->locale('es')->isoFormat('D MMM') . ' al ' . $iterador->locale('es')->isoFormat('D MMM') . ')'
             ];
-            $iterador->subWeek();
+            $iterador->subWeek(); // Retrocedemos una semana para el siguiente ciclo
         }
 
-        $empleados = Empleado::where('estatus', true)->get()->map(function ($empleado) use ($semanaActual) {
-            $nomina = Nomina::where('empleado_id', $empleado->id)->where('numero_semana', $semanaActual)->first();
+        // Revisar el estatus de los empleados pero SOLO de la semana que seleccionó
+        $empleados = Empleado::where('estatus', true)->orderBy('banco')->get()->map(function ($empleado) use ($semanaActual) {
+            $nomina = Nomina::where('empleado_id', $empleado->id)
+                            ->where('numero_semana', $semanaActual)
+                            ->first();
+
             $empleado->nomina_generada = $nomina ? true : false;
             $empleado->nomina_id = $nomina ? $nomina->id : null;
             $empleado->pagado = $nomina ? $nomina->pagado : false;
+            
             return $empleado;
         });
 
-        $historial = Nomina::with('empleado')->orderBy('numero_semana', 'desc')->orderBy('id', 'desc')->get();
+        $historial = Nomina::with('empleado')
+                           ->orderBy('numero_semana', 'desc')
+                           ->orderBy('id', 'desc')
+                           ->get();
 
         return Inertia::render('Nominas/Index', [
             'empleados' => $empleados,
@@ -58,168 +68,166 @@ class NominaController extends Controller
     public function generarRecibo(Request $request, $empleado_id)
     {
         $empleado = Empleado::findOrFail($empleado_id);
+
         $hoy = Carbon::now();
-        $miercolesAutomatico = $hoy->isWednesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::WEDNESDAY)->endOfDay();
+        $martesAutomatico = $hoy->isTuesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::TUESDAY)->endOfDay();
         
-        $fechaCorteMiercoles = $request->input('fecha_corte', $miercolesAutomatico->format('Y-m-d'));
-        
-        // Obtenemos la semana en base a la fecha global
-        $numero_semana = Carbon::parse($fechaCorteMiercoles)->copy()->subDays(6)->startOfDay()->weekOfYear;
+        // Recibimos la fecha exacta que la contadora quiere calcular (por defecto el martes pasado)
+        $fechaCorteStr = $request->input('fecha_corte', $martesAutomatico->format('Y-m-d'));
+        $finSemana = Carbon::parse($fechaCorteStr)->endOfDay();
+        $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay();
+        $numero_semana = $inicioSemana->weekOfYear;
 
-        $datosPDF = $this->procesarCalculosNomina($empleado->id, $numero_semana, $fechaCorteMiercoles);
+        $asistencias = Asistencia::where('empleado_id', $empleado->id)
+            ->whereBetween('fecha', [$inicioSemana, $finSemana])
+            ->get();
 
-        $pdf = Pdf::loadView('pdf.recibo_nomina', $datosPDF);
-        return $pdf->stream('Recibo_Semana_'.$numero_semana.'_'.$empleado->nombre_completo.'.pdf');
-    }
+        $horas_normales = 0;
+        $horas_extra = 0;
 
-    public function descargar(Nomina $nomina)
-    {
-        $nomina->load('empleado');
-        $es_estudiante = $nomina->empleado->sueldo_por_hora > 0;
-        
-        if ($es_estudiante) {
-            $fechaCorteMiercoles = Carbon::parse($nomina->fecha_fin)->addDay()->format('Y-m-d');
-        } else {
-            $fechaCorteMiercoles = Carbon::parse($nomina->fecha_fin)->format('Y-m-d');
-        }
-        
-        $datosPDF = $this->procesarCalculosNomina($nomina->empleado_id, $nomina->numero_semana, $fechaCorteMiercoles);
-
-        $pdf = Pdf::loadView('pdf.recibo_nomina', $datosPDF);
-        return $pdf->stream('Recibo_Semana_'.$nomina->numero_semana.'_'.$nomina->empleado->nombre_completo.'.pdf');
-    }
-
-    public function pagar(Nomina $nomina)
-    {
-        $empleado = $nomina->empleado;
-        if (!$nomina->pagado) {
-            $nomina->update(['pagado' => true]);
-            if ($empleado->saldo_prestamo > 0) {
-                $descuento_aplicado = min($empleado->saldo_prestamo, $empleado->cuota_prestamo);
-                $empleado->decrement('saldo_prestamo', $descuento_aplicado);
-            }
-        } else {
-            $nomina->update(['pagado' => false]);
-            if ($empleado->cuota_prestamo > 0) {
-                $empleado->increment('saldo_prestamo', $empleado->cuota_prestamo);
+        foreach($asistencias as $asistencia) {
+            $fecha_asistencia = Carbon::parse($asistencia->fecha);
+            if ($fecha_asistencia->isSaturday()) {
+                $horas_extra += $asistencia->horas_trabajadas;
+            } else {
+                $horas_normales += $asistencia->horas_trabajadas;
             }
         }
-        return back();
-    }
 
-    public function reporteGlobal($semana)
-    {
-        return Excel::download(new ReporteSemanalExport($semana), 'Resumen_Semana_'.$semana.'.xlsx');
-    }
-
-    // --- CEREBRO CON CAMBIO DE LÍNEA TEMPORAL ---
-    private function procesarCalculosNomina($empleado_id, $numero_semana, $fechaCorteMiercoles)
-    {
-        $empleado = Empleado::findOrFail($empleado_id);
-        
-        $finNormal = Carbon::parse($fechaCorteMiercoles)->endOfDay(); 
-        $inicioNormal = $finNormal->copy()->subDays(6)->startOfDay(); 
-
-        $es_estudiante = $empleado->sueldo_por_hora > 0;
-
-        // ⏱️ SALTO EN EL TIEMPO PARA ESTUDIANTES
-        if ($es_estudiante) {
-            $finReal = $finNormal->copy()->subDay()->endOfDay(); 
-            $inicioReal = $finReal->copy()->subDays(6)->startOfDay(); 
-        } else {
-            $finReal = $finNormal; 
-            $inicioReal = $inicioNormal; 
-        }
-
-        $asistenciasSemana = Asistencia::where('empleado_id', $empleado->id)
-            ->whereBetween('fecha', [$inicioReal, $finReal])->get();
-
-        $total_horas_extra = $asistenciasSemana->filter(function($asis) use ($finReal) {
-            return $asis->fecha !== $finReal->format('Y-m-d');
-        })->sum('horas_extra');
-
-        $diaPasado = $inicioReal->copy()->subDay();
-        $asistenciaDiaPasado = Asistencia::where('empleado_id', $empleado->id)
-            ->whereDate('fecha', $diaPasado->format('Y-m-d'))
-            ->first();
-
-        if ($asistenciaDiaPasado) {
-            $total_horas_extra += $asistenciaDiaPasado->horas_extra;
-        }
-
-        $minutos_tarde_acumulados = $asistenciasSemana->sum('minutos_tarde');
-        $dias_falta = $asistenciasSemana->where('tipo_asistencia', 'Falta')->count();
-        $dias_incapacidad = $asistenciasSemana->where('tipo_asistencia', 'Incapacidad')->count();
-        $dias_vacaciones = $asistenciasSemana->where('tipo_asistencia', 'Vacaciones')->count();
-
-        if ($es_estudiante) {
-            // LÓGICA ESTUDIANTE (Inmunidad a faltas y retardos)
-            $sueldo_por_hora = $empleado->sueldo_por_hora;
-            $sueldo_diario = $sueldo_por_hora * 8; 
-            
-            $total_horas_normales = $asistenciasSemana->sum('horas_trabajadas');
-            $sueldo_base = $total_horas_normales * $sueldo_por_hora;
-            
-            $descuento_faltas = 0; 
-            $descuento_retardos = 0; // <- INMUNIDAD ACTIVADA A RETARDOS
-        } else {
-            // LÓGICA PLANTA (Se les castiga el retardo y la falta)
-            $sueldo_semanal = $empleado->sueldo_semanal;
-            $sueldo_diario = $sueldo_semanal > 0 ? $sueldo_semanal / 7 : 0;
-            $sueldo_por_hora = $sueldo_diario > 0 ? $sueldo_diario / 8 : 0;
-            $costo_por_minuto = $sueldo_por_hora > 0 ? $sueldo_por_hora / 60 : 0;
-
-            $sueldo_base = $sueldo_semanal; 
-            $total_horas_normales = 48; 
-            
-            $descuento_faltas = $dias_falta * ($sueldo_diario * 1.1875);
-            $descuento_retardos = $minutos_tarde_acumulados * $costo_por_minuto; // <- EL CASTIGO DE PLANTA
-        }
-        
-        $pago_extra = $total_horas_extra * ($sueldo_por_hora * 2); 
-        $pago_incapacidad = $dias_incapacidad * ($sueldo_diario * 0.60); 
-        $pago_vacaciones = $dias_vacaciones * ($sueldo_diario * 1.25); 
-        
-        $total_percepciones = $sueldo_base + $pago_extra + $pago_incapacidad + $pago_vacaciones;
-
-        $descuento_prestamo = 0;
-        if ($empleado->saldo_prestamo > 0) {
-            $descuento_prestamo = min($empleado->saldo_prestamo, $empleado->cuota_prestamo);
-        }
-
-        $deducciones_ley = $empleado->descuento_imss + $empleado->descuento_isr + $empleado->descuento_infonavit;
-        $total_deducciones = $descuento_retardos + $descuento_faltas + $descuento_prestamo + $deducciones_ley;
-        
+        $pago_normal = $horas_normales * $empleado->sueldo_por_hora;
+        $pago_extra = $horas_extra * ($empleado->sueldo_por_hora * 2); 
+        $total_percepciones = $pago_normal + $pago_extra;
+        $total_deducciones = 0; 
         $pago_neto = $total_percepciones - $total_deducciones;
 
         $nomina = Nomina::updateOrCreate(
             ['empleado_id' => $empleado->id, 'numero_semana' => $numero_semana],
             [
-                'fecha_inicio' => $inicioReal->format('Y-m-d'), 
-                'fecha_fin' => $finReal->format('Y-m-d'),
-                'horas_normales' => $total_horas_normales,
-                'horas_extra' => $total_horas_extra,
+                'fecha_inicio' => $inicioSemana->format('Y-m-d'),
+                'fecha_fin' => $finSemana->format('Y-m-d'),
+                'horas_normales' => $horas_normales,
+                'horas_extra' => $horas_extra,
                 'total_percepciones' => $total_percepciones,
                 'total_deducciones' => $total_deducciones,
                 'pago_neto' => $pago_neto,
             ]
         );
 
-        return [
-            'nomina' => $nomina,
-            'dias_falta' => $dias_falta,
-            'dias_incapacidad' => $dias_incapacidad,
-            'dias_vacaciones' => $dias_vacaciones,
-            'pago_incapacidad' => $pago_incapacidad,
-            'pago_vacaciones' => $pago_vacaciones,
-            'pago_normal' => $sueldo_base,
+        // CORREGIDO: Se inyectan de forma explícita los desgloses calculados que exige el Blade del PDF
+        $pdf = Pdf::loadView('pdf.recibo_nomina', compact(
+            'nomina', 
+            'empleado', 
+            'pago_normal', 
+            'pago_extra', 
+            'total_percepciones', 
+            'total_deducciones', 
+            'pago_neto'
+        ));
+        
+        return $pdf->stream('Recibo_Semana_'.$numero_semana.'_'.$empleado->nombre_completo.'.pdf');
+    }
+
+    public function exportarExcelIndividual(Request $request, $empleado_id)
+    {
+        $empleado = Empleado::findOrFail($empleado_id);
+        
+        $hoy = Carbon::now();
+        $martesAutomatico = $hoy->isTuesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::TUESDAY)->endOfDay();
+        
+        // Usamos exactamente el mismo filtro de fecha (Martes) que usa el PDF para que coincidan los montos
+        $fechaCorteStr = $request->input('fecha_corte', $martesAutomatico->format('Y-m-d'));
+        $finSemana = Carbon::parse($fechaCorteStr)->endOfDay();
+        $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay();
+        $numero_semana = $inicioSemana->weekOfYear;
+
+        // Buscamos si ya existe el registro de la nómina para esta semana contable
+        $nomina = Nomina::where('empleado_id', $empleado->id)
+                        ->where('numero_semana', $numero_semana)
+                        ->first();
+
+        // Si no se ha creado el recibo en la base de datos, calculamos los subtotales en caliente
+        if (!$nomina) {
+            $asistencias = Asistencia::where('empleado_id', $empleado->id)
+                ->whereBetween('fecha', [$inicioSemana, $finSemana])
+                ->get();
+
+            $horas_normales = 0;
+            $horas_extra = 0;
+
+            foreach($asistencias as $asistencia) {
+                $fecha_asistencia = Carbon::parse($asistencia->fecha);
+                if ($fecha_asistencia->isSaturday()) {
+                    $horas_extra += $asistencia->horas_trabajadas;
+                } else {
+                    $horas_normales += $asistencia->horas_trabajadas;
+                }
+            }
+
+            $pago_normal = $horas_normales * $empleado->sueldo_por_hora;
+            $pago_extra = $horas_extra * ($empleado->sueldo_por_hora * 2);
+            $total_percepciones = $pago_normal + $pago_extra;
+            $total_deducciones = 0;
+            $pago_neto = $total_percepciones - $total_deducciones;
+        } else {
+            // Si la nómina ya existe en la base de datos, extraemos sus valores exactos guardados
+            $pago_normal = $nomina->horas_normales * $empleado->sueldo_por_hora;
+            $pago_extra = $nomina->horas_extra * ($empleado->sueldo_por_hora * 2);
+            $total_percepciones = $nomina->total_percepciones;
+            $total_deducciones = $nomina->total_deducciones;
+            $pago_neto = $nomina->pago_neto;
+        }
+
+        // Estructuramos el set de datos para mandarlo directamente a 'excel.recibo_individual'
+        $datosExcel = [
+            'nomina' => $nomina ?? new Nomina([
+                'numero_semana' => $numero_semana,
+                'fecha_inicio' => $inicioSemana->format('Y-m-d'),
+                'fecha_fin' => $finSemana->format('Y-m-d')
+            ]),
+            'empleado' => $empleado,
+            'pago_normal' => $pago_normal,
             'pago_extra' => $pago_extra,
-            'minutos_tarde_acumulados' => $minutos_tarde_acumulados,
-            'descuento_retardos' => $descuento_retardos,
-            'descuento_faltas' => $descuento_faltas,
+            'descuento_faltas' => 0,
+            'descuento_retardos' => 0,
+            'pago_vacaciones' => 0,
             'total_percepciones' => $total_percepciones,
             'total_deducciones' => $total_deducciones,
             'pago_neto' => $pago_neto
         ];
+
+        $nombreArchivo = 'Recibo_Semana_' . $numero_semana . '_' . str_replace(' ', '_', $empleado->nombre_completo) . '.xlsx';
+
+        // Disparamos la descarga invocando a la Facade global de Maatwebsite Excel
+        return \Maatwebsite\Excel\Facades\Excel::download(new ReciboIndividualExport($datosExcel), $nombreArchivo);
+    }
+
+    public function descargar(Nomina $nomina)
+    {
+        $empleado = $nomina->empleado;
+
+        // CORREGIDO: Calculamos los desgloses individuales para el re-descargado desde el historial
+        $pago_normal = $nomina->horas_normales * $empleado->sueldo_por_hora;
+        $pago_extra = $nomina->horas_extra * ($empleado->sueldo_por_hora * 2);
+        $total_percepciones = $nomina->total_percepciones;
+        $total_deducciones = $nomina->total_deducciones;
+        $pago_neto = $nomina->pago_neto;
+
+        $pdf = Pdf::loadView('pdf.recibo_nomina', compact(
+            'nomina', 
+            'empleado', 
+            'pago_normal', 
+            'pago_extra', 
+            'total_percepciones', 
+            'total_deducciones', 
+            'pago_neto'
+        ));
+
+        return $pdf->stream('Recibo_Semana_'.$nomina->numero_semana.'_'.$empleado->nombre_completo.'.pdf');
+    }
+
+    public function pagar(Nomina $nomina)
+    {
+        $nomina->update(['pagado' => !$nomina->pagado]);
+        return back();
     }
 }
