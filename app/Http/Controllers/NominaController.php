@@ -17,11 +17,12 @@ class NominaController extends Controller
     public function index(Request $request)
     {
         $hoy = Carbon::now();
+        // Referencia Maestra LUGARTH: La semana "global" cierra en Miércoles
         $miercolesAutomatico = $hoy->isWednesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::WEDNESDAY)->endOfDay();
         
         $fechaCorteStr = $request->input('fecha_corte', $miercolesAutomatico->format('Y-m-d'));
         $finSemana = Carbon::parse($fechaCorteStr)->endOfDay();
-        $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay();
+        $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay(); 
         $semanaActual = $inicioSemana->weekOfYear;
 
         $semanasDisponibles = [];
@@ -60,23 +61,29 @@ class NominaController extends Controller
         $hoy = Carbon::now();
         $miercolesAutomatico = $hoy->isWednesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::WEDNESDAY)->endOfDay();
         
-        $fechaCorteStr = $request->input('fecha_corte', $miercolesAutomatico->format('Y-m-d'));
-        $finSemana = Carbon::parse($fechaCorteStr)->endOfDay();
-        $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay();
+        $fechaCorteMiercoles = $request->input('fecha_corte', $miercolesAutomatico->format('Y-m-d'));
+        
+        // Obtenemos la semana en base a la fecha global
+        $numero_semana = Carbon::parse($fechaCorteMiercoles)->copy()->subDays(6)->startOfDay()->weekOfYear;
 
-        $datosPDF = $this->procesarCalculosNomina($empleado->id, $inicioSemana->weekOfYear, $inicioSemana, $finSemana);
+        $datosPDF = $this->procesarCalculosNomina($empleado->id, $numero_semana, $fechaCorteMiercoles);
 
         $pdf = Pdf::loadView('pdf.recibo_nomina', $datosPDF);
-        return $pdf->stream('Recibo_Semana_'.$inicioSemana->weekOfYear.'_'.$empleado->nombre_completo.'.pdf');
+        return $pdf->stream('Recibo_Semana_'.$numero_semana.'_'.$empleado->nombre_completo.'.pdf');
     }
 
     public function descargar(Nomina $nomina)
     {
         $nomina->load('empleado');
-        $inicioSemana = Carbon::parse($nomina->fecha_inicio);
-        $finSemana = Carbon::parse($nomina->fecha_fin);
+        $es_estudiante = $nomina->empleado->sueldo_por_hora > 0;
         
-        $datosPDF = $this->procesarCalculosNomina($nomina->empleado_id, $nomina->numero_semana, $inicioSemana, $finSemana);
+        if ($es_estudiante) {
+            $fechaCorteMiercoles = Carbon::parse($nomina->fecha_fin)->addDay()->format('Y-m-d');
+        } else {
+            $fechaCorteMiercoles = Carbon::parse($nomina->fecha_fin)->format('Y-m-d');
+        }
+        
+        $datosPDF = $this->procesarCalculosNomina($nomina->empleado_id, $nomina->numero_semana, $fechaCorteMiercoles);
 
         $pdf = Pdf::loadView('pdf.recibo_nomina', $datosPDF);
         return $pdf->stream('Recibo_Semana_'.$nomina->numero_semana.'_'.$nomina->empleado->nombre_completo.'.pdf');
@@ -105,24 +112,39 @@ class NominaController extends Controller
         return Excel::download(new ReporteSemanalExport($semana), 'Resumen_Semana_'.$semana.'.xlsx');
     }
 
-    // --- EL CEREBRO FINAL: ESTUDIANTES VS PLANTA ---
-    private function procesarCalculosNomina($empleado_id, $numero_semana, $inicioSemana, $finSemana)
+    // --- CEREBRO CON CAMBIO DE LÍNEA TEMPORAL ---
+    private function procesarCalculosNomina($empleado_id, $numero_semana, $fechaCorteMiercoles)
     {
         $empleado = Empleado::findOrFail($empleado_id);
         
-        $asistenciasSemana = Asistencia::where('empleado_id', $empleado->id)->whereBetween('fecha', [$inicioSemana, $finSemana])->get();
+        $finNormal = Carbon::parse($fechaCorteMiercoles)->endOfDay(); 
+        $inicioNormal = $finNormal->copy()->subDays(6)->startOfDay(); 
 
-        $total_horas_extra = $asistenciasSemana->filter(function($asis) use ($finSemana) {
-            return $asis->fecha !== $finSemana->format('Y-m-d');
+        $es_estudiante = $empleado->sueldo_por_hora > 0;
+
+        // ⏱️ SALTO EN EL TIEMPO PARA ESTUDIANTES
+        if ($es_estudiante) {
+            $finReal = $finNormal->copy()->subDay()->endOfDay(); 
+            $inicioReal = $finReal->copy()->subDays(6)->startOfDay(); 
+        } else {
+            $finReal = $finNormal; 
+            $inicioReal = $inicioNormal; 
+        }
+
+        $asistenciasSemana = Asistencia::where('empleado_id', $empleado->id)
+            ->whereBetween('fecha', [$inicioReal, $finReal])->get();
+
+        $total_horas_extra = $asistenciasSemana->filter(function($asis) use ($finReal) {
+            return $asis->fecha !== $finReal->format('Y-m-d');
         })->sum('horas_extra');
 
-        $miercolesPasado = $inicioSemana->copy()->subDay();
-        $asistenciaMiercolesPasado = Asistencia::where('empleado_id', $empleado->id)
-            ->whereDate('fecha', $miercolesPasado->format('Y-m-d'))
+        $diaPasado = $inicioReal->copy()->subDay();
+        $asistenciaDiaPasado = Asistencia::where('empleado_id', $empleado->id)
+            ->whereDate('fecha', $diaPasado->format('Y-m-d'))
             ->first();
 
-        if ($asistenciaMiercolesPasado) {
-            $total_horas_extra += $asistenciaMiercolesPasado->horas_extra;
+        if ($asistenciaDiaPasado) {
+            $total_horas_extra += $asistenciaDiaPasado->horas_extra;
         }
 
         $minutos_tarde_acumulados = $asistenciasSemana->sum('minutos_tarde');
@@ -130,28 +152,28 @@ class NominaController extends Controller
         $dias_incapacidad = $asistenciasSemana->where('tipo_asistencia', 'Incapacidad')->count();
         $dias_vacaciones = $asistenciasSemana->where('tipo_asistencia', 'Vacaciones')->count();
 
-        // MAGIA: ¿Es estudiante o es de planta?
-        $es_estudiante = $empleado->sueldo_por_hora > 0;
-
         if ($es_estudiante) {
-            // LÓGICA ESTUDIANTE (Multiplica sus horas directas)
+            // LÓGICA ESTUDIANTE (Inmunidad a faltas y retardos)
             $sueldo_por_hora = $empleado->sueldo_por_hora;
             $sueldo_diario = $sueldo_por_hora * 8; 
-            $costo_por_minuto = $sueldo_por_hora / 60;
             
             $total_horas_normales = $asistenciasSemana->sum('horas_trabajadas');
-            $sueldo_base = $total_horas_normales * $sueldo_por_hora; // SU PAGO REAL
-            $descuento_faltas = 0; // A los estudiantes no se les cobra la falta
+            $sueldo_base = $total_horas_normales * $sueldo_por_hora;
+            
+            $descuento_faltas = 0; 
+            $descuento_retardos = 0; // <- INMUNIDAD ACTIVADA A RETARDOS
         } else {
-            // LÓGICA PLANTA (Su semana completa)
+            // LÓGICA PLANTA (Se les castiga el retardo y la falta)
             $sueldo_semanal = $empleado->sueldo_semanal;
             $sueldo_diario = $sueldo_semanal > 0 ? $sueldo_semanal / 7 : 0;
             $sueldo_por_hora = $sueldo_diario > 0 ? $sueldo_diario / 8 : 0;
             $costo_por_minuto = $sueldo_por_hora > 0 ? $sueldo_por_hora / 60 : 0;
 
-            $sueldo_base = $sueldo_semanal; // BASE COMPLETA
-            $descuento_faltas = $dias_falta * ($sueldo_diario * 1.1875);
+            $sueldo_base = $sueldo_semanal; 
             $total_horas_normales = 48; 
+            
+            $descuento_faltas = $dias_falta * ($sueldo_diario * 1.1875);
+            $descuento_retardos = $minutos_tarde_acumulados * $costo_por_minuto; // <- EL CASTIGO DE PLANTA
         }
         
         $pago_extra = $total_horas_extra * ($sueldo_por_hora * 2); 
@@ -159,8 +181,6 @@ class NominaController extends Controller
         $pago_vacaciones = $dias_vacaciones * ($sueldo_diario * 1.25); 
         
         $total_percepciones = $sueldo_base + $pago_extra + $pago_incapacidad + $pago_vacaciones;
-
-        $descuento_retardos = $minutos_tarde_acumulados * $costo_por_minuto; 
 
         $descuento_prestamo = 0;
         if ($empleado->saldo_prestamo > 0) {
@@ -175,8 +195,8 @@ class NominaController extends Controller
         $nomina = Nomina::updateOrCreate(
             ['empleado_id' => $empleado->id, 'numero_semana' => $numero_semana],
             [
-                'fecha_inicio' => $inicioSemana->format('Y-m-d'),
-                'fecha_fin' => $finSemana->format('Y-m-d'),
+                'fecha_inicio' => $inicioReal->format('Y-m-d'), 
+                'fecha_fin' => $finReal->format('Y-m-d'),
                 'horas_normales' => $total_horas_normales,
                 'horas_extra' => $total_horas_extra,
                 'total_percepciones' => $total_percepciones,
@@ -192,7 +212,7 @@ class NominaController extends Controller
             'dias_vacaciones' => $dias_vacaciones,
             'pago_incapacidad' => $pago_incapacidad,
             'pago_vacaciones' => $pago_vacaciones,
-            'pago_normal' => $sueldo_base, // AHORA SÍ PASAMOS EL DINERO
+            'pago_normal' => $sueldo_base,
             'pago_extra' => $pago_extra,
             'minutos_tarde_acumulados' => $minutos_tarde_acumulados,
             'descuento_retardos' => $descuento_retardos,

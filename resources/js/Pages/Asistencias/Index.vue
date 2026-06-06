@@ -14,9 +14,13 @@ const asistenciaId = ref(null);
 const form = useForm({
     empleado_id: '',
     fecha: new Date().toISOString().split('T')[0],
-    tipo_asistencia: 'Normal', // NUEVO CAMPO
+    tipo_asistencia: 'Normal', 
     hora_entrada: '08:00',
     hora_salida: '17:00'
+});
+
+const formUpload = useForm({
+    archivo_reloj: null,
 });
 
 const asistenciasFiltradas = computed(() => {
@@ -33,6 +37,19 @@ const formatoReloj = (horasDecimales) => {
     const minutos = Math.round(minutosDecimales);
     const minutosFormateados = minutos < 10 ? '0' + minutos : minutos;
     return `${horas} h ${minutosFormateados} m`;
+};
+
+// Subida de Archivo CSV
+const subirArchivo = (e) => {
+    formUpload.archivo_reloj = e.target.files[0];
+    formUpload.post(route('asistencias.importar'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            alert('¡Reloj sincronizado y horas calculadas correctamente!');
+            formUpload.reset();
+            e.target.value = null; // Limpiar el campo
+        }
+    });
 };
 
 const guardarAsistencia = () => {
@@ -93,10 +110,33 @@ const eliminarAsistencia = (id) => {
 
         <div class="page-shell">
             <div class="content-wrap space-y-8">
+                
+                <section class="app-panel border border-emerald-200 bg-emerald-50/50">
+                    <div class="p-5 sm:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+                        <div>
+                            <h3 class="font-bold text-emerald-800 text-lg mb-1 flex items-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                Importar desde Reloj Biométrico
+                            </h3>
+                            <p class="text-sm text-emerald-700">Sube el archivo CSV del reloj. El sistema agrupará y calculará automáticamente las horas.</p>
+                        </div>
+                        <div class="w-full md:w-auto">
+                            <input 
+                                type="file" 
+                                accept=".csv"
+                                @change="subirArchivo" 
+                                :disabled="formUpload.processing"
+                                class="block w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer"
+                            />
+                            <progress v-if="formUpload.progress" :value="formUpload.progress.percentage" max="100" class="mt-2 w-full"></progress>
+                        </div>
+                    </div>
+                </section>
+
                 <section class="app-panel" :class="editando ? 'ring-2 ring-amber-400/70' : ''">
                     <div class="panel-header">
                         <div class="flex items-start gap-3">
-                            <div :class="editando ? 'soft-icon-amber' : 'soft-icon-emerald'">
+                            <div :class="editando ? 'soft-icon-amber' : 'soft-icon-blue'">
                                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                                 </svg>
@@ -113,7 +153,6 @@ const eliminarAsistencia = (id) => {
 
                     <div class="p-5 sm:p-6">
                         <form @submit.prevent="guardarAsistencia" class="grid grid-cols-1 items-end gap-5 md:grid-cols-6">
-                            
                             <div class="md:col-span-2">
                                 <label class="field-label">Empleado <span class="text-rose-500">*</span></label>
                                 <select v-model="form.empleado_id" required :disabled="editando" class="field-input-soft">
@@ -132,11 +171,11 @@ const eliminarAsistencia = (id) => {
                             <div>
                                 <label class="field-label">Tipo <span class="text-rose-500">*</span></label>
                                 <select v-model="form.tipo_asistencia" required class="field-input-soft">
-    <option value="Normal">Normal (Asistencia)</option>
-    <option value="Falta">Falta Injustificada</option>
-    <option value="Incapacidad">Incapacidad (60%)</option>
-    <option value="Vacaciones">Vacaciones (+25% Prima)</option>
-</select>
+                                    <option value="Normal">Normal (Asistencia)</option>
+                                    <option value="Falta">Falta Injustificada</option>
+                                    <option value="Incapacidad">Incapacidad (60%)</option>
+                                    <option value="Vacaciones">Vacaciones (+25% Prima)</option>
+                                </select>
                             </div>
 
                             <div>
@@ -215,6 +254,7 @@ const eliminarAsistencia = (id) => {
                                             </span>
                                             <div class="mt-1 text-xs font-medium text-slate-500">
                                                 {{ formatoReloj(asistencia.horas_trabajadas) }} trabajadas
+                                                <span v-if="asistencia.horas_extra > 0" class="text-amber-600 font-bold ml-2">(+{{ formatoReloj(asistencia.horas_extra) }} extras)</span>
                                             </div>
                                         </div>
                                         <div v-else class="text-sm font-medium text-slate-400 italic">

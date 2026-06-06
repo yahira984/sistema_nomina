@@ -64,8 +64,83 @@ class AsistenciaController extends Controller
 
     public function destroy($id)
     {
-        Asistencia::destroy($id);
+        $Asistencia = Asistencia::findOrFail($id);
+        $Asistencia->delete();
         return redirect()->back()->with('success', 'Asistencia eliminada.');
+    }
+
+    // --- LA LICUADORA DEL RELOJ BIOMÉTRICO ---
+    public function importarReloj(Request $request)
+    {
+        $request->validate([
+            'archivo_reloj' => 'required|file|mimes:csv,txt'
+        ]);
+
+        $path = $request->file('archivo_reloj')->getRealPath();
+        
+        $file = fopen($path, "r");
+        
+        // Saltamos las 2 primeras líneas (Título general y Encabezados de tu reloj)
+        fgetcsv($file);
+        fgetcsv($file);
+
+        $agrupados = [];
+
+        // PASO 1: Agrupar la basura del reloj
+        while (($fila = fgetcsv($file)) !== FALSE) {
+            if (count($fila) < 4) continue; // Si la fila está mocha, la ignoramos
+
+            $numero_empleado = trim($fila[0]);
+            $fecha_reloj = trim($fila[2]); 
+            $hora_reloj = trim($fila[3]);
+
+            if (!$numero_empleado || !$fecha_reloj || !$hora_reloj) continue;
+
+            try {
+                // Formateamos la fecha (Mes/Día/Año -> Año-Mes-Día)
+                $fecha = Carbon::createFromFormat('m/d/Y', $fecha_reloj)->format('Y-m-d');
+                $agrupados[$numero_empleado][$fecha][] = $hora_reloj;
+            } catch (\Exception $e) {
+                // Si la fecha viene rara, saltamos el registro
+                continue;
+            }
+        }
+        fclose($file);
+
+        // PASO 2: Sacar Mínimos, Máximos y Guardar
+        foreach ($agrupados as $num_empleado => $fechas) {
+            $empleado = Empleado::where('numero_empleado', $num_empleado)->first();
+            
+            // Si el ID del reloj no cuadra con nadie en el sistema, lo ignoramos
+            if (!$empleado) continue;
+
+            foreach ($fechas as $fecha => $horas) {
+                // Acomodamos las horas de menor a mayor (Cronológicamente)
+                sort($horas);
+
+                $hora_entrada = $horas[0]; // La primera que checó
+                
+                // Si checó más de 1 vez, la última es su salida. Si solo checó 1 vez, salida es null.
+                $hora_salida = count($horas) > 1 ? end($horas) : null;
+
+                // Aprovechamos tu cerebro de cálculo para sacar retardos y extras de este registro
+                $datosCalculados = $this->calcularHoras($fecha, $hora_entrada, $hora_salida, 'Normal');
+
+                Asistencia::updateOrCreate(
+                    [
+                        'empleado_id' => $empleado->id,
+                        'fecha' => $fecha,
+                    ],
+                    array_merge([
+                        'tipo_asistencia' => 'Normal',
+                        'hora_entrada' => $hora_entrada,
+                        'hora_salida' => $hora_salida,
+                    ], $datosCalculados)
+                );
+            }
+        }
+
+        return redirect()->back()->with('success', '¡Archivo del reloj procesado y limpiado correctamente!');
     }
 
     private function calcularHoras($fecha, $hora_entrada, $hora_salida, $tipo_asistencia)
