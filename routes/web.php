@@ -60,7 +60,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/asistencias', [AsistenciaController::class, 'store'])->name('asistencias.store');
     Route::put('/asistencias/{asistencia}', [AsistenciaController::class, 'update'])->name('asistencias.update');
     Route::delete('/asistencias/{asistencia}', [AsistenciaController::class, 'destroy'])->name('asistencias.destroy');
-    Route::post('/asistencias/importar', [App\Http\Controllers\AsistenciaController::class, 'importarReloj'])->name('asistencias.importar');
+    Route::post('/asistencias/importar', [AsistenciaController::class, 'importarReloj'])->name('asistencias.importar');
+    Route::post('/asistencias/importar/aprobar', [AsistenciaController::class, 'aprobarImportacion'])->name('asistencias.importar.aprobar');
+    Route::delete('/asistencias/importar/revision', [AsistenciaController::class, 'descartarImportacion'])->name('asistencias.importar.descartar');
 
     // Rutas de nominas (Ya limpiecita sin duplicados)
     Route::get('/nominas', [NominaController::class, 'index'])->name('nominas.index');

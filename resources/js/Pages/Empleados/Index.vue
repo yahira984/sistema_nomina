@@ -16,8 +16,9 @@ const form = useForm({
     nombre_completo: '',
     puesto: '',
     fecha_ingreso: '', 
+    ajuste_vacaciones: 0, // <-- NUEVO: Para arrastrar las deudas del 2025
     forma_pago: 'Efectivo',
-    es_estudiante: false, // NUEVO INTERRUPTOR
+    es_estudiante: false, 
     sueldo_semanal: '', 
     sueldo_por_hora: '', 
     saldo_prestamo: '', 
@@ -60,8 +61,9 @@ const editarEmpleado = (empleado) => {
     form.nombre_completo = empleado.nombre_completo;
     form.puesto = empleado.puesto || '';
     form.fecha_ingreso = empleado.fecha_ingreso || '';
+    form.ajuste_vacaciones = empleado.ajuste_vacaciones || 0; // <-- NUEVO: Para que cargue el dato al editar
     form.forma_pago = empleado.forma_pago || 'Efectivo';
-    form.es_estudiante = empleado.sueldo_por_hora > 0; // Si gana por hora, es estudiante
+    form.es_estudiante = empleado.sueldo_por_hora > 0; 
     form.sueldo_semanal = empleado.sueldo_semanal || '';
     form.sueldo_por_hora = empleado.sueldo_por_hora || '';
     form.saldo_prestamo = empleado.saldo_prestamo || ''; 
@@ -152,6 +154,12 @@ const eliminarEmpleado = (id, nombre) => {
                             </div>
 
                             <div>
+                                <label class="field-label text-teal-700">Ajuste Vacaciones (Días)</label>
+                                <input v-model="form.ajuste_vacaciones" type="number" class="field-input-soft border-teal-200 focus:border-teal-400 focus:ring-teal-400/20" placeholder="Ej. -2" />
+                                <p class="text-[10px] text-slate-500 mt-1 leading-tight">Usa negativos (-) para descontar días que deban de años pasados.</p>
+                            </div>
+
+                            <div>
                                 <label class="field-label">Forma de pago <span class="text-rose-500">*</span></label>
                                 <select v-model="form.forma_pago" required class="field-input-soft">
                                     <option value="Efectivo">Efectivo</option>
@@ -159,10 +167,10 @@ const eliminarEmpleado = (id, nombre) => {
                                 </select>
                             </div>
 
-                            <div class="md:col-span-2 flex items-center pl-2 pt-6">
+                            <div class="md:col-span-1 flex items-center pl-2 pt-6">
                                 <label class="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" v-model="form.es_estudiante" class="w-5 h-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
-                                    <span class="text-sm font-semibold text-slate-700">Modalidad Estudiante (Pago por hora)</span>
+                                    <span class="text-sm font-semibold text-slate-700">Mod. Estudiante</span>
                                 </label>
                             </div>
 
