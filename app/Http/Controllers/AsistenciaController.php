@@ -69,7 +69,6 @@ class AsistenciaController extends Controller
         return redirect()->back()->with('success', 'Asistencia eliminada.');
     }
 
-    // --- LA LICUADORA DEL RELOJ BIOMÉTRICO ---
     public function importarReloj(Request $request)
     {
         $request->validate([
@@ -80,15 +79,14 @@ class AsistenciaController extends Controller
         
         $file = fopen($path, "r");
         
-        // Saltamos las 2 primeras líneas (Título general y Encabezados de tu reloj)
+        // Saltamos las 2 primeras líneas (Título y Encabezados)
         fgetcsv($file);
         fgetcsv($file);
 
         $agrupados = [];
 
-        // PASO 1: Agrupar la basura del reloj
         while (($fila = fgetcsv($file)) !== FALSE) {
-            if (count($fila) < 4) continue; // Si la fila está mocha, la ignoramos
+            if (count($fila) < 4) continue;
 
             $numero_empleado = trim($fila[0]);
             $fecha_reloj = trim($fila[2]); 
@@ -97,33 +95,24 @@ class AsistenciaController extends Controller
             if (!$numero_empleado || !$fecha_reloj || !$hora_reloj) continue;
 
             try {
-                // Formateamos la fecha (Mes/Día/Año -> Año-Mes-Día)
                 $fecha = Carbon::createFromFormat('m/d/Y', $fecha_reloj)->format('Y-m-d');
                 $agrupados[$numero_empleado][$fecha][] = $hora_reloj;
             } catch (\Exception $e) {
-                // Si la fecha viene rara, saltamos el registro
                 continue;
             }
         }
         fclose($file);
 
-        // PASO 2: Sacar Mínimos, Máximos y Guardar
         foreach ($agrupados as $num_empleado => $fechas) {
             $empleado = Empleado::where('numero_empleado', $num_empleado)->first();
             
-            // Si el ID del reloj no cuadra con nadie en el sistema, lo ignoramos
             if (!$empleado) continue;
 
             foreach ($fechas as $fecha => $horas) {
-                // Acomodamos las horas de menor a mayor (Cronológicamente)
                 sort($horas);
-
-                $hora_entrada = $horas[0]; // La primera que checó
-                
-                // Si checó más de 1 vez, la última es su salida. Si solo checó 1 vez, salida es null.
+                $hora_entrada = $horas[0]; 
                 $hora_salida = count($horas) > 1 ? end($horas) : null;
 
-                // Aprovechamos tu cerebro de cálculo para sacar retardos y extras de este registro
                 $datosCalculados = $this->calcularHoras($fecha, $hora_entrada, $hora_salida, 'Normal');
 
                 Asistencia::updateOrCreate(
@@ -160,7 +149,6 @@ class AsistenciaController extends Controller
             }
 
             if ($fecha_carbon->isSaturday()) {
-                // Sábado se va todo a extra
                 $horas_extra_diarias = $entrada->diffInMinutes($salida) / 60;
             } else {
                 $limite_normal = Carbon::parse($fecha . ' 17:30:00');

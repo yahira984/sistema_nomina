@@ -29,6 +29,7 @@ class EmpleadoController extends Controller
             'numero_cuenta' => 'nullable|required_if:forma_pago,Deposito|string|max:25',
             'nss' => 'nullable|string|max:20',
             'rfc' => 'nullable|string|max:20',
+            'ajuste_vacaciones' => 'nullable|integer', // <-- Validamos el nuevo campo
         ]);
 
         $datos = $request->all();
@@ -38,6 +39,9 @@ class EmpleadoController extends Controller
         $datos['descuento_imss'] = $request->input('descuento_imss', 0) ?: 0;
         $datos['descuento_isr'] = $request->input('descuento_isr', 0) ?: 0;
         $datos['descuento_infonavit'] = $request->input('descuento_infonavit', 0) ?: 0;
+        
+        // Guardamos el ajuste (si lo dejan en blanco, le ponemos 0)
+        $datos['ajuste_vacaciones'] = $request->input('ajuste_vacaciones', 0) ?: 0;
 
         // 👨‍🎓 LÓGICA DE ESTUDIANTE
         if ($request->boolean('es_estudiante')) {
@@ -74,6 +78,7 @@ class EmpleadoController extends Controller
             'numero_cuenta' => 'nullable|required_if:forma_pago,Deposito|string|max:25',
             'nss' => 'nullable|string|max:20',
             'rfc' => 'nullable|string|max:20',
+            'ajuste_vacaciones' => 'nullable|integer', // <-- Validamos el nuevo campo
         ]);
 
         $datos = $request->all();
@@ -83,6 +88,9 @@ class EmpleadoController extends Controller
         $datos['descuento_imss'] = $request->input('descuento_imss', 0) ?: 0;
         $datos['descuento_isr'] = $request->input('descuento_isr', 0) ?: 0;
         $datos['descuento_infonavit'] = $request->input('descuento_infonavit', 0) ?: 0;
+
+        // Guardamos el ajuste
+        $datos['ajuste_vacaciones'] = $request->input('ajuste_vacaciones', 0) ?: 0;
 
         // 👨‍🎓 LÓGICA DE ESTUDIANTE
         if ($request->boolean('es_estudiante')) {
