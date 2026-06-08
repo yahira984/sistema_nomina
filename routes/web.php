@@ -5,6 +5,7 @@ use App\Http\Controllers\EmpleadoController;
 use App\Http\Controllers\AsistenciaController;
 use App\Http\Controllers\NominaController;
 use App\Http\Controllers\DashboardController; // <-- Agregado
+use App\Http\Controllers\BaseDatosController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -26,6 +27,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    // Sistema / Base de datos
+    Route::get('/sistema/base-datos', [BaseDatosController::class, 'index'])->name('base-datos.index');
+    Route::get('/sistema/base-datos/exportar', [BaseDatosController::class, 'exportar'])->name('base-datos.exportar');
+    Route::post('/sistema/base-datos/importar', [BaseDatosController::class, 'importar'])->name('base-datos.importar');
 
     // Empleados
     Route::get('/empleados', [EmpleadoController::class, 'index'])->name('empleados.index');

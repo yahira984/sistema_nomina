@@ -3,42 +3,58 @@
 namespace App\Exports;
 
 use App\Models\Nomina;
+use Carbon\Carbon;
 use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithColumnFormatting;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithStyles;
-use Maatwebsite\Excel\Concerns\WithColumnFormatting;
-use Maatwebsite\Excel\Concerns\ShouldAutoSize;
-use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
-use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
-use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Color;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class ReporteSemanalExport implements FromCollection, WithHeadings, WithMapping, WithStyles, WithColumnFormatting, ShouldAutoSize
 {
-    protected $semana;
-    protected $totalFilas = 0;
+    protected int $semana;
+    protected ?Carbon $inicioSemana;
+    protected ?Carbon $finSemana;
+    protected int $totalFilas = 0;
 
-    public function __construct($semana)
+    public function __construct(int $semana, ?Carbon $inicioSemana = null, ?Carbon $finSemana = null)
     {
         $this->semana = $semana;
+        $this->inicioSemana = $inicioSemana;
+        $this->finSemana = $finSemana;
     }
 
     public function collection()
     {
-        $coleccion = Nomina::with('empleado')->where('numero_semana', $this->semana)->get();
-        // Guardamos cuántos empleados hay para saber exactamente dónde meter la fila de totales
+        $consulta = Nomina::with('empleado')->orderBy('empleado_id');
+
+        if ($this->inicioSemana && $this->finSemana) {
+            $consulta->whereDate('fecha_inicio', $this->inicioSemana->format('Y-m-d'))
+                ->whereDate('fecha_fin', $this->finSemana->format('Y-m-d'));
+        } else {
+            $consulta->where('numero_semana', $this->semana);
+        }
+
+        $coleccion = $consulta->get();
         $this->totalFilas = $coleccion->count();
+
         return $coleccion;
     }
 
     public function headings(): array
     {
         return [
-            ['PROMATEC / LUGARTH - REPORTE GENERAL DE DISPERSIÓN'],
-            ['SEMANA NOMINAL: ' . $this->semana],
-            [''], // Espacio en blanco institucional
+            ['PROMATEC / LUGARTH'],
+            ['REPORTE GENERAL DE DISPERSION DE NOMINA'],
+            ['SEMANA ' . $this->semana . ' | PERIODO ' . $this->textoPeriodo()],
+            ['GENERADO: ' . now()->format('d/m/Y H:i')],
+            [''],
             [
                 'ID EMPLEADO',
                 'NOMBRE DEL TRABAJADOR',
@@ -48,23 +64,23 @@ class ReporteSemanalExport implements FromCollection, WithHeadings, WithMapping,
                 'HRS EXTRA',
                 'PERCEPCIONES',
                 'DEDUCCIONES',
-                'NETO A PAGAR'
-            ]
+                'NETO A PAGAR',
+            ],
         ];
     }
 
     public function map($nomina): array
     {
-        // Lógica inteligente para saber qué pintar en el Banco
-        $formaPago = $nomina->empleado->forma_pago === 'Efectivo' 
-            ? 'EFECTIVO' 
-            : strtoupper($nomina->empleado->banco ?? 'S/N');
+        $empleado = $nomina->empleado;
+        $formaPago = ($empleado?->forma_pago === 'Efectivo')
+            ? 'EFECTIVO'
+            : strtoupper($empleado?->banco ?? 'S/N');
 
         return [
-            $nomina->empleado->numero_empleado ?? 'S/N',
-            strtoupper($nomina->empleado->nombre_completo),
-            $formaPago, // AQUÍ METEMOS LA FORMA DE PAGO REAL
-            $nomina->empleado->numero_cuenta ?? 'S/N',
+            $empleado?->numero_empleado ?? 'S/N',
+            strtoupper($empleado?->nombre_completo ?? 'SIN EMPLEADO'),
+            $formaPago,
+            $empleado?->numero_cuenta ?? 'S/N',
             (float) $nomina->horas_normales,
             (float) $nomina->horas_extra,
             (float) $nomina->total_percepciones,
@@ -73,72 +89,184 @@ class ReporteSemanalExport implements FromCollection, WithHeadings, WithMapping,
         ];
     }
 
-    // Definimos qué columnas son de dinero o números para que Excel las entienda nativamente
     public function columnFormats(): array
     {
         return [
-            'E' => '0.00', // Horas normales
-            'F' => '0.00', // Horas extra
-            'G' => '"$"#,##0.00', // Moneda Percepciones
-            'H' => '"$"#,##0.00', // Moneda Deducciones
-            'I' => '"$"#,##0.00', // Moneda Neto
+            'E' => '0.00',
+            'F' => '0.00',
+            'G' => '"$"#,##0.00',
+            'H' => '"$"#,##0.00',
+            'I' => '"$"#,##0.00',
         ];
     }
 
-    // Diseñamos toda la estructura visual y metemos fórmulas dinámicas
     public function styles(Worksheet $sheet)
     {
-        // 1. Título principal elegante (Fila 1)
-        $sheet->mergeCells('A1:I1');
-        $sheet->getStyle('A1')->getFont()->setName('Arial')->setSize(14)->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FFFFFF'));
-        $sheet->getStyle('A1')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('0F172A'); // Slate 900 (Mismo que el sistema)
-        $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-
-        // 2. Subtítulo de semana (Fila 2)
-        $sheet->mergeCells('A2:I2');
-        $sheet->getStyle('A2')->getFont()->setName('Arial')->setSize(11)->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('0F766E')); // Teal 700
-        $sheet->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-
-        // 3. Encabezados de la tabla (Fila 4)
-        $filaCabecera = 4;
-        $sheet->getStyle("A{$filaCabecera}:I{$filaCabecera}")->getFont()->setName('Arial')->setSize(10)->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FFFFFF'));
-        $sheet->getStyle("A{$filaCabecera}:I{$filaCabecera}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('1E293B'); // Slate 800
-        $sheet->getStyle("A{$filaCabecera}:I{$filaCabecera}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-
-        // 4. Estilos para los registros de los empleados
-        $primeraFilaDatos = 5;
+        $filaCabecera = 6;
+        $primeraFilaDatos = 7;
         $ultimaFilaDatos = $primeraFilaDatos + $this->totalFilas - 1;
+        $filaFinal = $this->totalFilas > 0 ? $ultimaFilaDatos + 1 : $primeraFilaDatos;
+
+        foreach (range(1, 4) as $fila) {
+            $sheet->mergeCells("A{$fila}:I{$fila}");
+        }
+
+        $sheet->getStyle('A1:I1')->applyFromArray([
+            'font' => [
+                'name' => 'Arial',
+                'size' => 16,
+                'bold' => true,
+                'color' => ['argb' => Color::COLOR_WHITE],
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['argb' => '0F172A'],
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+        ]);
+
+        $sheet->getStyle('A2:I2')->applyFromArray([
+            'font' => [
+                'name' => 'Arial',
+                'size' => 12,
+                'bold' => true,
+                'color' => ['argb' => '0F766E'],
+            ],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        ]);
+
+        $sheet->getStyle('A3:I4')->applyFromArray([
+            'font' => [
+                'name' => 'Arial',
+                'size' => 10,
+                'bold' => true,
+                'color' => ['argb' => '475569'],
+            ],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        ]);
+
+        $sheet->getStyle("A{$filaCabecera}:I{$filaCabecera}")->applyFromArray([
+            'font' => [
+                'name' => 'Arial',
+                'size' => 10,
+                'bold' => true,
+                'color' => ['argb' => Color::COLOR_WHITE],
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['argb' => '1E293B'],
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['argb' => '1E293B'],
+                ],
+            ],
+        ]);
+
+        $sheet->getRowDimension(1)->setRowHeight(26);
+        $sheet->getRowDimension($filaCabecera)->setRowHeight(22);
+        $sheet->freezePane('A7');
+        $sheet->setAutoFilter("A{$filaCabecera}:I{$filaFinal}");
+
+        if ($this->totalFilas === 0) {
+            $sheet->setCellValue("A{$primeraFilaDatos}", 'SIN REGISTROS PARA ESTE PERIODO');
+            $sheet->mergeCells("A{$primeraFilaDatos}:I{$primeraFilaDatos}");
+            $sheet->getStyle("A{$primeraFilaDatos}:I{$primeraFilaDatos}")->applyFromArray([
+                'font' => [
+                    'name' => 'Arial',
+                    'size' => 11,
+                    'bold' => true,
+                    'color' => ['argb' => '64748B'],
+                ],
+                'fill' => [
+                    'fillType' => Fill::FILL_SOLID,
+                    'startColor' => ['argb' => 'F8FAFC'],
+                ],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+                'borders' => [
+                    'outline' => [
+                        'borderStyle' => Border::BORDER_THIN,
+                        'color' => ['argb' => 'CBD5E1'],
+                    ],
+                ],
+            ]);
+
+            return [];
+        }
 
         $rangoCuerpo = "A{$primeraFilaDatos}:I{$ultimaFilaDatos}";
-        $sheet->getStyle($rangoCuerpo)->getFont()->setName('Arial')->setSize(10);
-        $sheet->getStyle("A{$primeraFilaDatos}:A{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER); // Centrar IDs
-        $sheet->getStyle("C{$primeraFilaDatos}:D{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER); // Centrar Bancos y Cuentas
+        $sheet->getStyle($rangoCuerpo)->applyFromArray([
+            'font' => [
+                'name' => 'Arial',
+                'size' => 10,
+                'color' => ['argb' => '0F172A'],
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['argb' => 'CBD5E1'],
+                ],
+            ],
+        ]);
 
-        // Bordes delgaditos para los registros
-        $sheet->getStyle($rangoCuerpo)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('CBD5E1');
+        $sheet->getStyle("A{$primeraFilaDatos}:A{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("C{$primeraFilaDatos}:F{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("G{$primeraFilaDatos}:I{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
-        // 5. FILA DE TOTALES DINÁMICOS AL FINAL (Fórmula pura de Excel)
         $filaTotales = $ultimaFilaDatos + 1;
-
         $sheet->setCellValue("A{$filaTotales}", 'TOTALES');
-        $sheet->mergeCells("A{$filaTotales}:D{$filaTotales}"); // Juntamos las celdas de texto
-        
-        // Ponemos las fórmulas nativas SUM de Excel para que cuente todo de golpe
+        $sheet->mergeCells("A{$filaTotales}:D{$filaTotales}");
         $sheet->setCellValue("E{$filaTotales}", "=SUM(E{$primeraFilaDatos}:E{$ultimaFilaDatos})");
         $sheet->setCellValue("F{$filaTotales}", "=SUM(F{$primeraFilaDatos}:F{$ultimaFilaDatos})");
         $sheet->setCellValue("G{$filaTotales}", "=SUM(G{$primeraFilaDatos}:G{$ultimaFilaDatos})");
         $sheet->setCellValue("H{$filaTotales}", "=SUM(H{$primeraFilaDatos}:H{$ultimaFilaDatos})");
         $sheet->setCellValue("I{$filaTotales}", "=SUM(I{$primeraFilaDatos}:I{$ultimaFilaDatos})");
 
-        // Estilos para la fila de totales (Verde esmeralda suave institucional)
-        $rangoTotales = "A{$filaTotales}:I{$filaTotales}";
-        $sheet->getStyle($rangoTotales)->getFont()->setName('Arial')->setSize(11)->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('065F46'));
-        $sheet->getStyle($rangoTotales)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('ECFDF5'); // Verde éxito sutil
-        
-        // Bordes superior e inferior dobles para los totales (estilo contable clásico)
-        $sheet->getStyle($rangoTotales)->getBorders()->getTop()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('065F46');
-        $sheet->getStyle($rangoTotales)->getBorders()->getBottom()->setBorderStyle(Border::BORDER_DOUBLE)->getColor()->setARGB('065F46');
+        $sheet->getStyle("A{$filaTotales}:I{$filaTotales}")->applyFromArray([
+            'font' => [
+                'name' => 'Arial',
+                'size' => 11,
+                'bold' => true,
+                'color' => ['argb' => '065F46'],
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['argb' => 'ECFDF5'],
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_RIGHT,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+            'borders' => [
+                'top' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['argb' => '065F46'],
+                ],
+                'bottom' => [
+                    'borderStyle' => Border::BORDER_DOUBLE,
+                    'color' => ['argb' => '065F46'],
+                ],
+            ],
+        ]);
+        $sheet->getStyle("A{$filaTotales}:D{$filaTotales}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
 
         return [];
+    }
+
+    private function textoPeriodo(): string
+    {
+        if (!$this->inicioSemana || !$this->finSemana) {
+            return 'SIN PERIODO DEFINIDO';
+        }
+
+        return $this->inicioSemana->format('d/m/Y') . ' AL ' . $this->finSemana->format('d/m/Y');
     }
 }

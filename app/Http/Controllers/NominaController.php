@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exports\ReciboIndividualExport;
+use App\Exports\ReporteSemanalExport;
 use App\Models\Asistencia;
 use App\Models\Empleado;
 use App\Models\Nomina;
@@ -10,6 +11,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Maatwebsite\Excel\Facades\Excel;
 
 class NominaController extends Controller
 {
@@ -35,15 +37,14 @@ class NominaController extends Controller
             $inicio = $iterador->copy()->subDays(6);
             $semanasDisponibles[] = [
                 'fecha_corte' => $iterador->format('Y-m-d'),
-                'etiqueta' => 'Sem. ' . $inicio->weekOfYear . ' (' . $inicio->locale('es')->isoFormat('D MMM') . ' al ' . $iterador->locale('es')->isoFormat('D MMM') . ')',
+                'numero_semana' => $inicio->weekOfYear,
+                'etiqueta' => 'Sem. ' . $inicio->weekOfYear . ' (' . $inicio->locale('es')->isoFormat('D MMM YYYY') . ' al ' . $iterador->locale('es')->isoFormat('D MMM YYYY') . ')',
             ];
             $iterador->subWeek();
         }
 
-        $empleados = Empleado::where('estatus', true)->orderBy('banco')->get()->map(function ($empleado) use ($semanaActual) {
-            $nomina = Nomina::where('empleado_id', $empleado->id)
-                ->where('numero_semana', $semanaActual)
-                ->first();
+        $empleados = Empleado::where('estatus', true)->orderBy('banco')->get()->map(function ($empleado) use ($inicioSemana, $finSemana) {
+            $nomina = $this->buscarNominaPeriodo($empleado->id, $inicioSemana, $finSemana);
 
             $empleado->nomina_generada = (bool) $nomina;
             $empleado->nomina_id = $nomina ? $nomina->id : null;
@@ -53,7 +54,7 @@ class NominaController extends Controller
         });
 
         $historial = Nomina::with('empleado')
-            ->orderBy('numero_semana', 'desc')
+            ->orderBy('fecha_inicio', 'desc')
             ->orderBy('id', 'desc')
             ->get();
 
@@ -73,7 +74,11 @@ class NominaController extends Controller
         $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana);
 
         $nomina = Nomina::updateOrCreate(
-            ['empleado_id' => $empleado->id, 'numero_semana' => $numeroSemana],
+            [
+                'empleado_id' => $empleado->id,
+                'fecha_inicio' => $inicioSemana->format('Y-m-d'),
+                'fecha_fin' => $finSemana->format('Y-m-d'),
+            ],
             $this->datosNominaParaGuardar($inicioSemana, $finSemana, $desglose)
         );
         $nomina->setRelation('empleado', $empleado);
@@ -89,9 +94,7 @@ class NominaController extends Controller
         [$inicioSemana, $finSemana, $numeroSemana] = $this->resolverSemanaNomina($request);
         $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana);
 
-        $nomina = Nomina::where('empleado_id', $empleado->id)
-            ->where('numero_semana', $numeroSemana)
-            ->first();
+        $nomina = $this->buscarNominaPeriodo($empleado->id, $inicioSemana, $finSemana);
 
         if ($nomina) {
             $nomina->update($this->datosNominaParaGuardar($inicioSemana, $finSemana, $desglose));
@@ -106,7 +109,15 @@ class NominaController extends Controller
         $datosExcel = $this->datosVistaRecibo($nomina, $empleado, $desglose);
         $nombreArchivo = 'Recibo_Semana_' . $numeroSemana . '_' . str_replace(' ', '_', $empleado->nombre_completo) . '.xlsx';
 
-        return \Maatwebsite\Excel\Facades\Excel::download(new ReciboIndividualExport($datosExcel), $nombreArchivo);
+        return Excel::download(new ReciboIndividualExport($datosExcel), $nombreArchivo);
+    }
+
+    public function reporteGlobal(Request $request, $semana)
+    {
+        [$inicioSemana, $finSemana, $numeroSemana] = $this->resolverSemanaNomina($request);
+        $nombreArchivo = 'Reporte_Semana_' . $numeroSemana . '_' . $inicioSemana->format('Ymd') . '_' . $finSemana->format('Ymd') . '.xlsx';
+
+        return Excel::download(new ReporteSemanalExport($numeroSemana, $inicioSemana, $finSemana), $nombreArchivo);
     }
 
     public function descargar(Nomina $nomina)
@@ -233,6 +244,14 @@ class NominaController extends Controller
         ];
     }
 
+    private function buscarNominaPeriodo(int $empleadoId, Carbon $inicioSemana, Carbon $finSemana): ?Nomina
+    {
+        return Nomina::where('empleado_id', $empleadoId)
+            ->whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
+            ->whereDate('fecha_fin', $finSemana->format('Y-m-d'))
+            ->first();
+    }
+
     private function empleadoEsEstudiante(Empleado $empleado): bool
     {
         return (bool) ($empleado->es_estudiante ?? false);
@@ -253,6 +272,7 @@ class NominaController extends Controller
     private function datosNominaParaGuardar(Carbon $inicioSemana, Carbon $finSemana, array $desglose): array
     {
         return [
+            'numero_semana' => $inicioSemana->weekOfYear,
             'fecha_inicio' => $inicioSemana->format('Y-m-d'),
             'fecha_fin' => $finSemana->format('Y-m-d'),
             'horas_normales' => $desglose['horas_normales'],
