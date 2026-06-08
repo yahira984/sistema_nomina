@@ -1,151 +1,373 @@
 <script setup>
-import { ref } from 'vue';
-import ApplicationLogo from '@/Components/ApplicationLogo.vue';
-import Dropdown from '@/Components/Dropdown.vue';
-import DropdownLink from '@/Components/DropdownLink.vue';
-import NavLink from '@/Components/NavLink.vue';
-import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
-import { Link } from '@inertiajs/vue3';
+import { ref, computed } from 'vue'
+import { Link, usePage } from '@inertiajs/vue3'
 
-const showingNavigationDropdown = ref(false);
+const page = usePage()
+const user = computed(() => page.props.auth.user)
+
+const sidebarOpen = ref(false)
+
+const navItems = [
+  {
+    label: 'Principal',
+    links: [
+      { name: 'Panel',        route: 'dashboard',          icon: 'ti-layout-dashboard' },
+      { name: 'Empleados',    route: 'empleados.index',    icon: 'ti-users' },
+      { name: 'Asistencias',  route: 'asistencias.index',  icon: 'ti-calendar-check' },
+      { name: 'Nóminas',      route: 'nominas.index',      icon: 'ti-report-money' },
+    ]
+  },
+  {
+    label: 'Sistema',
+    links: [
+      { name: 'Configuración', route: 'profile.edit', icon: 'ti-settings' },
+    ]
+  }
+]
+
+function isActive(routeName) {
+  return route().current(routeName) || route().current(routeName + '.*')
+}
 </script>
 
 <template>
-    <div class="min-h-screen bg-slate-50 text-slate-900">
-        <nav class="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
-            <div class="content-wrap">
-                <div class="flex h-16 items-center justify-between gap-4">
-                    <div class="flex min-w-0 items-center gap-6">
-                        <Link :href="route('dashboard')" class="flex min-w-0 items-center gap-3">
-                            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-teal-300">
-                                <ApplicationLogo class="h-8 w-8" />
-                            </span>
-                            <span class="hidden min-w-0 sm:block">
-                                <span class="block truncate text-sm font-semibold text-slate-950">Sistema de Nóminas</span>
-                                <span class="block truncate text-xs font-medium text-slate-500">PROMATEC-LUGARTH</span>
-                            </span>
-                        </Link>
+  <div class="layout-root">
 
-                        <div class="hidden items-center gap-1 md:flex">
-                            <NavLink :href="route('dashboard')" :active="route().current('dashboard')">
-                                Panel
-                            </NavLink>
-                            <NavLink :href="route('empleados.index')" :active="route().current('empleados.*')">
-                                Empleados
-                            </NavLink>
-                            <NavLink :href="route('asistencias.index')" :active="route().current('asistencias.*')">
-                                Asistencias
-                            </NavLink>
-                            <NavLink :href="route('nominas.index')" :active="route().current('nominas.*')">
-                                Nóminas
-                            </NavLink>
-                        </div>
-                    </div>
+    <!-- ── Google Fonts ── -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
 
-                    <div class="hidden items-center md:flex">
-                        <Dropdown align="right" width="48">
-                            <template #trigger>
-                                <button
-                                    type="button"
-                                    class="inline-flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500/30"
-                                >
-                                    <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-50 text-xs font-bold text-teal-700">
-                                        {{ $page.props.auth.user.name.charAt(0).toUpperCase() }}
-                                    </span>
-                                    <span class="max-w-40 truncate">{{ $page.props.auth.user.name }}</span>
-                                    <svg class="h-4 w-4 text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                        <path
-                                            fill-rule="evenodd"
-                                            d="M5.293 7.293a1 1 0 0 1 1.414 0L10 10.586l3.293-3.293a1 1 0 1 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414Z"
-                                            clip-rule="evenodd"
-                                        />
-                                    </svg>
-                                </button>
-                            </template>
+    <!-- ── Mobile overlay ── -->
+    <div
+      v-if="sidebarOpen"
+      class="sidebar-overlay"
+      @click="sidebarOpen = false"
+    />
 
-                            <template #content>
-                                <DropdownLink :href="route('profile.edit')">Perfil</DropdownLink>
-                                <DropdownLink :href="route('logout')" method="post" as="button">
-                                    Cerrar sesión
-                                </DropdownLink>
-                            </template>
-                        </Dropdown>
-                    </div>
+    <!-- ══════════ SIDEBAR ══════════ -->
+    <aside :class="['sidebar', { 'sidebar--open': sidebarOpen }]">
 
-                    <button
-                        @click="showingNavigationDropdown = !showingNavigationDropdown"
-                        class="icon-button md:hidden"
-                        type="button"
-                        aria-label="Abrir navegación"
-                    >
-                        <svg class="h-5 w-5" stroke="currentColor" fill="none" viewBox="0 0 24 24">
-                            <path
-                                :class="{ hidden: showingNavigationDropdown, 'inline-flex': !showingNavigationDropdown }"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M4 6h16M4 12h16M4 18h16"
-                            />
-                            <path
-                                :class="{ hidden: !showingNavigationDropdown, 'inline-flex': showingNavigationDropdown }"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M6 18 18 6M6 6l12 12"
-                            />
-                        </svg>
-                    </button>
-                </div>
-            </div>
+      <!-- Logo -->
+      <div class="sidebar-logo">
+        <div class="logo-badge">
+          <i class="ti ti-file-invoice" aria-hidden="true"></i>
+        </div>
+        <div>
+          <p class="logo-name">PROMATEC</p>
+          <p class="logo-sub">LUGARTH · NÓMINAS</p>
+        </div>
+      </div>
 
-            <div
-                :class="{ block: showingNavigationDropdown, hidden: !showingNavigationDropdown }"
-                class="border-t border-slate-200 bg-white px-4 py-4 md:hidden"
-            >
-                <div class="space-y-2">
-                    <ResponsiveNavLink :href="route('dashboard')" :active="route().current('dashboard')">
-                        Panel
-                    </ResponsiveNavLink>
-                    <ResponsiveNavLink :href="route('empleados.index')" :active="route().current('empleados.*')">
-                        Empleados
-                    </ResponsiveNavLink>
-                    <ResponsiveNavLink :href="route('asistencias.index')" :active="route().current('asistencias.*')">
-                        Asistencias
-                    </ResponsiveNavLink>
-                    <ResponsiveNavLink :href="route('nominas.index')" :active="route().current('nominas.*')">
-                        Nóminas
-                    </ResponsiveNavLink>
-                </div>
+      <!-- Nav -->
+      <nav class="sidebar-nav">
+        <template v-for="group in navItems" :key="group.label">
+          <p class="nav-section-label">{{ group.label }}</p>
+          <Link
+            v-for="item in group.links"
+            :key="item.route"
+            :href="route(item.route)"
+            :class="['nav-item', { 'nav-item--active': isActive(item.route) }]"
+          >
+            <i :class="['ti', item.icon]" aria-hidden="true"></i>
+            <span>{{ item.name }}</span>
+          </Link>
+        </template>
+      </nav>
 
-                <div class="mt-4 border-t border-slate-200 pt-4">
-                    <div class="flex items-center gap-3 px-2">
-                        <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-50 text-sm font-bold text-teal-700">
-                            {{ $page.props.auth.user.name.charAt(0).toUpperCase() }}
-                        </span>
-                        <div class="min-w-0">
-                            <div class="truncate text-sm font-semibold text-slate-950">{{ $page.props.auth.user.name }}</div>
-                            <div class="truncate text-xs font-medium text-slate-500">{{ $page.props.auth.user.email }}</div>
-                        </div>
-                    </div>
+      <!-- Footer usuario -->
+      <div class="sidebar-footer">
+        <div class="user-avatar">{{ user?.name?.charAt(0)?.toUpperCase() ?? 'U' }}</div>
+        <div class="user-info">
+          <p class="user-name">{{ user?.name }}</p>
+          <p class="user-email">{{ user?.email }}</p>
+        </div>
+        <Link :href="route('logout')" method="post" as="button" class="logout-btn" title="Cerrar sesión">
+          <i class="ti ti-logout" aria-hidden="true"></i>
+        </Link>
+      </div>
+    </aside>
 
-                    <div class="mt-3 space-y-2">
-                        <ResponsiveNavLink :href="route('profile.edit')">Perfil</ResponsiveNavLink>
-                        <ResponsiveNavLink :href="route('logout')" method="post" as="button">
-                            Cerrar sesión
-                        </ResponsiveNavLink>
-                    </div>
-                </div>
-            </div>
-        </nav>
+    <!-- ══════════ CONTENIDO PRINCIPAL ══════════ -->
+    <div class="main-wrapper">
 
-        <header v-if="$slots.header" class="border-b border-slate-200 bg-white">
-            <div class="content-wrap py-6">
-                <slot name="header" />
-            </div>
-        </header>
+      <!-- Topbar mobile -->
+      <header class="topbar">
+        <button class="topbar-menu-btn" @click="sidebarOpen = !sidebarOpen" aria-label="Abrir menú">
+          <i class="ti ti-menu-2" aria-hidden="true"></i>
+        </button>
+        <p class="topbar-title">Sistema de Nóminas</p>
+        <div class="topbar-avatar">{{ user?.name?.charAt(0)?.toUpperCase() ?? 'U' }}</div>
+      </header>
 
-        <main>
-            <slot />
-        </main>
+      <!-- Slot de página -->
+      <main class="page-content">
+        <slot />
+      </main>
     </div>
+
+  </div>
 </template>
+
+<style scoped>
+/* ─── Fuentes & Reset ──────────────────────── */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+.layout-root {
+  display: flex;
+  min-height: 100vh;
+  background: #0a0e1a;
+  font-family: 'DM Sans', sans-serif;
+  color: #e2e8f0;
+}
+
+/* ─── Sidebar ──────────────────────────────── */
+.sidebar {
+  width: 230px;
+  min-height: 100vh;
+  background: #0d1225;
+  border-right: 0.5px solid #1e2842;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 40;
+  flex-shrink: 0;
+}
+
+.sidebar-overlay {
+  display: none;
+}
+
+/* ─── Logo ─────────────────────────────────── */
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 20px 20px;
+  border-bottom: 0.5px solid #1e2842;
+}
+
+.logo-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #3b6ef0, #7c3aed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.logo-badge i { font-size: 20px; color: #fff; }
+
+.logo-name {
+  font-family: 'Sora', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+}
+
+.logo-sub {
+  font-size: 10px;
+  color: #3d5575;
+  letter-spacing: 0.08em;
+}
+
+/* ─── Navegación ───────────────────────────── */
+.sidebar-nav {
+  flex: 1;
+  padding: 14px 12px;
+  overflow-y: auto;
+}
+
+.nav-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #253550;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0 8px;
+  margin: 16px 0 6px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 400;
+  color: #5a7898;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s, padding-left 0.15s;
+  margin-bottom: 2px;
+}
+
+.nav-item i { font-size: 18px; }
+
+.nav-item:hover {
+  background: #141c30;
+  color: #94b4e0;
+  padding-left: 16px;
+}
+
+.nav-item--active {
+  background: rgba(59, 110, 240, 0.14);
+  color: #5b8bef;
+  font-weight: 500;
+}
+
+.nav-item--active i { color: #5b8bef; }
+
+/* ─── Footer sidebar ───────────────────────── */
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 14px;
+  border-top: 0.5px solid #1e2842;
+}
+
+.user-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b6ef0, #7c3aed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.user-info { flex: 1; overflow: hidden; }
+
+.user-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #c0d4f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-email {
+  font-size: 10.5px;
+  color: #3d5575;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logout-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #3d5575;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.logout-btn:hover {
+  color: #e05858;
+  background: rgba(224, 88, 88, 0.1);
+}
+
+/* ─── Main content ─────────────────────────── */
+.main-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: #0d1225;
+  border-bottom: 0.5px solid #1e2842;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.topbar-menu-btn {
+  background: none;
+  border: none;
+  color: #94b4e0;
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.topbar-title {
+  font-family: 'Sora', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #d0dff5;
+}
+
+.topbar-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b6ef0, #7c3aed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.page-content {
+  flex: 1;
+  padding: 32px;
+}
+
+/* ─── Responsive ───────────────────────────── */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    left: -230px;
+    transition: left 0.25s ease;
+    height: 100vh;
+  }
+
+  .sidebar--open {
+    left: 0;
+    box-shadow: 4px 0 40px rgba(0,0,0,0.6);
+  }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 35;
+  }
+
+  .topbar {
+    display: flex;
+  }
+
+  .page-content {
+    padding: 20px 16px;
+  }
+}
+</style>

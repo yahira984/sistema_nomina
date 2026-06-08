@@ -1,143 +1,483 @@
 <script setup>
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, Link } from '@inertiajs/vue3';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
+import { Head, Link } from '@inertiajs/vue3'
 
 defineProps({
-    empleadosActivos: Number,
-    semanaActual: Number,
-    totalPagado: Number
-});
+  totalEmpleados:    { type: Number, default: 0 },
+  semanaContable:    { type: Number, default: 0 },
+  gastoSemanal:      { type: [Number, String], default: '0.00' },
+  corteSemana:       { type: String, default: 'Miércoles a martes' },
+  nominasPendientes: { type: Number, default: 0 },
+})
+
+const modules = [
+  {
+    name:  'Directorio de personal',
+    desc:  'Alta, edición y consulta de trabajadores, puestos y tarifas',
+    route: 'empleados.index',
+    icon:  'ti-address-book',
+    color: 'blue',
+  },
+  {
+    name:  'Control de asistencias',
+    desc:  'Captura entradas y salidas · Calcula jornadas semanales',
+    route: 'asistencias.index',
+    icon:  'ti-clock-check',
+    color: 'teal',
+  },
+  {
+    name:  'Generar nóminas',
+    desc:  'Calcula pagos, marca estatus y genera recibos PDF',
+    route: 'nominas.index',
+    icon:  'ti-file-invoice',
+    color: 'amber',
+  },
+]
 </script>
 
 <template>
-    <Head title="Panel Principal" />
+  <Head title="Panel Principal" />
 
-    <AuthenticatedLayout>
-        <template #header>
-            <div class="flex flex-col gap-1">
-                <p class="text-sm font-semibold text-teal-700">Resumen operativo</p>
-                <h2 class="text-2xl font-semibold text-slate-950">Bienvenido al Sistema PROMATEC-LUGARTH</h2>
-            </div>
-        </template>
+  <AuthenticatedLayout>
 
-        <div class="page-shell">
-            <div class="content-wrap space-y-8">
-                <section class="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <div class="metric-card">
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <p class="metric-label">Personal activo</p>
-                                <h3 class="metric-value">{{ empleadosActivos }}</h3>
-                                <p class="metric-note">Colaboradores registrados</p>
-                            </div>
-                            <div class="soft-icon-blue">
-                                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 0 0-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 0 1 5.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 0 1 9.288 0M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM7 10a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" />
-                                </svg>
-                            </div>
-                        </div>
-                    </div>
+    <!-- ── Encabezado ── -->
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Resumen operativo</h1>
+        <p class="page-sub">Sistema PROMATEC-LUGARTH · Semana {{ semanaContable }}</p>
+      </div>
+      <div class="week-chip">
+        <i class="ti ti-calendar" aria-hidden="true"></i>
+        Corte: {{ corteSemana }}
+      </div>
+    </div>
 
-                    <div class="metric-card">
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <p class="metric-label">Semana contable</p>
-                                <h3 class="metric-value">No. {{ semanaActual }}</h3>
-                                <p class="metric-note">Corte de miércoles a martes</p>
-                            </div>
-                            <div class="soft-icon-amber">
-                                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
-                                </svg>
-                            </div>
-                        </div>
-                    </div>
+    <!-- ── Estadísticas ── -->
+    <div class="stats-grid">
 
-                    <div class="metric-card">
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <p class="metric-label">Gasto semanal</p>
-                                <h3 class="metric-value">${{ Number(totalPagado || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 }) }}</h3>
-                                <p class="metric-note">Total neto dispersado</p>
-                            </div>
-                            <div class="soft-icon-emerald">
-                                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                                </svg>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <section>
-                    <div class="mb-4 flex flex-col gap-1">
-                        <h3 class="section-title">Módulos principales</h3>
-                        <p class="section-copy">Accede a las tareas clave de nómina desde un solo lugar.</p>
-                    </div>
-
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-                        <Link :href="route('empleados.index')" class="action-card group">
-                            <div class="flex items-start gap-4">
-                                <div class="soft-icon-blue">
-                                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-5m-4 0V5a2 2 0 1 1 4 0v1m-4 0a2 2 0 1 0 4 0m-5 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 0c1.306 0 2.417.835 2.83 2M15 11h3m-3 4h2" />
-                                    </svg>
-                                </div>
-                                <div class="min-w-0">
-                                    <h4 class="text-base font-semibold text-slate-950">Directorio de personal</h4>
-                                    <p class="mt-2 text-sm leading-6 text-slate-500">Alta, edición y consulta de trabajadores, puestos, cuentas y tarifas.</p>
-                                    <div class="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-teal-700">
-                                        Abrir módulo
-                                        <svg class="h-4 w-4 transition group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 5 7 7-7 7" />
-                                        </svg>
-                                    </div>
-                                </div>
-                            </div>
-                        </Link>
-
-                        <Link :href="route('asistencias.index')" class="action-card group">
-                            <div class="flex items-start gap-4">
-                                <div class="soft-icon-emerald">
-                                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                                    </svg>
-                                </div>
-                                <div class="min-w-0">
-                                    <h4 class="text-base font-semibold text-slate-950">Control de asistencias</h4>
-                                    <p class="mt-2 text-sm leading-6 text-slate-500">Captura entradas y salidas para calcular jornadas semanales.</p>
-                                    <div class="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-teal-700">
-                                        Abrir módulo
-                                        <svg class="h-4 w-4 transition group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 5 7 7-7 7" />
-                                        </svg>
-                                    </div>
-                                </div>
-                            </div>
-                        </Link>
-
-                        <Link :href="route('nominas.index')" class="action-card group">
-                            <div class="flex items-start gap-4">
-                                <div class="soft-icon-amber">
-                                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2Z" />
-                                    </svg>
-                                </div>
-                                <div class="min-w-0">
-                                    <h4 class="text-base font-semibold text-slate-950">Generar nóminas</h4>
-                                    <p class="mt-2 text-sm leading-6 text-slate-500">Calcula pagos, marca estatus y genera recibos PDF listos para imprimir.</p>
-                                    <div class="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-teal-700">
-                                        Abrir módulo
-                                        <svg class="h-4 w-4 transition group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 5 7 7-7 7" />
-                                        </svg>
-                                    </div>
-                                </div>
-                            </div>
-                        </Link>
-                    </div>
-                </section>
-            </div>
+      <div class="stat-card stat-card--blue">
+        <div class="stat-icon stat-icon--blue">
+          <i class="ti ti-users" aria-hidden="true"></i>
         </div>
-    </AuthenticatedLayout>
+        <p class="stat-label">Personal activo</p>
+        <p class="stat-value">{{ totalEmpleados }}</p>
+        <p class="stat-sub">Colaboradores registrados</p>
+      </div>
+
+      <div class="stat-card stat-card--teal">
+        <div class="stat-icon stat-icon--teal">
+          <i class="ti ti-calendar-stats" aria-hidden="true"></i>
+        </div>
+        <p class="stat-label">Semana contable</p>
+        <p class="stat-value">No. {{ semanaContable }}</p>
+        <p class="stat-sub">Período en curso</p>
+      </div>
+
+      <div class="stat-card stat-card--amber">
+        <div class="stat-icon stat-icon--amber">
+          <i class="ti ti-cash" aria-hidden="true"></i>
+        </div>
+        <p class="stat-label">Gasto semanal</p>
+        <p class="stat-value">${{ gastoSemanal }}</p>
+        <p class="stat-sub">Total neto dispersado</p>
+      </div>
+
+    </div>
+
+    <!-- ── Módulos + Estado ── -->
+    <div class="bottom-grid">
+
+      <!-- Módulos -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Módulos principales</h2>
+          <p class="card-sub">Accede a las tareas clave desde aquí</p>
+        </div>
+
+        <Link
+          v-for="mod in modules"
+          :key="mod.route"
+          :href="route(mod.route)"
+          class="module-row"
+        >
+          <div :class="['mod-icon', `mod-icon--${mod.color}`]">
+            <i :class="['ti', mod.icon]" aria-hidden="true"></i>
+          </div>
+          <div class="mod-text">
+            <p class="mod-name">{{ mod.name }}</p>
+            <p class="mod-desc">{{ mod.desc }}</p>
+          </div>
+          <i class="ti ti-chevron-right mod-arrow" aria-hidden="true"></i>
+        </Link>
+      </div>
+
+      <!-- Estado del sistema -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Estado del sistema</h2>
+          <p class="card-sub">Indicadores en tiempo real</p>
+        </div>
+
+        <div class="status-row">
+          <span class="status-label">Nóminas procesadas</span>
+          <span class="badge badge--green">Al día</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Asistencias</span>
+          <span class="badge badge--blue">Activo</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">PDFs pendientes</span>
+          <span :class="['badge', nominasPendientes > 0 ? 'badge--amber' : 'badge--green']">
+            {{ nominasPendientes }} pendiente{{ nominasPendientes !== 1 ? 's' : '' }}
+          </span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Semana contable</span>
+          <span class="status-val">No. {{ semanaContable }} / {{ new Date().getFullYear() }}</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Colaboradores activos</span>
+          <span class="status-val">{{ totalEmpleados }}</span>
+        </div>
+
+        <!-- Acceso rápido -->
+        <div class="quick-actions">
+          <Link :href="route('nominas.index')" class="quick-btn">
+            <i class="ti ti-file-plus" aria-hidden="true"></i>
+            Nueva nómina
+          </Link>
+          <Link :href="route('empleados.index')" class="quick-btn quick-btn--outline">
+            <i class="ti ti-user-plus" aria-hidden="true"></i>
+            Nuevo empleado
+          </Link>
+        </div>
+      </div>
+
+    </div>
+
+  </AuthenticatedLayout>
 </template>
+
+<style scoped>
+/* ─── Tipografía ───────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap');
+
+* { box-sizing: border-box; }
+
+/* ─── Encabezado ───────────────────────────── */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.page-title {
+  font-family: 'Sora', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.2;
+}
+
+.page-sub {
+  font-size: 13px;
+  color: #3d5575;
+  margin-top: 4px;
+}
+
+.week-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(59, 110, 240, 0.12);
+  border: 0.5px solid rgba(59, 110, 240, 0.3);
+  border-radius: 20px;
+  padding: 7px 16px;
+  font-size: 12.5px;
+  color: #5e8fe8;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.week-chip i { font-size: 15px; }
+
+/* ─── Estadísticas ─────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: #0d1225;
+  border: 0.5px solid #1e2842;
+  border-radius: 14px;
+  padding: 22px 20px 18px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  border-color: #2a3a5c;
+}
+
+.stat-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2.5px;
+  border-radius: 14px 14px 0 0;
+}
+
+.stat-card--blue::after  { background: linear-gradient(90deg, #3b6ef0, #7c3aed); }
+.stat-card--teal::after  { background: linear-gradient(90deg, #0ea5a0, #06d6a0); }
+.stat-card--amber::after { background: linear-gradient(90deg, #f59e0b, #e07b0b); }
+
+.stat-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.stat-icon--blue  { background: rgba(59, 110, 240, 0.15); }
+.stat-icon--teal  { background: rgba(14, 165, 160, 0.15); }
+.stat-icon--amber { background: rgba(245, 158, 11, 0.15); }
+
+.stat-icon--blue  i { color: #5b8bef; font-size: 21px; }
+.stat-icon--teal  i { color: #0ea5a0; font-size: 21px; }
+.stat-icon--amber i { color: #f59e0b; font-size: 21px; }
+
+.stat-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #3d5575;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.stat-value {
+  font-family: 'Sora', sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.stat-sub {
+  font-size: 12px;
+  color: #3d5575;
+}
+
+/* ─── Grid inferior ────────────────────────── */
+.bottom-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 16px;
+}
+
+.card {
+  background: #0d1225;
+  border: 0.5px solid #1e2842;
+  border-radius: 14px;
+  padding: 22px 20px;
+}
+
+.card-header {
+  margin-bottom: 18px;
+}
+
+.card-title {
+  font-family: 'Sora', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #d0dff5;
+  margin-bottom: 3px;
+}
+
+.card-sub {
+  font-size: 12px;
+  color: #3d5575;
+}
+
+/* ─── Módulos ──────────────────────────────── */
+.module-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 0;
+  border-bottom: 0.5px solid #141c30;
+  text-decoration: none;
+  transition: padding-left 0.15s;
+  cursor: pointer;
+}
+
+.module-row:last-child { border-bottom: none; }
+
+.module-row:hover {
+  padding-left: 6px;
+}
+
+.mod-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mod-icon--blue  { background: rgba(59, 110, 240, 0.15); }
+.mod-icon--teal  { background: rgba(14, 165, 160, 0.15); }
+.mod-icon--amber { background: rgba(245, 158, 11, 0.15); }
+
+.mod-icon--blue  i { color: #5b8bef; font-size: 19px; }
+.mod-icon--teal  i { color: #0ea5a0; font-size: 19px; }
+.mod-icon--amber i { color: #f59e0b; font-size: 19px; }
+
+.mod-text { flex: 1; min-width: 0; }
+
+.mod-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #c0d4f0;
+  margin-bottom: 2px;
+}
+
+.mod-desc {
+  font-size: 11.5px;
+  color: #3d5575;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mod-arrow {
+  font-size: 17px;
+  color: #253550;
+  transition: color 0.15s;
+}
+
+.module-row:hover .mod-arrow { color: #3b6ef0; }
+
+/* ─── Estado ───────────────────────────────── */
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 0;
+  border-bottom: 0.5px solid #141c30;
+}
+
+.status-row:last-of-type { border-bottom: none; }
+
+.status-label {
+  font-size: 12.5px;
+  color: #5a7898;
+}
+
+.status-val {
+  font-size: 13px;
+  font-weight: 500;
+  color: #c0d4f0;
+}
+
+.badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.03em;
+}
+
+.badge--green { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+.badge--blue  { background: rgba(59, 110, 240, 0.15);  color: #5b8bef; }
+.badge--amber { background: rgba(245, 158, 11, 0.15);  color: #f59e0b; }
+
+/* ─── Acciones rápidas ─────────────────────── */
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 0.5px solid #1e2842;
+}
+
+.quick-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: opacity 0.15s, transform 0.1s;
+  cursor: pointer;
+  border: none;
+}
+
+.quick-btn:active { transform: scale(0.98); }
+
+.quick-btn {
+  background: linear-gradient(135deg, #3b6ef0, #5a4cf0);
+  color: #fff;
+}
+
+.quick-btn:hover { opacity: 0.88; }
+
+.quick-btn--outline {
+  background: transparent;
+  border: 0.5px solid #2a3a5c !important;
+  color: #7aa0d4;
+}
+
+.quick-btn--outline:hover {
+  background: #141c30;
+  opacity: 1;
+}
+
+.quick-btn i { font-size: 16px; }
+
+/* ─── Responsive ───────────────────────────── */
+@media (max-width: 900px) {
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .stats-grid .stat-card:last-child {
+    grid-column: 1 / -1;
+  }
+  .bottom-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .stats-grid .stat-card:last-child {
+    grid-column: auto;
+  }
+  .page-header {
+    flex-direction: column;
+  }
+}
+</style>
