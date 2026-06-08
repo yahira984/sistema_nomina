@@ -186,6 +186,15 @@ class AsistenciaController extends Controller
                 sort($horas);
                 $horaEntrada = $horas[0] ?? null;
                 $horaSalida = count($horas) > 1 ? end($horas) : null;
+
+                // 🔥 REGLA PROMATEC / LUGARTH: EL "MIÉRCOLES FANTASMA" 🔥
+                // Si el día es miércoles y no hay salida registrada (porque el corte se hace a las 5:00 pm),
+                // inyectamos automáticamente la salida a las 17:30 para cerrar nómina.
+                // La siguiente semana, si el CSV trae la hora real de ese mismo miércoles, sobrescribirá este valor.
+                if (Carbon::parse($fecha)->isWednesday() && !$horaSalida) {
+                    $horaSalida = '17:30'; 
+                }
+
                 $datosCalculados = $this->calcularHoras($fecha, $horaEntrada, $horaSalida, 'Normal');
 
                 if (!$empleado) {
@@ -223,7 +232,7 @@ class AsistenciaController extends Controller
                     'estado' => $yaExiste ? 'actualiza' : 'detectada',
                     'mensaje' => $yaExiste
                         ? 'Ya habia una asistencia para este dia; al aprobar se actualizara.'
-                        : (count($horas) === 1 ? 'Solo se detecto una marca del reloj.' : 'Marcajes detectados en CSV.'),
+                        : (count($horas) === 1 && !Carbon::parse($fecha)->isWednesday() ? 'Solo se detecto una marca del reloj.' : 'Marcajes detectados en CSV.'),
                     'marcas' => count($horas),
                 ], $datosCalculados);
             }

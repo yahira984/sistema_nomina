@@ -35,7 +35,7 @@
                 PACHUCA DE SOTO, HGO
             </td>
         </tr>
-        
+
         <tr>
             <td colspan="4" class="header-title" style="border-top: 1px solid #cbd5e1;">
                 RECIBO DE SUELDO PACHUCA
@@ -50,7 +50,7 @@
             </td>
             <td colspan="2" class="center" style="padding: 15px 5px;">
                 <span class="semana-info">SEMANA {{ $nomina->numero_semana }}</span><br><br>
-                DEL {{ strtoupper(\Carbon\Carbon::parse($nomina->fecha_inicio)->locale('es')->isoFormat('DD MMMM')) }} 
+                DEL {{ strtoupper(\Carbon\Carbon::parse($nomina->fecha_inicio)->locale('es')->isoFormat('DD MMMM')) }}
                 AL {{ strtoupper(\Carbon\Carbon::parse($nomina->fecha_fin)->locale('es')->isoFormat('DD MMMM YYYY')) }}
             </td>
         </tr>
@@ -72,50 +72,50 @@
                     <b>SUELDO BASE</b><br>
                 @endif
                 <br>
-                
+
                 HORAS NORMALES <span style="float:right;">{{ $nomina->horas_normales }} hrs</span><br>
-                
+
                 @if($nomina->horas_extra > 0)
                 HORAS EXTRA <span style="float:right;">{{ $nomina->horas_extra }} hrs</span><br>
                 @else
                 <br>
                 @endif
                 <br>
-                
+
                 @if(isset($dias_incapacidad) && $dias_incapacidad > 0)
                 <span class="money" style="font-size: 10px;">INCAPACIDAD ({{ $dias_incapacidad }} Días) al 60%</span><br>
                 @endif
-                
+
                 @if(isset($dias_vacaciones) && $dias_vacaciones > 0)
                 <span style="font-size: 8px;">D.P. VACACION + 25% P.V. ({{ $dias_vacaciones }} Días)</span><br>
                 @else
                 <span style="font-size: 8px;">D.P. VACACION + 25% P.V.</span><br>
                 @endif
             </td>
-            
+
             <td style="vertical-align: top; padding-top: 10px;" class="right">
                 <br>
                 <!-- AHORA SÍ IMPRIME EL DINERO PERFECTO -->
                 $ {{ number_format($pago_normal, 2) }}<br>
-                
+
                 @if($nomina->horas_extra > 0)
                 $ {{ number_format($pago_extra, 2) }}<br>
                 @else
                 <br>
                 @endif
                 <br>
-                
+
                 @if(isset($dias_incapacidad) && $dias_incapacidad > 0)
                 $ {{ number_format($pago_incapacidad, 2) }}<br>
                 @endif
-                
+
                 @if(isset($dias_vacaciones) && $dias_vacaciones > 0)
                 $ {{ number_format($pago_vacaciones, 2) }}
                 @else
                 <br>
                 @endif
             </td>
-            
+
             <td style="vertical-align: top; padding-top: 10px; width: 25%;">
                 @if(isset($dias_falta) && $dias_falta > 0)
                 Falta(s) - {{ $dias_falta }} días<br>
