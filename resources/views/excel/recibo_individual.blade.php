@@ -2,7 +2,10 @@
     $empleadoRecibo = $empleado ?? $nomina->empleado ?? null;
     $numeroEmpleado = $empleadoRecibo->numero_empleado ?? 'S/N';
     $nombreEmpleado = strtoupper($empleadoRecibo->nombre_completo ?? 'N/A');
+    $esEstudiante = $es_estudiante ?? (bool) ($empleadoRecibo->es_estudiante ?? false);
+    $sueldoSemanal = $sueldo_semanal ?? ($empleadoRecibo->sueldo_semanal ?? 0);
     $sueldoHora = $empleadoRecibo->sueldo_por_hora ?? 0;
+    $tarifaBaseHora = $tarifa_base_hora ?? ($esEstudiante ? $sueldoHora : ($sueldoSemanal > 0 ? $sueldoSemanal / 48 : 0));
     $horasNormales = $nomina->horas_normales ?? 0;
     $horasExtra = $nomina->horas_extra ?? 0;
     $pagoNormal = $pago_normal ?? 0;
@@ -15,7 +18,7 @@
     $pagoVacaciones = $pago_vacaciones ?? 0;
     $descuentoFaltas = $descuento_faltas ?? 0;
     $descuentoRetardos = $descuento_retardos ?? 0;
-    $cuotaPrestamo = $empleadoRecibo->cuota_prestamo ?? 0;
+    $cuotaPrestamo = $deduccion_prestamo ?? ($empleadoRecibo->cuota_prestamo ?? 0);
     $descuentoImss = $empleadoRecibo->descuento_imss ?? 0;
     $descuentoIsr = $empleadoRecibo->descuento_isr ?? 0;
     $descuentoInfonavit = $empleadoRecibo->descuento_infonavit ?? 0;
@@ -80,15 +83,19 @@
     </tr>
     <tr style="height: 140px;">
         <td style="{{ $top }} padding-top: 10px;">
-            @if($sueldoHora > 0)
+            @if($esEstudiante)
                 <b>SUELDO (Tarifa x Hora: ${{ number_format($sueldoHora, 2) }})</b><br>
             @else
-                <b>SUELDO BASE</b><br>
+                <b>SUELDO SEMANAL BASE: ${{ number_format($sueldoSemanal, 2) }}</b><br>
             @endif
             <br>
-            HORAS NORMALES {{ $horasNormales }} hrs<br>
+            @if($esEstudiante)
+                HORAS NORMALES {{ $horasNormales }} hrs<br>
+            @else
+                HORAS REGISTRADAS {{ $horasNormales }} hrs<br>
+            @endif
             @if($horasExtra > 0)
-                HORAS EXTRA {{ $horasExtra }} hrs<br>
+                HORAS EXTRA (Base: ${{ number_format($tarifaBaseHora, 2) }}) {{ $horasExtra }} hrs<br>
             @else
                 <br>
             @endif

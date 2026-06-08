@@ -2,232 +2,272 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Empleado;
+use App\Exports\ReciboIndividualExport;
 use App\Models\Asistencia;
+use App\Models\Empleado;
 use App\Models\Nomina;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Inertia\Inertia;
-use App\Exports\ReciboIndividualExport;
 
 class NominaController extends Controller
 {
+    private const DIAS_LABORALES_SEMANA = 6;
+    private const HORAS_BASE_SEMANA = 48;
+
     public function index(Request $request)
     {
         $hoy = Carbon::now();
-        
-        // 1. EL CORTE AUTOMÁTICO: Buscamos el martes más reciente
-        $martesAutomatico = $hoy->isTuesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::TUESDAY)->endOfDay();
-        
-        // 2. EL CORTE MANUAL: Si la contadora seleccionó una fecha en el sistema, la usamos. Si no, usamos la automática.
+
+        $martesAutomatico = $hoy->isTuesday()
+            ? $hoy->copy()->endOfDay()
+            : $hoy->copy()->previous(Carbon::TUESDAY)->endOfDay();
+
         $fechaCorteStr = $request->input('fecha_corte', $martesAutomatico->format('Y-m-d'));
         $finSemana = Carbon::parse($fechaCorteStr)->endOfDay();
         $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay();
         $semanaActual = $inicioSemana->weekOfYear;
 
-        // 3. GENERAR EL MENÚ DESPLEGABLE: Creamos las últimas 10 semanas para que pueda viajar en el tiempo
         $semanasDisponibles = [];
         $iterador = $martesAutomatico->copy();
         for ($i = 0; $i < 10; $i++) {
             $inicio = $iterador->copy()->subDays(6);
             $semanasDisponibles[] = [
                 'fecha_corte' => $iterador->format('Y-m-d'),
-                'etiqueta'    => 'Sem. ' . $inicio->weekOfYear . ' (' . $inicio->locale('es')->isoFormat('D MMM') . ' al ' . $iterador->locale('es')->isoFormat('D MMM') . ')'
+                'etiqueta' => 'Sem. ' . $inicio->weekOfYear . ' (' . $inicio->locale('es')->isoFormat('D MMM') . ' al ' . $iterador->locale('es')->isoFormat('D MMM') . ')',
             ];
-            $iterador->subWeek(); // Retrocedemos una semana para el siguiente ciclo
+            $iterador->subWeek();
         }
 
-        // Revisar el estatus de los empleados pero SOLO de la semana que seleccionó
         $empleados = Empleado::where('estatus', true)->orderBy('banco')->get()->map(function ($empleado) use ($semanaActual) {
             $nomina = Nomina::where('empleado_id', $empleado->id)
-                            ->where('numero_semana', $semanaActual)
-                            ->first();
+                ->where('numero_semana', $semanaActual)
+                ->first();
 
-            $empleado->nomina_generada = $nomina ? true : false;
+            $empleado->nomina_generada = (bool) $nomina;
             $empleado->nomina_id = $nomina ? $nomina->id : null;
             $empleado->pagado = $nomina ? $nomina->pagado : false;
-            
+
             return $empleado;
         });
 
         $historial = Nomina::with('empleado')
-                           ->orderBy('numero_semana', 'desc')
-                           ->orderBy('id', 'desc')
-                           ->get();
+            ->orderBy('numero_semana', 'desc')
+            ->orderBy('id', 'desc')
+            ->get();
 
         return Inertia::render('Nominas/Index', [
             'empleados' => $empleados,
             'historial' => $historial,
             'semanaActual' => $semanaActual,
             'semanasDisponibles' => $semanasDisponibles,
-            'fechaCorteActual' => $fechaCorteStr
+            'fechaCorteActual' => $fechaCorteStr,
         ]);
     }
 
     public function generarRecibo(Request $request, $empleado_id)
     {
         $empleado = Empleado::findOrFail($empleado_id);
-
-        $hoy = Carbon::now();
-        $martesAutomatico = $hoy->isTuesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::TUESDAY)->endOfDay();
-        
-        // Recibimos la fecha exacta que la contadora quiere calcular (por defecto el martes pasado)
-        $fechaCorteStr = $request->input('fecha_corte', $martesAutomatico->format('Y-m-d'));
-        $finSemana = Carbon::parse($fechaCorteStr)->endOfDay();
-        $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay();
-        $numero_semana = $inicioSemana->weekOfYear;
-
-        $asistencias = Asistencia::where('empleado_id', $empleado->id)
-            ->whereBetween('fecha', [$inicioSemana, $finSemana])
-            ->get();
-
-        $horas_normales = 0;
-        $horas_extra = 0;
-
-        foreach($asistencias as $asistencia) {
-            $fecha_asistencia = Carbon::parse($asistencia->fecha);
-            if ($fecha_asistencia->isSaturday()) {
-                $horas_extra += $asistencia->horas_trabajadas;
-            } else {
-                $horas_normales += $asistencia->horas_trabajadas;
-            }
-        }
-
-        $pago_normal = $horas_normales * $empleado->sueldo_por_hora;
-        $pago_extra = $horas_extra * ($empleado->sueldo_por_hora * 2); 
-        $total_percepciones = $pago_normal + $pago_extra;
-        $total_deducciones = 0; 
-        $pago_neto = $total_percepciones - $total_deducciones;
+        [$inicioSemana, $finSemana, $numeroSemana] = $this->resolverSemanaNomina($request);
+        $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana);
 
         $nomina = Nomina::updateOrCreate(
-            ['empleado_id' => $empleado->id, 'numero_semana' => $numero_semana],
-            [
-                'fecha_inicio' => $inicioSemana->format('Y-m-d'),
-                'fecha_fin' => $finSemana->format('Y-m-d'),
-                'horas_normales' => $horas_normales,
-                'horas_extra' => $horas_extra,
-                'total_percepciones' => $total_percepciones,
-                'total_deducciones' => $total_deducciones,
-                'pago_neto' => $pago_neto,
-            ]
+            ['empleado_id' => $empleado->id, 'numero_semana' => $numeroSemana],
+            $this->datosNominaParaGuardar($inicioSemana, $finSemana, $desglose)
         );
+        $nomina->setRelation('empleado', $empleado);
 
-        // CORREGIDO: Se inyectan de forma explícita los desgloses calculados que exige el Blade del PDF
-        $pdf = Pdf::loadView('pdf.recibo_nomina', compact(
-            'nomina', 
-            'empleado', 
-            'pago_normal', 
-            'pago_extra', 
-            'total_percepciones', 
-            'total_deducciones', 
-            'pago_neto'
-        ));
-        
-        return $pdf->stream('Recibo_Semana_'.$numero_semana.'_'.$empleado->nombre_completo.'.pdf');
+        $pdf = Pdf::loadView('pdf.recibo_nomina', $this->datosVistaRecibo($nomina, $empleado, $desglose));
+
+        return $pdf->stream('Recibo_Semana_' . $numeroSemana . '_' . $empleado->nombre_completo . '.pdf');
     }
 
     public function exportarExcelIndividual(Request $request, $empleado_id)
     {
         $empleado = Empleado::findOrFail($empleado_id);
-        
-        $hoy = Carbon::now();
-        $martesAutomatico = $hoy->isTuesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::TUESDAY)->endOfDay();
-        
-        // Usamos exactamente el mismo filtro de fecha (Martes) que usa el PDF para que coincidan los montos
-        $fechaCorteStr = $request->input('fecha_corte', $martesAutomatico->format('Y-m-d'));
-        $finSemana = Carbon::parse($fechaCorteStr)->endOfDay();
-        $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay();
-        $numero_semana = $inicioSemana->weekOfYear;
+        [$inicioSemana, $finSemana, $numeroSemana] = $this->resolverSemanaNomina($request);
+        $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana);
 
-        // Buscamos si ya existe el registro de la nómina para esta semana contable
         $nomina = Nomina::where('empleado_id', $empleado->id)
-                        ->where('numero_semana', $numero_semana)
-                        ->first();
+            ->where('numero_semana', $numeroSemana)
+            ->first();
 
-        // Si no se ha creado el recibo en la base de datos, calculamos los subtotales en caliente
-        if (!$nomina) {
-            $asistencias = Asistencia::where('empleado_id', $empleado->id)
-                ->whereBetween('fecha', [$inicioSemana, $finSemana])
-                ->get();
-
-            $horas_normales = 0;
-            $horas_extra = 0;
-
-            foreach($asistencias as $asistencia) {
-                $fecha_asistencia = Carbon::parse($asistencia->fecha);
-                if ($fecha_asistencia->isSaturday()) {
-                    $horas_extra += $asistencia->horas_trabajadas;
-                } else {
-                    $horas_normales += $asistencia->horas_trabajadas;
-                }
-            }
-
-            $pago_normal = $horas_normales * $empleado->sueldo_por_hora;
-            $pago_extra = $horas_extra * ($empleado->sueldo_por_hora * 2);
-            $total_percepciones = $pago_normal + $pago_extra;
-            $total_deducciones = 0;
-            $pago_neto = $total_percepciones - $total_deducciones;
+        if ($nomina) {
+            $nomina->update($this->datosNominaParaGuardar($inicioSemana, $finSemana, $desglose));
         } else {
-            // Si la nómina ya existe en la base de datos, extraemos sus valores exactos guardados
-            $pago_normal = $nomina->horas_normales * $empleado->sueldo_por_hora;
-            $pago_extra = $nomina->horas_extra * ($empleado->sueldo_por_hora * 2);
-            $total_percepciones = $nomina->total_percepciones;
-            $total_deducciones = $nomina->total_deducciones;
-            $pago_neto = $nomina->pago_neto;
+            $nomina = new Nomina(array_merge([
+                'empleado_id' => $empleado->id,
+                'numero_semana' => $numeroSemana,
+            ], $this->datosNominaParaGuardar($inicioSemana, $finSemana, $desglose)));
         }
 
-        // Estructuramos el set de datos para mandarlo directamente a 'excel.recibo_individual'
-        $datosExcel = [
-            'nomina' => $nomina ?? new Nomina([
-                'numero_semana' => $numero_semana,
-                'fecha_inicio' => $inicioSemana->format('Y-m-d'),
-                'fecha_fin' => $finSemana->format('Y-m-d')
-            ]),
-            'empleado' => $empleado,
-            'pago_normal' => $pago_normal,
-            'pago_extra' => $pago_extra,
-            'descuento_faltas' => 0,
-            'descuento_retardos' => 0,
-            'pago_vacaciones' => 0,
-            'total_percepciones' => $total_percepciones,
-            'total_deducciones' => $total_deducciones,
-            'pago_neto' => $pago_neto
-        ];
+        $nomina->setRelation('empleado', $empleado);
+        $datosExcel = $this->datosVistaRecibo($nomina, $empleado, $desglose);
+        $nombreArchivo = 'Recibo_Semana_' . $numeroSemana . '_' . str_replace(' ', '_', $empleado->nombre_completo) . '.xlsx';
 
-        $nombreArchivo = 'Recibo_Semana_' . $numero_semana . '_' . str_replace(' ', '_', $empleado->nombre_completo) . '.xlsx';
-
-        // Disparamos la descarga invocando a la Facade global de Maatwebsite Excel
         return \Maatwebsite\Excel\Facades\Excel::download(new ReciboIndividualExport($datosExcel), $nombreArchivo);
     }
 
     public function descargar(Nomina $nomina)
     {
         $empleado = $nomina->empleado;
+        $inicioSemana = Carbon::parse($nomina->fecha_inicio)->startOfDay();
+        $finSemana = Carbon::parse($nomina->fecha_fin)->endOfDay();
+        $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana);
 
-        // CORREGIDO: Calculamos los desgloses individuales para el re-descargado desde el historial
-        $pago_normal = $nomina->horas_normales * $empleado->sueldo_por_hora;
-        $pago_extra = $nomina->horas_extra * ($empleado->sueldo_por_hora * 2);
-        $total_percepciones = $nomina->total_percepciones;
-        $total_deducciones = $nomina->total_deducciones;
-        $pago_neto = $nomina->pago_neto;
+        $nomina->update($this->datosNominaParaGuardar($inicioSemana, $finSemana, $desglose));
+        $nomina->refresh();
+        $nomina->setRelation('empleado', $empleado);
 
-        $pdf = Pdf::loadView('pdf.recibo_nomina', compact(
-            'nomina', 
-            'empleado', 
-            'pago_normal', 
-            'pago_extra', 
-            'total_percepciones', 
-            'total_deducciones', 
-            'pago_neto'
-        ));
+        $pdf = Pdf::loadView('pdf.recibo_nomina', $this->datosVistaRecibo($nomina, $empleado, $desglose));
 
-        return $pdf->stream('Recibo_Semana_'.$nomina->numero_semana.'_'.$empleado->nombre_completo.'.pdf');
+        return $pdf->stream('Recibo_Semana_' . $nomina->numero_semana . '_' . $empleado->nombre_completo . '.pdf');
     }
 
     public function pagar(Nomina $nomina)
     {
         $nomina->update(['pagado' => !$nomina->pagado]);
         return back();
+    }
+
+    private function resolverSemanaNomina(Request $request): array
+    {
+        $hoy = Carbon::now();
+        $martesAutomatico = $hoy->isTuesday()
+            ? $hoy->copy()->endOfDay()
+            : $hoy->copy()->previous(Carbon::TUESDAY)->endOfDay();
+
+        $fechaCorteStr = $request->input('fecha_corte', $martesAutomatico->format('Y-m-d'));
+        $finSemana = Carbon::parse($fechaCorteStr)->endOfDay();
+        $inicioSemana = $finSemana->copy()->subDays(6)->startOfDay();
+
+        return [$inicioSemana, $finSemana, $inicioSemana->weekOfYear];
+    }
+
+    private function calcularDesgloseNomina(Empleado $empleado, Carbon $inicioSemana, Carbon $finSemana): array
+    {
+        $asistencias = Asistencia::where('empleado_id', $empleado->id)
+            ->whereBetween('fecha', [
+                $inicioSemana->format('Y-m-d'),
+                $finSemana->format('Y-m-d'),
+            ])
+            ->get();
+
+        $horasNormales = (float) $asistencias->where('tipo_asistencia', 'Normal')->sum('horas_trabajadas');
+        $horasExtra = (float) $asistencias->where('tipo_asistencia', 'Normal')->sum('horas_extra');
+        $diasFalta = $asistencias->where('tipo_asistencia', 'Falta')->count();
+        $diasIncapacidad = $asistencias->where('tipo_asistencia', 'Incapacidad')->count();
+        $diasVacaciones = $asistencias->where('tipo_asistencia', 'Vacaciones')->count();
+        $minutosTarde = (int) $asistencias->sum('minutos_tarde');
+
+        $sueldoPorHora = (float) ($empleado->sueldo_por_hora ?? 0);
+        $esEstudiante = $this->empleadoEsEstudiante($empleado);
+        $sueldoSemanal = (float) ($empleado->sueldo_semanal ?? 0);
+
+        if (!$esEstudiante && $sueldoSemanal <= 0 && $sueldoPorHora > 0) {
+            $sueldoSemanal = $sueldoPorHora * self::HORAS_BASE_SEMANA;
+        }
+
+        $tarifaBaseHora = $esEstudiante
+            ? $sueldoPorHora
+            : ($sueldoSemanal > 0 ? $sueldoSemanal / self::HORAS_BASE_SEMANA : 0);
+        $pagoDiaPlanta = $sueldoSemanal > 0 ? $sueldoSemanal / self::DIAS_LABORALES_SEMANA : 0;
+
+        $pagoNormal = $esEstudiante
+            ? $horasNormales * $sueldoPorHora
+            : $sueldoSemanal;
+        $pagoExtra = $horasExtra * ($tarifaBaseHora * 2);
+        $pagoIncapacidad = (!$esEstudiante && $diasIncapacidad > 0)
+            ? $pagoDiaPlanta * 0.60 * $diasIncapacidad
+            : 0;
+        $pagoVacaciones = (!$esEstudiante && $diasVacaciones > 0)
+            ? $pagoDiaPlanta * 0.25 * $diasVacaciones
+            : 0;
+
+        $descuentoFaltas = (!$esEstudiante && $diasFalta > 0)
+            ? $pagoDiaPlanta * $diasFalta
+            : 0;
+        $descuentoRetardos = $tarifaBaseHora > 0 && $minutosTarde > 0
+            ? ($tarifaBaseHora / 60) * $minutosTarde
+            : 0;
+        $deduccionPrestamo = $this->calcularDeduccionPrestamo($empleado);
+        $descuentoImss = (float) ($empleado->descuento_imss ?? 0);
+        $descuentoIsr = (float) ($empleado->descuento_isr ?? 0);
+        $descuentoInfonavit = (float) ($empleado->descuento_infonavit ?? 0);
+
+        $totalPercepciones = $pagoNormal + $pagoExtra + $pagoIncapacidad + $pagoVacaciones;
+        $totalDeducciones = $descuentoFaltas
+            + $descuentoRetardos
+            + $deduccionPrestamo
+            + $descuentoImss
+            + $descuentoIsr
+            + $descuentoInfonavit;
+        $pagoNeto = $totalPercepciones - $totalDeducciones;
+
+        return [
+            'es_estudiante' => $esEstudiante,
+            'sueldo_semanal' => round($sueldoSemanal, 2),
+            'sueldo_por_hora' => round($sueldoPorHora, 2),
+            'tarifa_base_hora' => round($tarifaBaseHora, 2),
+            'pago_dia_planta' => round($pagoDiaPlanta, 2),
+            'horas_normales' => round($horasNormales, 2),
+            'horas_extra' => round($horasExtra, 2),
+            'dias_falta' => $diasFalta,
+            'dias_incapacidad' => $diasIncapacidad,
+            'dias_vacaciones' => $diasVacaciones,
+            'minutos_tarde_acumulados' => $minutosTarde,
+            'pago_normal' => round($pagoNormal, 2),
+            'pago_extra' => round($pagoExtra, 2),
+            'pago_incapacidad' => round($pagoIncapacidad, 2),
+            'pago_vacaciones' => round($pagoVacaciones, 2),
+            'descuento_faltas' => round($descuentoFaltas, 2),
+            'descuento_retardos' => round($descuentoRetardos, 2),
+            'deduccion_prestamo' => round($deduccionPrestamo, 2),
+            'descuento_imss' => round($descuentoImss, 2),
+            'descuento_isr' => round($descuentoIsr, 2),
+            'descuento_infonavit' => round($descuentoInfonavit, 2),
+            'total_percepciones' => round($totalPercepciones, 2),
+            'total_deducciones' => round($totalDeducciones, 2),
+            'pago_neto' => round($pagoNeto, 2),
+        ];
+    }
+
+    private function empleadoEsEstudiante(Empleado $empleado): bool
+    {
+        return (bool) ($empleado->es_estudiante ?? false);
+    }
+
+    private function calcularDeduccionPrestamo(Empleado $empleado): float
+    {
+        $saldo = (float) ($empleado->saldo_prestamo ?? 0);
+        $cuota = (float) ($empleado->cuota_prestamo ?? 0);
+
+        if ($cuota <= 0) {
+            return 0;
+        }
+
+        return $saldo > 0 ? min($saldo, $cuota) : $cuota;
+    }
+
+    private function datosNominaParaGuardar(Carbon $inicioSemana, Carbon $finSemana, array $desglose): array
+    {
+        return [
+            'fecha_inicio' => $inicioSemana->format('Y-m-d'),
+            'fecha_fin' => $finSemana->format('Y-m-d'),
+            'horas_normales' => $desglose['horas_normales'],
+            'horas_extra' => $desglose['horas_extra'],
+            'total_percepciones' => $desglose['total_percepciones'],
+            'total_deducciones' => $desglose['total_deducciones'],
+            'pago_neto' => $desglose['pago_neto'],
+        ];
+    }
+
+    private function datosVistaRecibo(Nomina $nomina, Empleado $empleado, array $desglose): array
+    {
+        return array_merge([
+            'nomina' => $nomina,
+            'empleado' => $empleado,
+        ], $desglose);
     }
 }

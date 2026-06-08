@@ -181,24 +181,27 @@ const cambiarEstadoPago = (nominaId) => {
                                     type="button"
                                     @click="filtroEstado = 'todos'" 
                                     :class="filtroEstado === 'todos' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
-                                    class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex-1 sm:flex-none"
+                                    class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all sm:flex-none"
                                 >
+                                    <i class="ti ti-layout-grid" aria-hidden="true"></i>
                                     Todos
                                 </button>
                                 <button 
                                     type="button"
                                     @click="filtroEstado = 'pendiente'" 
                                     :class="filtroEstado === 'pendiente' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'"
-                                    class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex-1 sm:flex-none"
+                                    class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all sm:flex-none"
                                 >
+                                    <i class="ti ti-clock-dollar" aria-hidden="true"></i>
                                     Pendientes
                                 </button>
                                 <button 
                                     type="button"
                                     @click="filtroEstado = 'liquidado'" 
                                     :class="filtroEstado === 'liquidado' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'"
-                                    class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex-1 sm:flex-none"
+                                    class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all sm:flex-none"
                                 >
+                                    <i class="ti ti-circle-check" aria-hidden="true"></i>
                                     Liquidados
                                 </button>
                             </div>

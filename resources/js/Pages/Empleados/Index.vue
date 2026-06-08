@@ -29,7 +29,16 @@ const form = useForm({
     banco: '',
     numero_cuenta: '',
     nss: '',
-    rfc: ''
+    rfc: '',
+    curp: '',
+    estado_civil: '',
+    genero: '',
+    fecha_nacimiento: '',
+    telefono: '',
+    correo: '',
+    direccion: '',
+    contacto_emergencia_nombre: '',
+    contacto_emergencia_telefono: ''
 });
 
 const empleadosFiltrados = computed(() => {
@@ -41,6 +50,16 @@ const empleadosFiltrados = computed(() => {
         return nombreMatch || numeroMatch;
     });
 });
+
+const esEstudiante = (empleado) => Boolean(Number(empleado.es_estudiante ?? 0));
+
+const sueldoSemanalEmpleado = (empleado) => {
+    const sueldoSemanal = Number(empleado.sueldo_semanal ?? 0);
+    if (sueldoSemanal > 0) return sueldoSemanal.toFixed(2);
+
+    const sueldoPorHora = Number(empleado.sueldo_por_hora ?? 0);
+    return sueldoPorHora > 0 ? (sueldoPorHora * 48).toFixed(2) : '0.00';
+};
 
 const submitForm = () => {
     if (editando.value) {
@@ -63,7 +82,7 @@ const editarEmpleado = (empleado) => {
     form.fecha_ingreso = empleado.fecha_ingreso || '';
     form.ajuste_vacaciones = empleado.ajuste_vacaciones || 0; // <-- NUEVO: Para que cargue el dato al editar
     form.forma_pago = empleado.forma_pago || 'Efectivo';
-    form.es_estudiante = empleado.sueldo_por_hora > 0; 
+    form.es_estudiante = esEstudiante(empleado);
     form.sueldo_semanal = empleado.sueldo_semanal || '';
     form.sueldo_por_hora = empleado.sueldo_por_hora || '';
     form.saldo_prestamo = empleado.saldo_prestamo || ''; 
@@ -75,6 +94,15 @@ const editarEmpleado = (empleado) => {
     form.numero_cuenta = empleado.numero_cuenta || '';
     form.nss = empleado.nss || '';
     form.rfc = empleado.rfc || '';
+    form.curp = empleado.curp || '';
+    form.estado_civil = empleado.estado_civil || '';
+    form.genero = empleado.genero || '';
+    form.fecha_nacimiento = empleado.fecha_nacimiento || '';
+    form.telefono = empleado.telefono || '';
+    form.correo = empleado.correo || '';
+    form.direccion = empleado.direccion || '';
+    form.contacto_emergencia_nombre = empleado.contacto_emergencia_nombre || '';
+    form.contacto_emergencia_telefono = empleado.contacto_emergencia_telefono || '';
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
@@ -127,6 +155,7 @@ const eliminarEmpleado = (id, nombre) => {
                         </div>
 
                         <button v-if="editando" @click="cancelarEdicion" class="btn-secondary" type="button">
+                            <i class="ti ti-x" aria-hidden="true"></i>
                             Cancelar edición
                         </button>
                     </div>
@@ -145,7 +174,7 @@ const eliminarEmpleado = (id, nombre) => {
                                     type="text" 
                                     required 
                                     class="field-input-soft" 
-                                    @input="form.nombre_completo = form.nombre_completo.replace(/[0-89]/g, '')"
+                                    @input="form.nombre_completo = form.nombre_completo.replace(/[0-9]/g, '')"
                                 />
                             </div>
 
@@ -157,6 +186,77 @@ const eliminarEmpleado = (id, nombre) => {
                             <div>
                                 <label class="field-label">Fecha de Ingreso</label>
                                 <input v-model="form.fecha_ingreso" type="date" class="field-input-soft" />
+                            </div>
+
+                            <div class="section-divider">
+                                <p class="section-divider-title">
+                                    <i class="ti ti-id" aria-hidden="true"></i>
+                                    Datos personales del expediente
+                                </p>
+                            </div>
+
+                            <div class="md:col-span-2">
+                                <label class="field-label">CURP</label>
+                                <input v-model="form.curp" type="text" maxlength="18" class="field-input-soft" placeholder="18 caracteres" @input="form.curp = form.curp.toUpperCase().replace(/[^A-Z0-9]/g, '')" />
+                            </div>
+
+                            <div>
+                                <label class="field-label">Fecha de nacimiento</label>
+                                <input v-model="form.fecha_nacimiento" type="date" class="field-input-soft" />
+                            </div>
+
+                            <div>
+                                <label class="field-label">Género</label>
+                                <select v-model="form.genero" class="field-input-soft">
+                                    <option value="">Sin registrar</option>
+                                    <option value="Femenino">Femenino</option>
+                                    <option value="Masculino">Masculino</option>
+                                    <option value="Otro">Otro</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="field-label">Estado civil</label>
+                                <select v-model="form.estado_civil" class="field-input-soft">
+                                    <option value="">Sin registrar</option>
+                                    <option value="Soltero(a)">Soltero(a)</option>
+                                    <option value="Casado(a)">Casado(a)</option>
+                                    <option value="Union libre">Union libre</option>
+                                    <option value="Divorciado(a)">Divorciado(a)</option>
+                                    <option value="Viudo(a)">Viudo(a)</option>
+                                </select>
+                            </div>
+
+                            <div class="section-divider">
+                                <p class="section-divider-title">
+                                    <i class="ti ti-phone-call" aria-hidden="true"></i>
+                                    Contacto y emergencia
+                                </p>
+                            </div>
+
+                            <div>
+                                <label class="field-label">Teléfono</label>
+                                <input v-model="form.telefono" type="text" maxlength="20" class="field-input-soft" placeholder="10 dígitos" @input="form.telefono = form.telefono.replace(/[^\d+\s()-]/g, '')" />
+                            </div>
+
+                            <div>
+                                <label class="field-label">Correo electrónico</label>
+                                <input v-model="form.correo" type="email" class="field-input-soft" placeholder="correo@empresa.com" />
+                            </div>
+
+                            <div class="md:col-span-2">
+                                <label class="field-label">Dirección</label>
+                                <input v-model="form.direccion" type="text" class="field-input-soft" placeholder="Calle, número, colonia" />
+                            </div>
+
+                            <div class="md:col-span-2">
+                                <label class="field-label text-rose-700">Contacto de emergencia</label>
+                                <input v-model="form.contacto_emergencia_nombre" type="text" class="field-input-soft border-rose-100" placeholder="Nombre completo" />
+                            </div>
+
+                            <div class="md:col-span-2">
+                                <label class="field-label text-rose-700">Teléfono de emergencia</label>
+                                <input v-model="form.contacto_emergencia_telefono" type="text" maxlength="20" class="field-input-soft border-rose-100" placeholder="Teléfono" @input="form.contacto_emergencia_telefono = form.contacto_emergencia_telefono.replace(/[^\d+\s()-]/g, '')" />
                             </div>
 
                             <div>
@@ -239,11 +339,12 @@ const eliminarEmpleado = (id, nombre) => {
 
                             <div class="md:col-span-2">
                                 <label class="field-label">RFC</label>
-                                <input v-model="form.rfc" type="text" maxlength="13"  class="field-input-soft" placeholder="12 o 13 caracteres" @input="form.rfc = form.rfc.toUpperCase().replace(/[^A-Z0-9&ñÑ]¨/g, '')" />
+                                <input v-model="form.rfc" type="text" maxlength="13"  class="field-input-soft" placeholder="12 o 13 caracteres" @input="form.rfc = form.rfc.toUpperCase().replace(/[^A-Z0-9&]/g, '')" />
                             </div>
 
                             <div class="flex justify-end md:col-span-4 mt-2">
                                 <button type="submit" :disabled="form.processing" :class="editando ? 'btn-warning' : 'btn-accent'">
+                                    <i :class="['ti', editando ? 'ti-device-floppy' : 'ti-user-plus']" aria-hidden="true"></i>
                                     {{ form.processing ? 'Guardando...' : (editando ? 'Actualizar expediente' : 'Registrar empleado') }}
                                 </button>
                             </div>
@@ -258,7 +359,8 @@ const eliminarEmpleado = (id, nombre) => {
                             <p class="panel-subtitle">{{ empleadosFiltrados.length }} trabajador(es) encontrados</p>
                         </div>
                         <div class="relative w-full lg:w-96">
-                            <input v-model="searchQuery" type="text" class="field-input-soft pl-4" placeholder="Buscar por nombre o número..." />
+                            <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-slate-400" aria-hidden="true"></i>
+                            <input v-model="searchQuery" type="text" class="field-input-soft pl-10" placeholder="Buscar por nombre o número..." />
                         </div>
                     </div>
 
@@ -294,8 +396,8 @@ const eliminarEmpleado = (id, nombre) => {
                                     </td>
                                     <td class="whitespace-nowrap">
                                         <span class="status-pill status-success w-max">
-                                            <span v-if="empleado.sueldo_por_hora > 0">Estudiante: ${{ empleado.sueldo_por_hora }} / hr</span>
-                                            <span v-else>${{ empleado.sueldo_semanal }} / sem</span>
+                                            <span v-if="esEstudiante(empleado)">Estudiante: ${{ empleado.sueldo_por_hora }} / hr</span>
+                                            <span v-else>${{ sueldoSemanalEmpleado(empleado) }} / sem</span>
                                         </span>
                                     </td>
                                     <td class="whitespace-nowrap">
@@ -309,8 +411,18 @@ const eliminarEmpleado = (id, nombre) => {
                                         </div>
                                     </td>
                                     <td class="whitespace-nowrap text-right">
-                                        <button @click="editarEmpleado(empleado)" class="btn-secondary text-xs mr-2">Editar</button>
-                                        <button @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="btn-danger text-xs">Eliminar</button>
+                                        <Link :href="route('empleados.show', empleado.id)" class="btn-accent text-xs mr-2">
+                                            <i class="ti ti-user-screen" aria-hidden="true"></i>
+                                            Ver perfil
+                                        </Link>
+                                        <button @click="editarEmpleado(empleado)" class="btn-secondary text-xs mr-2">
+                                            <i class="ti ti-pencil" aria-hidden="true"></i>
+                                            Editar
+                                        </button>
+                                        <button @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="btn-danger text-xs">
+                                            <i class="ti ti-trash" aria-hidden="true"></i>
+                                            Eliminar
+                                        </button>
                                     </td>
                                 </tr>
                             </tbody>

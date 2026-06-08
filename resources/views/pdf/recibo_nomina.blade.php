@@ -23,6 +23,17 @@
     </style>
 </head>
 <body>
+    @php
+        $empleadoRecibo = $empleado ?? $nomina->empleado;
+        $esEstudiante = $es_estudiante ?? (bool) ($empleadoRecibo->es_estudiante ?? false);
+        $sueldoSemanalRecibo = $sueldo_semanal ?? ($empleadoRecibo->sueldo_semanal ?? 0);
+        $sueldoHoraRecibo = $sueldo_por_hora ?? ($empleadoRecibo->sueldo_por_hora ?? 0);
+        $tarifaBaseHoraRecibo = $tarifa_base_hora ?? ($esEstudiante ? $sueldoHoraRecibo : ($sueldoSemanalRecibo > 0 ? $sueldoSemanalRecibo / 48 : 0));
+        $deduccionPrestamoRecibo = $deduccion_prestamo ?? ($empleadoRecibo->cuota_prestamo ?? 0);
+        $descuentoImssRecibo = $descuento_imss ?? ($empleadoRecibo->descuento_imss ?? 0);
+        $descuentoIsrRecibo = $descuento_isr ?? ($empleadoRecibo->descuento_isr ?? 0);
+        $descuentoInfonavitRecibo = $descuento_infonavit ?? ($empleadoRecibo->descuento_infonavit ?? 0);
+    @endphp
 
     <table class="table-main">
         <tr>
@@ -45,8 +56,8 @@
         <tr>
             <td colspan="2" style="padding: 15px 5px;">
                 <span class="muted">Nombre del empleado</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                <span class="money">{{ $nomina->empleado->numero_empleado ?? 'S/N' }}</span> <br><br><br>
-                <div class="center" style="font-weight: bold;">{{ strtoupper($nomina->empleado->nombre_completo) }}</div>
+                <span class="money">{{ $empleadoRecibo->numero_empleado ?? 'S/N' }}</span> <br><br><br>
+                <div class="center" style="font-weight: bold;">{{ strtoupper($empleadoRecibo->nombre_completo ?? 'N/A') }}</div>
             </td>
             <td colspan="2" class="center" style="padding: 15px 5px;">
                 <span class="semana-info">SEMANA {{ $nomina->numero_semana }}</span><br><br>
@@ -66,61 +77,64 @@
         </tr>
         <tr>
             <td style="vertical-align: top; padding-top: 10px;">
-                @if($nomina->empleado->sueldo_por_hora > 0)
-                    <b>SUELDO (Tarifa x Hora: ${{ number_format($nomina->empleado->sueldo_por_hora, 2) }})</b><br>
+                @if($esEstudiante)
+                    <b>SUELDO (Tarifa x Hora: ${{ number_format($sueldoHoraRecibo, 2) }})</b><br>
                 @else
-                    <b>SUELDO BASE</b><br>
+                    <b>SUELDO SEMANAL BASE: ${{ number_format($sueldoSemanalRecibo, 2) }}</b><br>
                 @endif
                 <br>
 
-                HORAS NORMALES <span style="float:right;">{{ $nomina->horas_normales }} hrs</span><br>
+                @if($esEstudiante)
+                    HORAS NORMALES <span style="float:right;">{{ $nomina->horas_normales }} hrs</span><br>
+                @else
+                    HORAS REGISTRADAS <span style="float:right;">{{ $nomina->horas_normales }} hrs</span><br>
+                @endif
 
                 @if($nomina->horas_extra > 0)
-                HORAS EXTRA <span style="float:right;">{{ $nomina->horas_extra }} hrs</span><br>
+                    HORAS EXTRA (Base: ${{ number_format($tarifaBaseHoraRecibo, 2) }}) <span style="float:right;">{{ $nomina->horas_extra }} hrs</span><br>
                 @else
-                <br>
+                    <br>
                 @endif
                 <br>
 
                 @if(isset($dias_incapacidad) && $dias_incapacidad > 0)
-                <span class="money" style="font-size: 10px;">INCAPACIDAD ({{ $dias_incapacidad }} Días) al 60%</span><br>
+                    <span class="money" style="font-size: 10px;">INCAPACIDAD ({{ $dias_incapacidad }} Días) al 60%</span><br>
                 @endif
 
                 @if(isset($dias_vacaciones) && $dias_vacaciones > 0)
-                <span style="font-size: 8px;">D.P. VACACION + 25% P.V. ({{ $dias_vacaciones }} Días)</span><br>
+                    <span style="font-size: 8px;">D.P. VACACION + 25% P.V. ({{ $dias_vacaciones }} Días)</span><br>
                 @else
-                <span style="font-size: 8px;">D.P. VACACION + 25% P.V.</span><br>
+                    <span style="font-size: 8px;">D.P. VACACION + 25% P.V.</span><br>
                 @endif
             </td>
 
             <td style="vertical-align: top; padding-top: 10px;" class="right">
                 <br>
-                <!-- AHORA SÍ IMPRIME EL DINERO PERFECTO -->
-                $ {{ number_format($pago_normal, 2) }}<br>
+                $ {{ number_format($pago_normal ?? 0, 2) }}<br>
 
                 @if($nomina->horas_extra > 0)
-                $ {{ number_format($pago_extra, 2) }}<br>
+                    $ {{ number_format($pago_extra ?? 0, 2) }}<br>
                 @else
-                <br>
+                    <br>
                 @endif
                 <br>
 
                 @if(isset($dias_incapacidad) && $dias_incapacidad > 0)
-                $ {{ number_format($pago_incapacidad, 2) }}<br>
+                    $ {{ number_format($pago_incapacidad ?? 0, 2) }}<br>
                 @endif
 
                 @if(isset($dias_vacaciones) && $dias_vacaciones > 0)
-                $ {{ number_format($pago_vacaciones, 2) }}
+                    $ {{ number_format($pago_vacaciones ?? 0, 2) }}
                 @else
-                <br>
+                    <br>
                 @endif
             </td>
 
             <td style="vertical-align: top; padding-top: 10px; width: 25%;">
                 @if(isset($dias_falta) && $dias_falta > 0)
-                Falta(s) - {{ $dias_falta }} días<br>
+                    Falta(s) - {{ $dias_falta }} días<br>
                 @else
-                Falta (s)<br>
+                    Falta (s)<br>
                 @endif
                 P. Personal<br>
                 Retardos ({{ $minutos_tarde_acumulados ?? 0 }} min)<br>
@@ -133,18 +147,18 @@
                 $ {{ number_format($descuento_faltas ?? 0, 2) }} <br>
                 $ 0.00<br>
                 $ {{ number_format($descuento_retardos ?? 0, 2) }} <br>
-                $ {{ number_format($nomina->empleado->cuota_prestamo, 2) }} <br>
-                $ {{ number_format($nomina->empleado->descuento_imss, 2) }} <br>
-                $ {{ number_format($nomina->empleado->descuento_isr, 2) }} <br>
-                $ {{ number_format($nomina->empleado->descuento_infonavit, 2) }}
+                $ {{ number_format($deduccionPrestamoRecibo, 2) }} <br>
+                $ {{ number_format($descuentoImssRecibo, 2) }} <br>
+                $ {{ number_format($descuentoIsrRecibo, 2) }} <br>
+                $ {{ number_format($descuentoInfonavitRecibo, 2) }}
             </td>
         </tr>
         <tr>
-            <td colspan="2">TOTAL DE PERCEPCIONES: <span style="float:right">$ {{ number_format($nomina->total_percepciones, 2) }}</span></td>
-            <td colspan="2">TOTAL DE DEDUCCIONES: <span style="float:right">$ {{ number_format($nomina->total_deducciones, 2) }}</span></td>
+            <td colspan="2">TOTAL DE PERCEPCIONES: <span style="float:right">$ {{ number_format($total_percepciones ?? $nomina->total_percepciones, 2) }}</span></td>
+            <td colspan="2">TOTAL DE DEDUCCIONES: <span style="float:right">$ {{ number_format($total_deducciones ?? $nomina->total_deducciones, 2) }}</span></td>
         </tr>
         <tr>
-            <td colspan="4" class="right net-total"><b>NETO A PAGAR: $ {{ number_format($nomina->pago_neto, 2) }}</b></td>
+            <td colspan="4" class="right net-total"><b>NETO A PAGAR: $ {{ number_format($pago_neto ?? $nomina->pago_neto, 2) }}</b></td>
         </tr>
 
         <tr>

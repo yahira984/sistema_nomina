@@ -376,21 +376,23 @@ const descartarRevision = () => {
 
         <div class="page-shell">
             <div class="content-wrap space-y-6">
-                <div class="grid gap-2 rounded-lg bg-slate-200/60 p-1.5 md:grid-cols-4">
+                <div class="tab-strip md:grid-cols-4">
                     <button
                         @click="tabActiva = 'captura'"
                         :class="tabActiva === 'captura' ? 'bg-white text-teal-700 shadow font-bold' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'"
-                        class="rounded-lg px-3 py-2.5 text-sm font-medium transition-all"
+                        class="tab-button"
                         type="button"
                     >
+                        <i class="ti ti-clock-plus" aria-hidden="true"></i>
                         Captura y Reloj
                     </button>
                     <button
                         @click="tabActiva = 'revision'"
                         :class="tabActiva === 'revision' ? 'bg-white text-blue-700 shadow font-bold' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'"
-                        class="rounded-lg px-3 py-2.5 text-sm font-medium transition-all"
+                        class="tab-button"
                         type="button"
                     >
+                        <i class="ti ti-file-search" aria-hidden="true"></i>
                         Revision CSV
                         <span v-if="filasRevision.length" class="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
                             {{ filasRevision.length }}
@@ -399,24 +401,29 @@ const descartarRevision = () => {
                     <button
                         @click="tabActiva = 'vacaciones'"
                         :class="tabActiva === 'vacaciones' ? 'bg-white text-teal-700 shadow font-bold' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'"
-                        class="rounded-lg px-3 py-2.5 text-sm font-medium transition-all"
+                        class="tab-button"
                         type="button"
                     >
+                        <i class="ti ti-beach" aria-hidden="true"></i>
                         Control Vacaciones
                     </button>
                     <button
                         @click="tabActiva = 'faltas'"
                         :class="tabActiva === 'faltas' ? 'bg-white text-rose-700 shadow font-bold' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'"
-                        class="rounded-lg px-3 py-2.5 text-sm font-medium transition-all"
+                        class="tab-button"
                         type="button"
                     >
+                        <i class="ti ti-user-x" aria-hidden="true"></i>
                         Control Faltas
                     </button>
                 </div>
 
                 <div v-show="tabActiva === 'captura'" class="space-y-8 animate-fade-in">
                     <section class="app-panel border border-emerald-200 bg-emerald-50/50">
-                        <form @submit.prevent="subirArchivo" class="grid gap-4 p-5 sm:p-6 lg:grid-cols-[1.5fr_1fr_1fr_auto] lg:items-end">
+                        <form @submit.prevent="subirArchivo" class="grid gap-4 p-5 sm:p-6 lg:grid-cols-[auto_1.5fr_1fr_1fr_auto] lg:items-end">
+                            <div class="hidden h-14 w-14 items-center justify-center rounded-xl border border-emerald-200 bg-white text-2xl text-emerald-600 shadow-sm lg:flex">
+                                <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
+                            </div>
                             <div>
                                 <label class="field-label">Archivo CSV del reloj</label>
                                 <input
@@ -452,7 +459,7 @@ const descartarRevision = () => {
                                 {{ formUpload.processing ? 'Analizando...' : 'Analizar CSV' }}
                             </button>
 
-                            <progress v-if="formUpload.progress" :value="formUpload.progress.percentage" max="100" class="lg:col-span-4 w-full"></progress>
+                            <progress v-if="formUpload.progress" :value="formUpload.progress.percentage" max="100" class="lg:col-span-5 w-full"></progress>
                         </form>
                     </section>
 
@@ -560,9 +567,14 @@ const descartarRevision = () => {
 
                     <section class="app-panel">
                         <div class="panel-header">
-                            <div>
+                            <div class="flex items-start gap-3">
+                                <div class="soft-icon-teal">
+                                    <i class="ti ti-list-check text-xl" aria-hidden="true"></i>
+                                </div>
+                                <div>
                                 <h3 class="panel-title">Ultimos registros</h3>
                                 <p class="panel-subtitle">{{ asistenciasFiltradas.length }} asistencia(s) visibles</p>
+                                </div>
                             </div>
                             <div v-if="form.empleado_id" class="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
                                 Filtrando a: {{ empleados.find((empleado) => Number(empleado.id) === Number(form.empleado_id))?.nombre_completo }}
@@ -627,15 +639,26 @@ const descartarRevision = () => {
                 <div v-show="tabActiva === 'revision'" class="space-y-6 animate-fade-in">
                     <section class="app-panel">
                         <div class="panel-header">
-                            <div>
+                            <div class="flex items-start gap-3">
+                                <div class="soft-icon-blue">
+                                    <i class="ti ti-file-analytics text-xl" aria-hidden="true"></i>
+                                </div>
+                                <div>
                                 <h3 class="panel-title">Revision de importacion CSV</h3>
                                 <p class="panel-subtitle">
                                     {{ filasRevision.length ? 'Ajusta las filas detectadas antes de aprobarlas.' : 'Sube un CSV desde Captura y Reloj.' }}
                                 </p>
+                                </div>
                             </div>
                             <div class="flex flex-col gap-2 sm:flex-row">
-                                <button @click="seleccionarRevision(true)" :disabled="!filasRevision.length" class="btn-secondary" type="button">Seleccionar todo</button>
-                                <button @click="seleccionarRevision(false)" :disabled="!filasRevision.length" class="btn-secondary" type="button">Quitar seleccion</button>
+                                <button @click="seleccionarRevision(true)" :disabled="!filasRevision.length" class="btn-secondary" type="button">
+                                    <i class="ti ti-checks" aria-hidden="true"></i>
+                                    Seleccionar todo
+                                </button>
+                                <button @click="seleccionarRevision(false)" :disabled="!filasRevision.length" class="btn-secondary" type="button">
+                                    <i class="ti ti-square-x" aria-hidden="true"></i>
+                                    Quitar seleccion
+                                </button>
                             </div>
                         </div>
 
@@ -767,6 +790,7 @@ const descartarRevision = () => {
 
                             <div class="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end">
                                 <button @click="descartarRevision" :disabled="formRevision.processing" class="btn-secondary" type="button">
+                                    <i class="ti ti-trash" aria-hidden="true"></i>
                                     Descartar revision
                                 </button>
                                 <button @click="aprobarRevision" :disabled="formRevision.processing || resumenRevision.seleccionadas === 0" class="btn-accent" type="button">
@@ -787,9 +811,14 @@ const descartarRevision = () => {
                 <div v-show="tabActiva === 'vacaciones'" class="space-y-6 animate-fade-in">
                     <section class="app-panel">
                         <div class="panel-header">
-                            <div>
+                            <div class="flex items-start gap-3">
+                                <div class="soft-icon-emerald">
+                                    <i class="ti ti-beach text-xl" aria-hidden="true"></i>
+                                </div>
+                                <div>
                                 <h3 class="panel-title">Cuadro de Vacaciones</h3>
                                 <p class="panel-subtitle">Control global de dias correspondientes, tomados y restantes.</p>
+                                </div>
                             </div>
                             <input v-model="busquedaGlobal" type="text" class="field-input-soft lg:w-96" placeholder="Buscar trabajador..." />
                         </div>
@@ -853,9 +882,14 @@ const descartarRevision = () => {
                 <div v-show="tabActiva === 'faltas'" class="space-y-6 animate-fade-in">
                     <section class="app-panel">
                         <div class="panel-header border-b-rose-100">
-                            <div>
+                            <div class="flex items-start gap-3">
+                                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700">
+                                    <i class="ti ti-user-x text-xl" aria-hidden="true"></i>
+                                </div>
+                                <div>
                                 <h3 class="panel-title text-rose-900">Control de Faltas Injustificadas</h3>
                                 <p class="panel-subtitle">Acumulado anual de ausencias por empleado.</p>
+                                </div>
                             </div>
                             <input v-model="busquedaGlobal" type="text" class="field-input-soft lg:w-96 focus:border-rose-400 focus:ring-rose-500/20" placeholder="Buscar trabajador..." />
                         </div>
