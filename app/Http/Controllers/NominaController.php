@@ -288,6 +288,7 @@ class NominaController extends Controller
         return array_merge([
             'nomina' => $nomina,
             'empleado' => $empleado,
+            'es_estudiante' => $this->empleadoEsEstudiante($empleado),
         ], $desglose);
     }
 }
