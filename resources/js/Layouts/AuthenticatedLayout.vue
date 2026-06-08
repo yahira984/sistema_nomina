@@ -23,6 +23,7 @@ const navItems = [
     label: 'Sistema',
     links: [
       { name: 'Configuración', route: 'profile.edit', icon: 'ti-settings' },
+      { name: 'Base de datos', route: 'base-datos.index', icon: 'ti-database' },
     ]
   }
 ]

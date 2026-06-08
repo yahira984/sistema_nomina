@@ -14,6 +14,7 @@ class DashboardController extends Controller
     {
         $hoy = Carbon::now();
         $mesActual = $hoy->month;
+        $anioActual = $hoy->year;
 
         // 1. LÓGICA DE SEMANAS (La original tuya)
         $martesAutomatico = $hoy->isTuesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::TUESDAY)->endOfDay();
@@ -22,12 +23,18 @@ class DashboardController extends Controller
 
         // 2. INDICADORES RÁPIDOS
         $totalEmpleados = Empleado::where('estatus', true)->count();
-        $gastoSemanal = Nomina::where('numero_semana', $semanaActual)->sum('pago_neto');
+        $gastoSemanal = Nomina::whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
+            ->whereDate('fecha_fin', $martesAutomatico->format('Y-m-d'))
+            ->sum('pago_neto');
         // Buscamos las nóminas de la semana actual donde la columna booleana 'pagado' sea falsa (0)
-        $nominasPendientes = Nomina::where('numero_semana', $semanaActual)
+        $nominasPendientes = Nomina::whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
+            ->whereDate('fecha_fin', $martesAutomatico->format('Y-m-d'))
             ->where('pagado', false)
             ->count();
-        $faltasMes = Asistencia::where('tipo_asistencia', 'Falta')->whereMonth('fecha', $mesActual)->count();
+        $faltasMes = Asistencia::where('tipo_asistencia', 'Falta')
+            ->whereMonth('fecha', $mesActual)
+            ->whereYear('fecha', $anioActual)
+            ->count();
 
         // 3. CUMPLEAÑOS DEL MES
         $cumpleaneros = Empleado::where('estatus', true)
@@ -55,16 +62,16 @@ class DashboardController extends Controller
 
         // 4. DATOS GRÁFICA DE PASTEL (Estatus)
         $graficaAsistencia = [
-            Asistencia::whereMonth('fecha', $mesActual)->where('tipo_asistencia', 'Normal')->count(),
+            Asistencia::whereMonth('fecha', $mesActual)->whereYear('fecha', $anioActual)->where('tipo_asistencia', 'Normal')->count(),
             $faltasMes,
-            Asistencia::whereMonth('fecha', $mesActual)->where('tipo_asistencia', 'Vacaciones')->count(),
-            Asistencia::whereMonth('fecha', $mesActual)->where('tipo_asistencia', 'Incapacidad')->count(),
+            Asistencia::whereMonth('fecha', $mesActual)->whereYear('fecha', $anioActual)->where('tipo_asistencia', 'Vacaciones')->count(),
+            Asistencia::whereMonth('fecha', $mesActual)->whereYear('fecha', $anioActual)->where('tipo_asistencia', 'Incapacidad')->count(),
         ];
 
         // 5. DATOS GRÁFICA DE BARRAS (Horas Extra últimos 7 días)
         $ultimos7Dias = collect();
         for ($i = 6; $i >= 0; $i--) {
-            $fecha = Carbon::now()->subDays($i)->format('Y-m-d');
+            $fecha = $hoy->copy()->subDays($i)->format('Y-m-d');
             $horas = Asistencia::where('fecha', $fecha)->sum('horas_extra');
             $ultimos7Dias->push([
                 'fecha' => Carbon::parse($fecha)->format('d M'),
