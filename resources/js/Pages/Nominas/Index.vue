@@ -18,6 +18,10 @@ const toastMessage = ref('');
 
 const selectedCorte = ref(props.fechaCorteActual);
 
+// --- VARIABLES DE FILTRADO Y ORDENAMIENTO ---
+const filtroEstado = ref('todos'); // 'todos', 'pendiente', 'liquidado'
+const criterioOrden = ref('asc');   // 'asc', 'desc', 'num_asc', 'num_desc'
+
 // Extrae el número de semana correspondiente a la fecha de corte seleccionada actualmente
 const numeroSemanaSeleccionada = computed(() => {
     const encontrada = props.semanasDisponibles.find(sem => sem.fecha_corte === selectedCorte.value);
@@ -28,14 +32,55 @@ watch(selectedCorte, (newDate) => {
     router.get(route('nominas.index'), { fecha_corte: newDate }, { preserveState: true, preserveScroll: true });
 });
 
-// 1. Primer filtro: Búsqueda por nombre o número
+// 1. Primer filtro: Búsqueda + Filtros Estado + Ordenamientos (Alfabético y Numérico)
 const empleadosFiltrados = computed(() => {
-    if (!searchQuery.value) return props.empleados;
-    return props.empleados.filter(emp => {
+    let resultado = [...props.empleados];
+
+    // Filtro A: Buscador de texto
+    if (searchQuery.value) {
         const query = searchQuery.value.toLowerCase();
-        return emp.nombre_completo.toLowerCase().includes(query) ||
-               (emp.numero_empleado && emp.numero_empleado.toLowerCase().includes(query));
+        resultado = resultado.filter(emp => {
+            return emp.nombre_completo.toLowerCase().includes(query) ||
+                   (emp.numero_empleado && emp.numero_empleado.toLowerCase().includes(query));
+        });
+    }
+
+    // Filtro B: Estado de pago (Pendiente / Liquidado)
+    if (filtroEstado.value === 'pendiente') {
+        resultado = resultado.filter(emp => !emp.pagado);
+    } else if (filtroEstado.value === 'liquidado') {
+        resultado = resultado.filter(emp => emp.pagado);
+    }
+
+    // Filtro C: Lógica de Ordenamiento
+    resultado.sort((a, b) => {
+        // --- ORDEN NUMÉRICO ---
+        if (criterioOrden.value === 'num_asc' || criterioOrden.value === 'num_desc') {
+            const numA = parseInt(a.numero_empleado, 10);
+            const numB = parseInt(b.numero_empleado, 10);
+
+            // Manejo de empleados sin número (los mandamos al fondo)
+            if (isNaN(numA) && isNaN(numB)) return 0;
+            if (isNaN(numA)) return 1;
+            if (isNaN(numB)) return -1;
+
+            return criterioOrden.value === 'num_asc' ? numA - numB : numB - numA;
+        } 
+        
+        // --- ORDEN ALFABÉTICO (Por defecto si es 'asc' o 'desc') ---
+        else {
+            const nombreA = a.nombre_completo.toLowerCase();
+            const nombreB = b.nombre_completo.toLowerCase();
+            
+            if (criterioOrden.value === 'asc') {
+                return nombreA.localeCompare(nombreB);
+            } else {
+                return nombreB.localeCompare(nombreA);
+            }
+        }
     });
+
+    return resultado;
 });
 
 // 2. Agrupamos los filtrados por su Banco
@@ -126,6 +171,47 @@ const cambiarEstadoPago = (nominaId) => {
                                 </select>
                                 <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500">
                                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <div class="flex rounded-lg bg-slate-100 p-1 w-full sm:w-auto border border-slate-200">
+                                <button 
+                                    type="button"
+                                    @click="filtroEstado = 'todos'" 
+                                    :class="filtroEstado === 'todos' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                                    class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex-1 sm:flex-none"
+                                >
+                                    Todos
+                                </button>
+                                <button 
+                                    type="button"
+                                    @click="filtroEstado = 'pendiente'" 
+                                    :class="filtroEstado === 'pendiente' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                                    class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex-1 sm:flex-none"
+                                >
+                                    Pendientes
+                                </button>
+                                <button 
+                                    type="button"
+                                    @click="filtroEstado = 'liquidado'" 
+                                    :class="filtroEstado === 'liquidado' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                                    class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex-1 sm:flex-none"
+                                >
+                                    Liquidados
+                                </button>
+                            </div>
+
+                            <div class="relative w-full sm:w-auto">
+                                <select v-model="criterioOrden" class="field-input-soft appearance-none pr-10 text-slate-700 text-sm font-medium">
+                                    <option value="asc">Nombre (A - Z)</option>
+                                    <option value="desc">Nombre (Z - A)</option>
+                                    <option value="num_asc">No. Empleado (Menor a Mayor)</option>
+                                    <option value="num_desc">No. Empleado (Mayor a Menor)</option>
+                                </select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
                                     </svg>
                                 </div>

@@ -135,17 +135,23 @@ const eliminarEmpleado = (id, nombre) => {
                         <form @submit.prevent="submitForm" class="grid grid-cols-1 gap-5 md:grid-cols-4">
                             <div>
                                 <label class="field-label">No. empleado</label>
-                                <input v-model="form.numero_empleado" type="text" class="field-input-soft" placeholder="Ej. 84" />
+                            <input v-model="form.numero_empleado" type="text" maxlength="4" class="field-input-soft" placeholder="Ej. 84" @input="form.numero_empleado = form.numero_empleado.replace(/\D/g, '')" />
                             </div>
 
                             <div class="md:col-span-2">
                                 <label class="field-label">Nombre completo <span class="text-rose-500">*</span></label>
-                                <input v-model="form.nombre_completo" type="text" required class="field-input-soft" />
+                                <input 
+                                    v-model="form.nombre_completo" 
+                                    type="text" 
+                                    required 
+                                    class="field-input-soft" 
+                                    @input="form.nombre_completo = form.nombre_completo.replace(/[0-89]/g, '')"
+                                />
                             </div>
 
                             <div>
                                 <label class="field-label">Puesto</label>
-                                <input v-model="form.puesto" type="text" class="field-input-soft" />
+                                <input v-model="form.puesto" type="text" class="field-input-soft" @input="form.puesto = form.puesto.replace(/[0-9]/g, '')" />
                             </div>
 
                             <div>
@@ -228,12 +234,12 @@ const eliminarEmpleado = (id, nombre) => {
 
                             <div class="md:col-span-2">
                                 <label class="field-label">NSS</label>
-                                <input v-model="form.nss" type="text" class="field-input-soft" placeholder="11 dígitos" />
+                                <input v-model="form.nss" type="text" maxlength="11" class="field-input-soft" placeholder="11 dígitos" @input="form.nss = form.nss.replace(/\D/g, '')"  />
                             </div>
 
                             <div class="md:col-span-2">
                                 <label class="field-label">RFC</label>
-                                <input v-model="form.rfc" type="text" class="field-input-soft" placeholder="12 o 13 caracteres" />
+                                <input v-model="form.rfc" type="text" maxlength="13"  class="field-input-soft" placeholder="12 o 13 caracteres" @input="form.rfc = form.rfc.toUpperCase().replace(/[^A-Z0-9&ñÑ]¨/g, '')" />
                             </div>
 
                             <div class="flex justify-end md:col-span-4 mt-2">
