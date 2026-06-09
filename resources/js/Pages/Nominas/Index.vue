@@ -15,6 +15,8 @@ const searchQuery = ref('');
 const showToast = ref(false);
 const toastTitle = ref('');
 const toastMessage = ref('');
+const ajustesNomina = ref({});
+const guardandoAjuste = ref(null);
 
 const selectedCorte = ref(props.fechaCorteActual);
 
@@ -31,6 +33,107 @@ const numeroSemanaSeleccionada = computed(() => {
 watch(selectedCorte, (newDate) => {
     router.get(route('nominas.index'), { fecha_corte: newDate }, { preserveState: true, preserveScroll: true });
 });
+
+const numero = (valor) => Number(valor ?? 0) || 0;
+const valorDecimal = (valor) => Number(valor ?? 0).toFixed(2);
+const moneda = (valor) => numero(valor).toLocaleString('es-MX', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+});
+const horas = (valor) => numero(valor).toFixed(1);
+
+const inicializarAjustes = () => {
+    const actuales = { ...ajustesNomina.value };
+
+    props.empleados.forEach((empleado) => {
+        const ajuste = empleado.ajustes_nomina || {};
+        actuales[empleado.id] = {
+            prestamo_otorgado: valorDecimal(ajuste.prestamo_otorgado),
+            prestamo_descuento: valorDecimal(ajuste.prestamo_descuento),
+            deduccion_manual: valorDecimal(ajuste.deduccion_manual),
+            faltas_pagadas: ajuste.faltas_pagadas ?? 0,
+            horas_adeudo_descontadas: valorDecimal(ajuste.horas_adeudo_descontadas),
+            dias_vacaciones_pagadas: valorDecimal(ajuste.dias_vacaciones_pagadas),
+        };
+    });
+
+    ajustesNomina.value = actuales;
+};
+
+watch(() => props.empleados, inicializarAjustes, { immediate: true, deep: true });
+
+const parametrosNomina = (empleado) => ({
+    empleado_id: empleado.id,
+    fecha_corte: selectedCorte.value,
+    ...(ajustesNomina.value[empleado.id] || {}),
+});
+
+const resumenNomina = (empleado) => empleado.ajustes_nomina || {};
+
+const deudaDespues = (empleado) => {
+    const ajuste = ajustesNomina.value[empleado.id] || {};
+    const resumen = resumenNomina(empleado);
+    const saldoActual = numero(resumen.saldo_prestamo_actual ?? empleado.saldo_prestamo);
+    const prestamoActual = numero(ajuste.prestamo_otorgado);
+    const prestamoGuardado = numero(resumen.prestamo_otorgado_guardado);
+    const descuentoActual = numero(ajuste.prestamo_descuento);
+    const descuentoGuardado = numero(resumen.prestamo_descuento_guardado);
+
+    return Math.max(0, saldoActual + (prestamoActual - prestamoGuardado) - (descuentoActual - descuentoGuardado));
+};
+
+const faltasPagadasPreview = (empleado) => {
+    const ajuste = ajustesNomina.value[empleado.id] || {};
+    const detectadas = numero(resumenNomina(empleado).faltas_detectadas);
+
+    return Math.min(numero(ajuste.faltas_pagadas), detectadas);
+};
+
+const horasAdeudoGeneradasPreview = (empleado) => faltasPagadasPreview(empleado) * 9.5;
+
+const horasAdeudoDescontadasPreview = (empleado) => {
+    const ajuste = ajustesNomina.value[empleado.id] || {};
+    const extraDetectada = numero(resumenNomina(empleado).horas_extra_detectadas);
+
+    return Math.min(numero(ajuste.horas_adeudo_descontadas), extraDetectada);
+};
+
+const saldoHorasPreview = (empleado) => {
+    const resumen = resumenNomina(empleado);
+
+    return Math.max(0, numero(resumen.saldo_horas_adeudo_anterior) + horasAdeudoGeneradasPreview(empleado) - horasAdeudoDescontadasPreview(empleado));
+};
+
+const horasExtraPagadasPreview = (empleado) => {
+    const resumen = resumenNomina(empleado);
+
+    return Math.max(0, numero(resumen.horas_extra_detectadas) - horasAdeudoDescontadasPreview(empleado));
+};
+
+const diasVacacionesPreview = (empleado) => {
+    const ajuste = ajustesNomina.value[empleado.id] || {};
+
+    return numero(ajuste.dias_vacaciones_pagadas);
+};
+
+const pagoVacacionesPreview = (empleado) => {
+    const resumen = resumenNomina(empleado);
+
+    return diasVacacionesPreview(empleado) * numero(resumen.pago_dia_planta) * 1.25;
+};
+
+const guardarAjustes = (empleado) => {
+    guardandoAjuste.value = empleado.id;
+    router.put(route('nominas.ajustes', empleado.id), {
+        fecha_corte: selectedCorte.value,
+        ...(ajustesNomina.value[empleado.id] || {}),
+    }, {
+        preserveScroll: true,
+        onFinish: () => {
+            guardandoAjuste.value = null;
+        },
+    });
+};
 
 // 1. Primer filtro: Búsqueda + Filtros Estado + Ordenamientos (Alfabético y Numérico)
 const empleadosFiltrados = computed(() => {
@@ -266,6 +369,7 @@ const cambiarEstadoPago = (nominaId) => {
                                                     <th>Empleado</th>
                                                     <th>Datos de depósito</th>
                                                     <th class="text-center">Estado de pago</th>
+                                                    <th class="min-w-[720px]">Ajustes de semana</th>
                                                     <th class="text-right">Acciones</th>
                                                 </tr>
                                             </thead>
@@ -324,10 +428,109 @@ const cambiarEstadoPago = (nominaId) => {
                                                         </div>
                                                     </td>
 
+                                                    <td class="min-w-[720px] px-4 py-3 align-top">
+                                                        <div v-if="ajustesNomina[empleado.id]" class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                                                            <div class="grid grid-cols-2 gap-px bg-slate-200 text-xs lg:grid-cols-4">
+                                                                <div class="bg-emerald-50 px-3 py-2 text-emerald-800">
+                                                                    <span class="block font-bold uppercase tracking-wide">Neto</span>
+                                                                    <span class="text-sm font-black">${{ moneda(resumenNomina(empleado).pago_neto) }}</span>
+                                                                </div>
+                                                                <div class="bg-slate-50 px-3 py-2 text-slate-700">
+                                                                    <span class="block font-bold uppercase tracking-wide">Deuda actual</span>
+                                                                    <span class="text-sm font-black">${{ moneda(resumenNomina(empleado).saldo_prestamo_actual ?? empleado.saldo_prestamo) }}</span>
+                                                                </div>
+                                                                <div class="bg-blue-50 px-3 py-2 text-blue-800">
+                                                                    <span class="block font-bold uppercase tracking-wide">Despues ajuste</span>
+                                                                    <span class="text-sm font-black">${{ moneda(deudaDespues(empleado)) }}</span>
+                                                                </div>
+                                                                <div class="bg-amber-50 px-3 py-2 text-amber-800">
+                                                                    <span class="block font-bold uppercase tracking-wide">Horas adeudo</span>
+                                                                    <span class="text-sm font-black">{{ horas(saldoHorasPreview(empleado)) }} h</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="grid gap-3 p-3 lg:grid-cols-[0.95fr_1.25fr_0.8fr]">
+                                                                <section class="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+                                                                    <div class="mb-3 flex items-center gap-2 text-sm font-black text-blue-900">
+                                                                        <i class="ti ti-cash-banknote" aria-hidden="true"></i>
+                                                                        Prestamo
+                                                                    </div>
+                                                                    <div class="grid grid-cols-2 gap-2">
+                                                                        <label class="block">
+                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-blue-700">Compensacion</span>
+                                                                            <input v-model="ajustesNomina[empleado.id].prestamo_otorgado" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                                        </label>
+                                                                        <label class="block">
+                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-blue-700">Adeudo</span>
+                                                                            <input v-model="ajustesNomina[empleado.id].prestamo_descuento" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                                        </label>
+                                                                    </div>
+                                                                </section>
+
+                                                                <section class="rounded-lg border border-amber-100 bg-amber-50/70 p-3">
+                                                                    <div class="mb-3 flex items-center justify-between gap-3">
+                                                                        <div class="flex items-center gap-2 text-sm font-black text-amber-900">
+                                                                            <i class="ti ti-calendar-exclamation" aria-hidden="true"></i>
+                                                                            Faltas pagadas y horas
+                                                                        </div>
+                                                                        <span class="rounded-full border border-rose-200 bg-white px-2 py-1 text-[11px] font-bold text-rose-700">
+                                                                            {{ resumenNomina(empleado).faltas_detectadas || 0 }} falta(s)
+                                                                        </span>
+                                                                    </div>
+                                                                    <div class="grid grid-cols-2 gap-2">
+                                                                        <label class="block">
+                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-amber-700">Faltas que se pagaron</span>
+                                                                            <input v-model="ajustesNomina[empleado.id].faltas_pagadas" type="number" step="1" min="0" :max="resumenNomina(empleado).faltas_detectadas || 0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                                        </label>
+                                                                        <label class="block">
+                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-amber-700">Hrs extra a tomar</span>
+                                                                            <input v-model="ajustesNomina[empleado.id].horas_adeudo_descontadas" type="number" step="0.5" min="0" :max="resumenNomina(empleado).horas_extra_detectadas || 0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                                        </label>
+                                                                    </div>
+                                                                    <div class="mt-3 grid grid-cols-3 gap-2 text-[11px] font-bold">
+                                                                        <span class="rounded-md bg-white px-2 py-1 text-slate-600">Genera {{ horas(horasAdeudoGeneradasPreview(empleado)) }} h</span>
+                                                                        <span class="rounded-md bg-white px-2 py-1 text-slate-600">Extra {{ horas(resumenNomina(empleado).horas_extra_detectadas) }} h</span>
+                                                                        <span class="rounded-md bg-white px-2 py-1 text-emerald-700">Paga {{ horas(horasExtraPagadasPreview(empleado)) }} h</span>
+                                                                    </div>
+                                                                    <div v-if="Number(resumenNomina(empleado).horas_extra_miercoles_anterior || 0) > 0" class="mt-2 text-[11px] font-semibold text-amber-800">
+                                                                        Incluye {{ horas(resumenNomina(empleado).horas_extra_miercoles_anterior) }} h del miercoles anterior.
+                                                                    </div>
+                                                                </section>
+
+                                                                <section class="flex flex-col justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                                                    <div>
+                                                                        <div class="mb-3 flex items-center gap-2 text-sm font-black text-slate-800">
+                                                                            <i class="ti ti-adjustments-dollar" aria-hidden="true"></i>
+                                                                            Otros
+                                                                        </div>
+                                                                        <label class="block">
+                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-slate-500">Desc. extra</span>
+                                                                            <input v-model="ajustesNomina[empleado.id].deduccion_manual" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                                        </label>
+                                                                        <label class="mt-2 block">
+                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-slate-500">Dias vac. +25%</span>
+                                                                            <input v-model="ajustesNomina[empleado.id].dias_vacaciones_pagadas" type="number" step="0.5" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                                        </label>
+                                                                        <div class="mt-3 grid grid-cols-2 gap-2 text-[11px] font-bold">
+                                                                            <span class="rounded-md bg-white px-2 py-1 text-rose-700">{{ resumenNomina(empleado).faltas_descontables || 0 }} falta(s) desc.</span>
+                                                                            <span class="rounded-md bg-white px-2 py-1 text-amber-700">{{ resumenNomina(empleado).minutos_tarde_descontables || 0 }} min ret.</span>
+                                                                            <span class="rounded-md bg-white px-2 py-1 text-blue-700">{{ horas(diasVacacionesPreview(empleado)) }} dia(s) vac.</span>
+                                                                            <span class="rounded-md bg-white px-2 py-1 text-emerald-700">${{ moneda(pagoVacacionesPreview(empleado)) }}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <button type="button" @click="guardarAjustes(empleado)" class="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800">
+                                                                        <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                                                                        {{ guardandoAjuste === empleado.id ? 'Guardando...' : 'Guardar ajustes' }}
+                                                                    </button>
+                                                                </section>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+
                                                     <td class="whitespace-nowrap px-4 py-3 text-right">
                                                         <div class="flex items-center justify-end gap-2">
                                                             <a
-                                                                :href="route('nominas.excel-individual', { empleado_id: empleado.id, fecha_corte: selectedCorte })"
+                                                                :href="route('nominas.excel-individual', parametrosNomina(empleado))"
                                                                 class="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-green-700 active:scale-95"
                                                                 title="Descargar Recibo en Excel"
                                                             >
@@ -338,7 +541,7 @@ const cambiarEstadoPago = (nominaId) => {
                                                             </a>
 
                                                             <a
-                                                                :href="route('nominas.generar', { empleado_id: empleado.id, fecha_corte: selectedCorte })"
+                                                                :href="route('nominas.generar', parametrosNomina(empleado))"
                                                                 target="_blank"
                                                                 @click="marcarComoGenerado(empleado)"
                                                                 :class="empleado.nomina_generada ? 'btn-warning' : 'btn-accent'"

@@ -21,6 +21,7 @@ const props = defineProps({
 const tiposAsistencia = ['Normal', 'Falta', 'Incapacidad', 'Vacaciones'];
 const tabActiva = ref(props.previewImportacion ? 'revision' : 'captura');
 const busquedaGlobal = ref('');
+const busquedaEmpleadoManual = ref('');
 const busquedaRevision = ref('');
 const editando = ref(false);
 const asistenciaId = ref(null);
@@ -105,10 +106,41 @@ const empleadosFiltradosGlobal = computed(() => {
     });
 });
 
+const etiquetaEmpleado = (empleado) => {
+    return `${empleado.numero_empleado ? '#' + empleado.numero_empleado + ' - ' : ''}${empleado.nombre_completo}`;
+};
+
+const empleadosFiltradosManual = computed(() => {
+    const term = busquedaEmpleadoManual.value.toLowerCase().trim();
+    let resultado = props.empleados;
+
+    if (term) {
+        resultado = props.empleados.filter((empleado) => {
+            return empleado.nombre_completo.toLowerCase().includes(term)
+                || (empleado.numero_empleado && String(empleado.numero_empleado).toLowerCase().includes(term));
+        });
+    }
+
+    const limitados = resultado.slice(0, 30);
+    const seleccionado = props.empleados.find((empleado) => Number(empleado.id) === Number(form.empleado_id));
+
+    if (seleccionado && !limitados.some((empleado) => Number(empleado.id) === Number(seleccionado.id))) {
+        return [seleccionado, ...limitados];
+    }
+
+    return limitados;
+});
+
 const empleadoSeleccionado = computed(() => {
     if (!form.empleado_id) return null;
     return props.empleados.find((empleado) => Number(empleado.id) === Number(form.empleado_id));
 });
+
+const sincronizarBusquedaManual = () => {
+    if (empleadoSeleccionado.value) {
+        busquedaEmpleadoManual.value = etiquetaEmpleado(empleadoSeleccionado.value);
+    }
+};
 
 const filasRevisionFiltradas = computed(() => {
     if (!busquedaRevision.value) return filasRevision.value;
@@ -217,6 +249,8 @@ const editarAsistencia = (asistencia) => {
     editando.value = true;
     asistenciaId.value = asistencia.id;
     form.empleado_id = asistencia.empleado_id;
+    const empleado = props.empleados.find((item) => Number(item.id) === Number(asistencia.empleado_id));
+    busquedaEmpleadoManual.value = empleado ? etiquetaEmpleado(empleado) : '';
     form.fecha = asistencia.fecha;
     form.tipo_asistencia = asistencia.tipo_asistencia || 'Normal';
     form.hora_entrada = asistencia.hora_entrada ? asistencia.hora_entrada.substring(0, 5) : '08:00';
@@ -480,14 +514,34 @@ const descartarRevision = () => {
                         </div>
 
                         <div class="bg-slate-50/50 p-5 sm:p-6">
-                            <div class="mb-6">
-                                <label class="field-label text-base">Selecciona un Empleado <span class="text-rose-500">*</span></label>
-                                <select v-model="form.empleado_id" required :disabled="editando" class="field-input-soft text-lg font-bold text-slate-800">
-                                    <option value="" disabled>Selecciona un trabajador...</option>
-                                    <option v-for="empleado in empleados" :key="empleado.id" :value="empleado.id">
-                                        {{ empleado.numero_empleado ? '#' + empleado.numero_empleado + ' - ' : '' }}{{ empleado.nombre_completo }}
-                                    </option>
-                                </select>
+                            <div class="mb-6 grid gap-3 lg:grid-cols-[1fr_1.2fr]">
+                                <div>
+                                    <label class="field-label text-base">Buscar empleado <span class="text-rose-500">*</span></label>
+                                    <div class="relative">
+                                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                                            <i class="ti ti-search" aria-hidden="true"></i>
+                                        </div>
+                                        <input
+                                            v-model="busquedaEmpleadoManual"
+                                            type="text"
+                                            :disabled="editando"
+                                            class="field-input-soft pl-9 text-base font-semibold text-slate-800"
+                                            placeholder="Numero o nombre..."
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="field-label text-base">Selecciona un empleado <span class="text-rose-500">*</span></label>
+                                    <select v-model="form.empleado_id" @change="sincronizarBusquedaManual" required :disabled="editando" class="field-input-soft text-base font-bold text-slate-800">
+                                        <option value="" disabled>Selecciona un trabajador...</option>
+                                        <option v-for="empleado in empleadosFiltradosManual" :key="empleado.id" :value="empleado.id">
+                                            {{ etiquetaEmpleado(empleado) }}
+                                        </option>
+                                    </select>
+                                    <p v-if="busquedaEmpleadoManual && empleadosFiltradosManual.length === 0" class="mt-2 text-sm font-semibold text-rose-600">
+                                        Sin resultados para esa busqueda.
+                                    </p>
+                                </div>
                             </div>
 
                             <div v-if="empleadoSeleccionado" class="mb-6 grid grid-cols-2 gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">

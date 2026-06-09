@@ -76,10 +76,22 @@ class AsistenciaController extends Controller
     public function importarReloj(Request $request)
     {
         $request->validate([
-            'archivo_reloj' => 'required|file|mimes:csv,txt',
+            'archivo_reloj' => 'required|file|max:10240',
             'fecha_inicio' => 'nullable|date',
             'fecha_fin' => 'nullable|date',
+        ], [
+            'archivo_reloj.uploaded' => 'El archivo no pudo subirse. Revisa el limite de carga de PHP o intenta con un archivo mas pequeno.',
+            'archivo_reloj.max' => 'El archivo del reloj no debe pesar mas de 10 MB.',
         ]);
+
+        $archivoReloj = $request->file('archivo_reloj');
+        $extension = strtolower($archivoReloj->getClientOriginalExtension());
+
+        if (!in_array($extension, ['csv', 'txt'], true)) {
+            return redirect()->back()->withErrors([
+                'archivo_reloj' => 'Selecciona un archivo .csv o .txt del reloj checador.',
+            ]);
+        }
 
         if ($request->filled('fecha_inicio') && $request->filled('fecha_fin')) {
             $inicio = Carbon::parse($request->fecha_inicio)->startOfDay();
@@ -93,7 +105,7 @@ class AsistenciaController extends Controller
         }
 
         $preview = $this->prepararRevisionImportacion(
-            $request->file('archivo_reloj')->getRealPath(),
+            $archivoReloj->getRealPath(),
             $request->fecha_inicio,
             $request->fecha_fin
         );
@@ -290,6 +302,11 @@ class AsistenciaController extends Controller
     private function leerMarcajesCsv(string $path): array
     {
         $file = fopen($path, 'r');
+
+        if (!$file) {
+            return [[], []];
+        }
+
         $agrupados = [];
         $fechas = [];
 
@@ -515,22 +532,32 @@ class AsistenciaController extends Controller
             }
 
             if ($fecha_carbon->isSaturday()) {
-                $horas_extra_diarias = $entrada->diffInMinutes($salida) / 60;
+                $inicioSabado = $entrada->lessThan($hora_oficial) ? $hora_oficial : $entrada;
+                $horas_extra_diarias = $this->redondearHoraCompletaInferior(max(0, $inicioSabado->diffInMinutes($salida) / 60));
             } else {
                 $limite_normal = Carbon::parse($fecha . ' 17:30:00');
+                $inicioJornada = $entrada->lessThan($hora_oficial) || $minutos_tarde < 30
+                    ? $hora_oficial
+                    : $entrada;
+
                 if ($salida->greaterThan($limite_normal)) {
-                    $horas_normales = $entrada->diffInMinutes($limite_normal) / 60;
-                    $horas_extra_diarias = $limite_normal->diffInMinutes($salida) / 60;
+                    $horas_normales = max(0, $inicioJornada->diffInMinutes($limite_normal) / 60);
+                    $horas_extra_diarias = $this->redondearHoraCompletaInferior(max(0, $limite_normal->diffInMinutes($salida) / 60));
                 } else {
-                    $horas_normales = $entrada->diffInMinutes($salida) / 60;
+                    $horas_normales = max(0, $inicioJornada->diffInMinutes($salida) / 60);
                 }
             }
         }
 
         return [
             'minutos_tarde' => $minutos_tarde,
-            'horas_trabajadas' => $horas_normales,
+            'horas_trabajadas' => round($horas_normales, 2),
             'horas_extra' => $horas_extra_diarias,
         ];
+    }
+
+    private function redondearHoraCompletaInferior(float $horas): float
+    {
+        return floor($horas);
     }
 }

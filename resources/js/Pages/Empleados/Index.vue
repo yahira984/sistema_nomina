@@ -10,6 +10,7 @@ const props = defineProps({
 const editando = ref(false);
 const empleadoId = ref(null);
 const searchQuery = ref('');
+const filtroEstado = ref('activos');
 
 const form = useForm({
     numero_empleado: '',
@@ -42,14 +43,25 @@ const form = useForm({
 });
 
 const empleadosFiltrados = computed(() => {
-    if (!searchQuery.value) return props.empleados;
-    return props.empleados.filter(emp => {
+    let resultado = props.empleados.filter(emp => {
+        if (filtroEstado.value === 'activos') return Boolean(Number(emp.estatus ?? 0));
+        if (filtroEstado.value === 'papelera') return !Boolean(Number(emp.estatus ?? 0));
+        return true;
+    });
+
+    if (!searchQuery.value) return resultado;
+
+    return resultado.filter(emp => {
         const query = searchQuery.value.toLowerCase();
         const nombreMatch = emp.nombre_completo.toLowerCase().includes(query);
-        const numeroMatch = emp.numero_empleado && emp.numero_empleado.toLowerCase().includes(query);
+        const numeroMatch = (emp.numero_empleado && emp.numero_empleado.toLowerCase().includes(query))
+            || (emp.numero_empleado_baja && emp.numero_empleado_baja.toLowerCase().includes(query));
         return nombreMatch || numeroMatch;
     });
 });
+
+const empleadosActivos = computed(() => props.empleados.filter(emp => Boolean(Number(emp.estatus ?? 0))).length);
+const empleadosBaja = computed(() => props.empleados.length - empleadosActivos.value);
 
 const esEstudiante = (empleado) => Boolean(Number(empleado.es_estudiante ?? 0));
 
@@ -58,8 +70,17 @@ const sueldoSemanalEmpleado = (empleado) => {
     if (sueldoSemanal > 0) return sueldoSemanal.toFixed(2);
 
     const sueldoPorHora = Number(empleado.sueldo_por_hora ?? 0);
-    return sueldoPorHora > 0 ? (sueldoPorHora * 48).toFixed(2) : '0.00';
+    return sueldoPorHora > 0 ? (sueldoPorHora * 56).toFixed(2) : '0.00';
 };
+
+const moneda = (valor) => Number(valor ?? 0).toLocaleString('es-MX', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+});
+
+const saldoPrestamoEmpleado = (empleado) => Number(empleado.saldo_prestamo ?? 0);
+const tieneDeuda = (empleado) => saldoPrestamoEmpleado(empleado) > 0;
+const empleadosConDeuda = computed(() => props.empleados.filter(emp => Boolean(Number(emp.estatus ?? 0)) && tieneDeuda(emp)).length);
 
 const submitForm = () => {
     if (editando.value) {
@@ -114,8 +135,14 @@ const cancelarEdicion = () => {
 };
 
 const eliminarEmpleado = (id, nombre) => {
-    if (confirm(`¿Estás seguro de eliminar a ${nombre}?`)) {
+    if (confirm(`¿Dar de baja a ${nombre}? Su número quedará libre para otro empleado.`)) {
         router.delete(route('empleados.destroy', id));
+    }
+};
+
+const restaurarEmpleado = (id, nombre) => {
+    if (confirm(`¿Restaurar a ${nombre}? Recuerda asignarle un número disponible.`)) {
+        router.put(route('empleados.restaurar', id));
     }
 };
 </script>
@@ -355,12 +382,37 @@ const eliminarEmpleado = (id, nombre) => {
                 <section class="app-panel">
                     <div class="panel-header">
                         <div>
-                            <h3 class="panel-title">Directorio activo</h3>
+                            <h3 class="panel-title">{{ filtroEstado === 'papelera' ? 'Papelera de bajas' : 'Directorio activo' }}</h3>
                             <p class="panel-subtitle">{{ empleadosFiltrados.length }} trabajador(es) encontrados</p>
+                            <p class="mt-1 text-xs font-semibold text-amber-700">
+                                {{ empleadosConDeuda }} con prestamo activo
+                            </p>
                         </div>
-                        <div class="relative w-full lg:w-96">
-                            <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-slate-400" aria-hidden="true"></i>
-                            <input v-model="searchQuery" type="text" class="field-input-soft pl-10" placeholder="Buscar por nombre o número..." />
+                        <div class="flex w-full flex-col gap-3 lg:w-auto lg:flex-row lg:items-center">
+                            <div class="flex rounded-lg border border-slate-200 bg-slate-100 p-1">
+                                <button
+                                    type="button"
+                                    @click="filtroEstado = 'activos'"
+                                    :class="filtroEstado === 'activos' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                                    class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all"
+                                >
+                                    <i class="ti ti-user-check" aria-hidden="true"></i>
+                                    Activos {{ empleadosActivos }}
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="filtroEstado = 'papelera'"
+                                    :class="filtroEstado === 'papelera' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                                    class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all"
+                                >
+                                    <i class="ti ti-archive" aria-hidden="true"></i>
+                                    Papelera {{ empleadosBaja }}
+                                </button>
+                            </div>
+                            <div class="relative w-full lg:w-96">
+                                <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-slate-400" aria-hidden="true"></i>
+                                <input v-model="searchQuery" type="text" class="field-input-soft pl-10" placeholder="Buscar por nombre o número..." />
+                            </div>
                         </div>
                     </div>
 
@@ -371,6 +423,7 @@ const eliminarEmpleado = (id, nombre) => {
                                     <th>Empleado</th>
                                     <th>Puesto / Antigüedad</th>
                                     <th>Tarifa de Pago</th>
+                                    <th>Prestamo</th>
                                     <th>Control Vacaciones</th>
                                     <th class="text-right">Acciones</th>
                                 </tr>
@@ -380,18 +433,27 @@ const eliminarEmpleado = (id, nombre) => {
                                     <td class="whitespace-nowrap">
                                         <div class="flex items-center gap-3">
                                             <div class="flex h-10 min-w-10 max-w-16 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-2 text-xs font-bold text-blue-700">
-                                                {{ empleado.numero_empleado || 'S/N' }}
+                                                {{ empleado.numero_empleado || empleado.numero_empleado_baja || 'S/N' }}
                                             </div>
                                             <div class="min-w-0">
-                                                <div class="truncate font-semibold text-slate-950">{{ empleado.nombre_completo }}</div>
-                                                <div class="text-xs text-slate-500">ID sistema: #{{ empleado.id }}</div>
+                                                <div class="flex items-center gap-2">
+                                                    <div class="truncate font-semibold text-slate-950">{{ empleado.nombre_completo }}</div>
+                                                    <span v-if="!Boolean(Number(empleado.estatus ?? 0))" class="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">Baja</span>
+                                                </div>
+                                                <div class="text-xs text-slate-500">
+                                                    ID sistema: #{{ empleado.id }}
+                                                    <span v-if="empleado.numero_empleado_baja"> · No. anterior {{ empleado.numero_empleado_baja }}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </td>
                                     <td class="whitespace-nowrap">
                                         <div class="font-medium text-slate-900">{{ empleado.puesto || 'No asignado' }}</div>
-                                        <div class="mt-1 text-xs font-semibold text-teal-600">
+                                        <div v-if="Boolean(Number(empleado.estatus ?? 0))" class="mt-1 text-xs font-semibold text-teal-600">
                                             {{ empleado.antiguedad_anios }} año(s) en la empresa
+                                        </div>
+                                        <div v-else class="mt-1 text-xs font-semibold text-rose-600">
+                                            Baja: {{ empleado.fecha_baja || 'Sin fecha' }} · {{ empleado.dias_laborados || 0 }} dias laborados
                                         </div>
                                     </td>
                                     <td class="whitespace-nowrap">
@@ -399,6 +461,19 @@ const eliminarEmpleado = (id, nombre) => {
                                             <span v-if="esEstudiante(empleado)">Estudiante: ${{ empleado.sueldo_por_hora }} / hr</span>
                                             <span v-else>${{ sueldoSemanalEmpleado(empleado) }} / sem</span>
                                         </span>
+                                    </td>
+                                    <td class="whitespace-nowrap">
+                                        <div v-if="tieneDeuda(empleado)" class="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                                            <i class="ti ti-cash-banknote" aria-hidden="true"></i>
+                                            Debe ${{ moneda(empleado.saldo_prestamo) }}
+                                        </div>
+                                        <div v-else class="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+                                            <i class="ti ti-circle-check" aria-hidden="true"></i>
+                                            Sin deuda
+                                        </div>
+                                        <div v-if="Number(empleado.cuota_prestamo || 0) > 0" class="mt-1 text-[11px] font-semibold text-slate-500">
+                                            Desc. sem. ${{ moneda(empleado.cuota_prestamo) }}
+                                        </div>
                                     </td>
                                     <td class="whitespace-nowrap">
                                         <div v-if="empleado.fecha_ingreso" class="flex flex-col gap-1 text-xs">
@@ -419,9 +494,13 @@ const eliminarEmpleado = (id, nombre) => {
                                             <i class="ti ti-pencil" aria-hidden="true"></i>
                                             Editar
                                         </button>
-                                        <button @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="btn-danger text-xs">
+                                        <button v-if="Boolean(Number(empleado.estatus ?? 0))" @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="btn-danger text-xs">
                                             <i class="ti ti-trash" aria-hidden="true"></i>
-                                            Eliminar
+                                            Dar de baja
+                                        </button>
+                                        <button v-else @click="restaurarEmpleado(empleado.id, empleado.nombre_completo)" class="btn-accent text-xs">
+                                            <i class="ti ti-restore" aria-hidden="true"></i>
+                                            Restaurar
                                         </button>
                                     </td>
                                 </tr>

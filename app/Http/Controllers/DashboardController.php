@@ -6,6 +6,7 @@ use Inertia\Inertia;
 use App\Models\Empleado;
 use App\Models\Asistencia;
 use App\Models\Nomina;
+use App\Support\SemanaNomina;
 use Carbon\Carbon;
 
 class DashboardController extends Controller
@@ -16,19 +17,17 @@ class DashboardController extends Controller
         $mesActual = $hoy->month;
         $anioActual = $hoy->year;
 
-        // 1. LÓGICA DE SEMANAS (La original tuya)
-        $martesAutomatico = $hoy->isTuesday() ? $hoy->copy()->endOfDay() : $hoy->copy()->previous(Carbon::TUESDAY)->endOfDay();
-        $inicioSemana = $martesAutomatico->copy()->subDays(6)->startOfDay();
-        $semanaActual = $inicioSemana->weekOfYear;
+        // 1. LÓGICA DE SEMANAS
+        [$inicioSemana, $finSemana, $semanaActual] = SemanaNomina::desdeCorte();
 
         // 2. INDICADORES RÁPIDOS
         $totalEmpleados = Empleado::where('estatus', true)->count();
         $gastoSemanal = Nomina::whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
-            ->whereDate('fecha_fin', $martesAutomatico->format('Y-m-d'))
+            ->whereDate('fecha_fin', $finSemana->format('Y-m-d'))
             ->sum('pago_neto');
         // Buscamos las nóminas de la semana actual donde la columna booleana 'pagado' sea falsa (0)
         $nominasPendientes = Nomina::whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
-            ->whereDate('fecha_fin', $martesAutomatico->format('Y-m-d'))
+            ->whereDate('fecha_fin', $finSemana->format('Y-m-d'))
             ->where('pagado', false)
             ->count();
         $faltasMes = Asistencia::where('tipo_asistencia', 'Falta')
@@ -83,7 +82,7 @@ class DashboardController extends Controller
             'totalEmpleados' => $totalEmpleados,
             'semanaContable' => $semanaActual,
             'gastoSemanal' => number_format($gastoSemanal, 2, '.', ''),
-            'corteSemana' => 'Miércoles a martes',
+            'corteSemana' => 'Jueves a miércoles',
             'nominasPendientes' => $nominasPendientes,
             'kpis' => [
                 'faltas' => $faltasMes,
