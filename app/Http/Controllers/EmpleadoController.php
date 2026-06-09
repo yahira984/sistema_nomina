@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Empleado;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -10,7 +11,7 @@ class EmpleadoController extends Controller
 {
     public function index()
     {
-        $empleados = Empleado::orderBy('id', 'desc')->get();
+        $empleados = Empleado::orderByDesc('estatus')->orderBy('id', 'desc')->get();
         return Inertia::render('Empleados/Index', [
             'empleados' => $empleados
         ]);
@@ -152,7 +153,31 @@ class EmpleadoController extends Controller
 
     public function destroy(Empleado $empleado)
     {
-        $empleado->delete();
-        return redirect()->back()->with('success', 'Empleado eliminado correctamente.');
+        $fechaBaja = Carbon::now()->startOfDay();
+        $fechaIngreso = $empleado->fecha_ingreso ? Carbon::parse($empleado->fecha_ingreso)->startOfDay() : null;
+        $diasLaborados = $fechaIngreso ? $fechaIngreso->diffInDays($fechaBaja) + 1 : 0;
+
+        $empleado->update([
+            'estatus' => false,
+            'numero_empleado_baja' => $empleado->numero_empleado_baja ?: $empleado->numero_empleado,
+            'numero_empleado' => null,
+            'fecha_baja' => $fechaBaja->format('Y-m-d'),
+            'dias_laborados' => $diasLaborados,
+            'motivo_baja' => request('motivo_baja'),
+        ]);
+
+        return redirect()->back()->with('success', 'Empleado enviado a papelera y numero liberado.');
+    }
+
+    public function restaurar(Empleado $empleado)
+    {
+        $empleado->update([
+            'estatus' => true,
+            'fecha_baja' => null,
+            'dias_laborados' => 0,
+            'motivo_baja' => null,
+        ]);
+
+        return redirect()->back()->with('success', 'Empleado restaurado. Asignale un numero nuevo o disponible antes de usarlo en checador.');
     }
 }

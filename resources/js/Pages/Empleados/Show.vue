@@ -22,8 +22,16 @@ const sueldoSemanalMostrado = computed(() => {
     if (sueldoSemanal > 0) return sueldoSemanal.toFixed(2);
 
     const sueldoPorHora = Number(props.empleado.sueldo_por_hora ?? 0);
-    return sueldoPorHora > 0 ? (sueldoPorHora * 48).toFixed(2) : '0.00';
+    return sueldoPorHora > 0 ? (sueldoPorHora * 56).toFixed(2) : '0.00';
 });
+
+const moneda = (valor) => Number(valor ?? 0).toLocaleString('es-MX', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+});
+
+const saldoPrestamo = computed(() => Number(props.empleado.saldo_prestamo ?? 0));
+const prestamoActivo = computed(() => saldoPrestamo.value > 0);
 </script>
 
 <template>
@@ -59,11 +67,22 @@ const sueldoSemanalMostrado = computed(() => {
                             <h1 class="text-2xl font-bold text-slate-900">{{ empleado.nombre_completo }}</h1>
                             <span v-if="empleado.estatus" class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200">Activo</span>
                             <span v-else class="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 text-xs font-bold border border-rose-200">Baja</span>
+                            <span v-if="prestamoActivo" class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-800">
+                                <i class="ti ti-cash-banknote" aria-hidden="true"></i>
+                                Debe ${{ moneda(empleado.saldo_prestamo) }}
+                            </span>
+                            <span v-else class="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
+                                <i class="ti ti-circle-check" aria-hidden="true"></i>
+                                Sin deuda
+                            </span>
                         </div>
                         <p class="text-slate-600 font-medium mb-3 flex items-center gap-2">
                             <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                            {{ empleado.puesto || 'Puesto no asignado' }} • ID: #{{ empleado.numero_empleado || empleado.id }}
+                            {{ empleado.puesto || 'Puesto no asignado' }} • ID: #{{ empleado.numero_empleado || empleado.numero_empleado_baja || empleado.id }}
                         </p>
+                        <div v-if="!empleado.estatus" class="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                            Baja registrada el {{ empleado.fecha_baja || 'sin fecha' }} · {{ empleado.dias_laborados || 0 }} dias laborados
+                        </div>
                         
                         <div class="mt-4 flex flex-wrap gap-2 border-b border-slate-200 pb-2">
                             <button @click="tabActiva = 'perfil'" :class="tabActiva === 'perfil' ? 'bg-teal-50 text-teal-700 border-teal-200 font-bold' : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700'" class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all">
@@ -152,8 +171,13 @@ const sueldoSemanalMostrado = computed(() => {
                             <div class="flex justify-between items-center"><span class="text-sm text-slate-600">INFONAVIT</span><span class="font-bold text-rose-600">-${{ empleado.descuento_infonavit || '0.00' }}</span></div>
                             <div class="border-t border-slate-100 pt-3 mt-3">
                                 <p class="text-xs text-slate-500 uppercase font-semibold mb-1">Préstamo Empresarial</p>
-                                <div class="flex justify-between items-center"><span class="text-sm text-amber-600">Deuda Total</span><span class="font-bold text-amber-700">${{ empleado.saldo_prestamo || '0.00' }}</span></div>
-                                <div class="flex justify-between items-center"><span class="text-sm text-slate-600">Abono Semanal</span><span class="font-bold">-${{ empleado.cuota_prestamo || '0.00' }}</span></div>
+                                <div :class="prestamoActivo ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-700'" class="mb-2 rounded-lg border px-3 py-2">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <span class="text-sm font-bold">{{ prestamoActivo ? 'Deuda pendiente' : 'Prestamo liquidado' }}</span>
+                                        <span class="text-lg font-black">${{ moneda(empleado.saldo_prestamo) }}</span>
+                                    </div>
+                                </div>
+                                <div class="flex justify-between items-center"><span class="text-sm text-slate-600">Abono Semanal</span><span class="font-bold">-${{ moneda(empleado.cuota_prestamo) }}</span></div>
                             </div>
                         </div>
                     </div>

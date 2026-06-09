@@ -1,27 +1,37 @@
 @php
     $empleadoRecibo = $empleado ?? $nomina->empleado ?? null;
-    $numeroEmpleado = $empleadoRecibo->numero_empleado ?? 'S/N';
+    $numeroEmpleado = $empleadoRecibo->numero_empleado ?? $empleadoRecibo->numero_empleado_baja ?? 'S/N';
     $nombreEmpleado = strtoupper($empleadoRecibo->nombre_completo ?? 'N/A');
     $esEstudiante = $es_estudiante ?? (bool) ($empleadoRecibo->es_estudiante ?? false);
     $sueldoSemanal = $sueldo_semanal ?? ($empleadoRecibo->sueldo_semanal ?? 0);
-    $sueldoHora = $empleadoRecibo->sueldo_por_hora ?? 0;
-    $tarifaBaseHora = $tarifa_base_hora ?? ($esEstudiante ? $sueldoHora : ($sueldoSemanal > 0 ? $sueldoSemanal / 48 : 0));
+    $sueldoHora = $sueldo_por_hora ?? ($empleadoRecibo->sueldo_por_hora ?? 0);
+    $sueldoDiario = $pago_dia_planta ?? ($sueldoSemanal > 0 ? $sueldoSemanal / 7 : 0);
+    $tarifaBaseHora = $tarifa_base_hora ?? ($esEstudiante ? $sueldoHora : ($sueldoSemanal > 0 ? $sueldoSemanal / 56 : 0));
     $horasNormales = $nomina->horas_normales ?? 0;
     $horasExtra = $nomina->horas_extra ?? 0;
+    $horasExtraPeriodo = $horas_extra_periodo ?? $horasExtra;
+    $horasExtraMiercolesAnterior = $horas_extra_miercoles_anterior ?? 0;
+    $horasExtraPagadas = $horas_extra_pagadas ?? ($nomina->horas_extra_pagadas ?? $horasExtra);
+    $horasAdeudoDescontadas = $horas_adeudo_descontadas ?? ($nomina->horas_adeudo_descontadas ?? 0);
     $pagoNormal = $pago_normal ?? 0;
     $pagoExtra = $pago_extra ?? 0;
     $diasIncapacidad = $dias_incapacidad ?? 0;
-    $diasVacaciones = $dias_vacaciones ?? 0;
+    $diasVacaciones = $dias_vacaciones_pagadas ?? $dias_vacaciones ?? ($nomina->dias_vacaciones_pagadas ?? 0);
     $diasFalta = $dias_falta ?? 0;
+    $diasFaltaPagados = $dias_falta_pagados ?? ($nomina->faltas_pagadas ?? 0);
+    $diasFaltaDescontables = $dias_falta_descontables ?? max(0, $diasFalta - $diasFaltaPagados);
     $minutosTarde = $minutos_tarde_acumulados ?? 0;
+    $minutosTardeDescontables = $minutos_tarde_descontables ?? $minutosTarde;
     $pagoIncapacidad = $pago_incapacidad ?? 0;
     $pagoVacaciones = $pago_vacaciones ?? 0;
+    $prestamoOtorgado = $prestamo_otorgado ?? ($nomina->prestamo_otorgado ?? 0);
     $descuentoFaltas = $descuento_faltas ?? 0;
     $descuentoRetardos = $descuento_retardos ?? 0;
-    $cuotaPrestamo = $deduccion_prestamo ?? ($empleadoRecibo->cuota_prestamo ?? 0);
-    $descuentoImss = $empleadoRecibo->descuento_imss ?? 0;
-    $descuentoIsr = $empleadoRecibo->descuento_isr ?? 0;
-    $descuentoInfonavit = $empleadoRecibo->descuento_infonavit ?? 0;
+    $prestamoDescuento = $prestamo_descuento ?? $deduccion_prestamo ?? ($nomina->prestamo_descuento ?? 0);
+    $deduccionManual = $deduccion_manual ?? ($nomina->deduccion_manual ?? 0);
+    $descuentoImss = $descuento_imss ?? ($empleadoRecibo->descuento_imss ?? 0);
+    $descuentoIsr = $descuento_isr ?? ($empleadoRecibo->descuento_isr ?? 0);
+    $descuentoInfonavit = $descuento_infonavit ?? ($empleadoRecibo->descuento_infonavit ?? 0);
     $totalPercepciones = $total_percepciones ?? $nomina->total_percepciones ?? 0;
     $totalDeducciones = $total_deducciones ?? $nomina->total_deducciones ?? 0;
     $pagoNeto = $pago_neto ?? $nomina->pago_neto ?? 0;
@@ -31,145 +41,137 @@
     $fechaFin = isset($nomina->fecha_fin)
         ? strtoupper(\Carbon\Carbon::parse($nomina->fecha_fin)->locale('es')->isoFormat('DD MMMM YYYY'))
         : 'N/A';
-    $cell = 'border: 1px solid #cbd5e1; padding: 7px; font-family: Arial; font-size: 12px; color: #0f172a;';
+    $cell = 'border: 1px solid #111827; padding: 5px; font-family: Arial; font-size: 11px; color: #111827;';
     $center = $cell . ' text-align: center;';
     $right = $cell . ' text-align: right;';
     $top = $cell . ' vertical-align: top;';
     $topRight = $top . ' text-align: right;';
-    $muted = 'color: #64748b; font-size: 10px;';
-    $money = 'color: #0f766e; font-weight: bold;';
+    $muted = 'color: #111827; font-size: 10px; font-weight: bold;';
+    $green = 'color: #00A651; font-weight: bold;';
+    $blue = 'color: #0000FF; font-weight: bold;';
+    $red = 'color: #FF0000; font-weight: bold;';
 @endphp
 
-<table style="border-collapse: collapse; border: 1px solid #cbd5e1;">
-    <tr style="height: 62px;">
-        <td style="border: none; padding: 12px; vertical-align: middle;">
-            <img src="{{ public_path('img/promatec.png') }}" alt="Promatec" height="50">
+<table style="border-collapse: collapse; border: 2px solid #111827;">
+    <tr style="height: 48px;">
+        <td style="border: none; padding: 8px; vertical-align: middle;">
+            <img src="{{ public_path('img/promatec.png') }}" alt="Promatec" height="42">
         </td>
-        <td style="border: none; padding: 12px; vertical-align: middle;">
-            <img src="{{ public_path('img/lugarth.png') }}" alt="Lugarth" height="50">
+        <td style="border: none; padding: 8px; vertical-align: middle;">
+            <img src="{{ public_path('img/lugarth.png') }}" alt="Lugarth" height="42">
         </td>
-        <td colspan="2" style="border: none; padding: 12px; color: #475569; font-family: Arial; font-size: 10px; text-align: right; vertical-align: top;">
-            BARRIO DE SANTO TOMAS C.P. 43860<br><br>
+        <td colspan="2" style="border: none; padding: 8px; font-family: Arial; font-size: 10px; text-align: right; vertical-align: top; font-weight: bold;">
+            BARRIO DE SANTO TOMAS C.P. 43860<br>
             PACHUCA DE SOTO, HGO
         </td>
     </tr>
 
     <tr>
-        <td colspan="4" style="{{ $center }} border-top: 1px solid #cbd5e1; background-color: #0f172a; color: #ffffff; font-size: 16px; font-weight: bold; padding: 10px;">
+        <td colspan="4" style="{{ $center }} font-size: 16px; font-weight: bold;">
             RECIBO DE SUELDO PACHUCA
         </td>
     </tr>
 
-    <tr style="height: 76px;">
-        <td colspan="2" style="{{ $cell }} padding: 15px 5px; vertical-align: middle;">
-            <span style="{{ $muted }}">Nombre del empleado</span>
-            <span style="{{ $money }}">{{ $numeroEmpleado }}</span><br><br><br>
-            <span style="font-weight: bold; text-align: center;">{{ $nombreEmpleado }}</span>
+    <tr style="height: 66px;">
+        <td colspan="2" style="{{ $cell }} vertical-align: middle;">
+            <span style="{{ $muted }}">Nombre del empleado.</span>
+            <span style="{{ $green }}">{{ $numeroEmpleado }}</span><br><br>
+            <span style="display: block; text-align: center; font-weight: bold;">{{ $nombreEmpleado }}</span>
         </td>
-        <td colspan="2" style="{{ $center }} padding: 15px 5px;">
-            <span style="color: #0f766e; font-weight: bold; font-size: 14px;">SEMANA {{ $nomina->numero_semana ?? 'N/A' }}</span><br><br>
+        <td colspan="2" style="{{ $center }} vertical-align: middle;">
+            <span style="{{ $blue }}">SEMANA {{ $nomina->numero_semana ?? 'N/A' }}</span><br>
             DEL {{ $fechaInicio }} AL {{ $fechaFin }}
         </td>
     </tr>
 
     <tr>
-        <th colspan="2" style="{{ $center }} background-color: #f1f5f9; font-weight: bold;">PERCEPCIONES</th>
-        <th colspan="2" style="{{ $center }} background-color: #f1f5f9; font-weight: bold;">DEDUCCIONES</th>
+        <th colspan="2" style="{{ $center }} font-size: 14px; font-weight: bold;">PERCEPCIONES</th>
+        <th colspan="2" style="{{ $center }} font-size: 14px; font-weight: bold;">DEDUCCIONES</th>
     </tr>
     <tr>
-        <td style="{{ $center }} font-size: 10px;">SUELDOS</td>
-        <td style="{{ $center }} font-size: 10px;">TOTAL</td>
-        <td colspan="2" style="{{ $center }} font-size: 10px;">TOTAL</td>
+        <td style="{{ $center }} font-size: 10px; font-weight: bold;">SUELDOS</td>
+        <td style="{{ $center }} font-size: 10px; font-weight: bold;">TOTAL</td>
+        <td style="{{ $center }} font-size: 10px; font-weight: bold;">CONCEPTO</td>
+        <td style="{{ $center }} font-size: 10px; font-weight: bold;">TOTAL</td>
     </tr>
-    <tr style="height: 140px;">
-        <td style="{{ $top }} padding-top: 10px;">
+    <tr style="height: 150px;">
+        <td style="{{ $top }}">
             @if($esEstudiante)
-                <b>SUELDO (Tarifa x Hora: ${{ number_format($sueldoHora, 2) }})</b><br>
+                <b>SUELDO POR HORA</b><br>
+                HORAS NORMALES <span style="{{ $blue }}">{{ $horasNormales }}</span><br>
             @else
-                <b>SUELDO SEMANAL BASE: ${{ number_format($sueldoSemanal, 2) }}</b><br>
+                <b>SUELDO DIARIO</b><br>
+                <b>SUELDO SEMANAL</b><br>
             @endif
-            <br>
-            @if($esEstudiante)
-                HORAS NORMALES {{ $horasNormales }} hrs<br>
-            @else
-                HORAS REGISTRADAS {{ $horasNormales }} hrs<br>
+            HRS EXTRA <span style="{{ $blue }}">{{ $horasExtraPagadas }}</span><br>
+            @if($horasExtraMiercolesAnterior > 0)
+                MIE. ANT. <span style="{{ $blue }}">{{ $horasExtraMiercolesAnterior }}</span><br>
             @endif
-            @if($horasExtra > 0)
-                HORAS EXTRA (Base: ${{ number_format($tarifaBaseHora, 2) }}) {{ $horasExtra }} hrs<br>
-            @else
-                <br>
+            @if($horasAdeudoDescontadas > 0)
+                HRS DESC. <span style="{{ $red }}">{{ $horasAdeudoDescontadas }}</span><br>
             @endif
-            <br>
-            @if($diasIncapacidad > 0)
-                <span style="{{ $money }} font-size: 10px;">INCAPACIDAD ({{ $diasIncapacidad }} Días) al 60%</span><br>
-            @endif
-            @if($diasVacaciones > 0)
-                <span style="font-size: 8px;">D.P. VACACION + 25% P.V. ({{ $diasVacaciones }} Días)</span><br>
-            @else
-                <span style="font-size: 8px;">D.P. VACACION + 25% P.V.</span><br>
-            @endif
+            COMPENSACION<br>
+            INCAP - 60% <span style="{{ $blue }}">{{ $diasIncapacidad }}</span><br>
+            D.P. VACACION + 25% P.V. <span style="{{ $blue }}">{{ $diasVacaciones }}</span>
         </td>
 
-        <td style="{{ $topRight }} padding-top: 10px;">
-            <br>
-            <span data-format='"$"#,##0.00'>$ {{ number_format($pagoNormal, 2) }}</span><br>
-            @if($horasExtra > 0)
-                <span data-format='"$"#,##0.00'>$ {{ number_format($pagoExtra, 2) }}</span><br>
+        <td style="{{ $topRight }}">
+            @if($esEstudiante)
+                $ {{ number_format($sueldoHora, 2) }}<br>
+                $ {{ number_format($pagoNormal, 2) }}<br>
             @else
-                <br>
+                $ {{ number_format($sueldoDiario, 2) }}<br>
+                $ {{ number_format($pagoNormal, 2) }}<br>
             @endif
-            <br>
-            @if($diasIncapacidad > 0)
-                $ {{ number_format($pagoIncapacidad, 2) }}<br>
+            $ {{ number_format($pagoExtra, 2) }}<br>
+            @if($horasExtraMiercolesAnterior > 0)
+                <span style="font-size: 9px;">Incluido</span><br>
             @endif
-            @if($diasVacaciones > 0)
-                $ {{ number_format($pagoVacaciones, 2) }}
-            @else
-                <br>
+            @if($horasAdeudoDescontadas > 0)
+                -<br>
             @endif
+            $ {{ number_format($prestamoOtorgado, 2) }}<br>
+            $ {{ number_format($pagoIncapacidad, 2) }}<br>
+            $ {{ number_format($pagoVacaciones, 2) }}
         </td>
 
-        <td style="{{ $top }} padding-top: 10px;">
-            @if($diasFalta > 0)
-                Falta(s) - {{ $diasFalta }} días<br>
-            @else
-                Falta (s)<br>
-            @endif
-            P. Personal<br>
-            Retardos ({{ $minutosTarde }} min)<br>
-            Préstamos<br>
-            Seguro / IMSS<br>
+        <td style="{{ $top }}">
+            Falta(s) <span style="{{ $red }}">{{ $diasFaltaDescontables }}</span><br>
+            Faltas pagadas <span style="{{ $blue }}">{{ $diasFaltaPagados }}</span><br>
+            Adeudo<br>
+            IMSS<br>
             ISR<br>
-            INFONAVIT
+            INFONAVIT<br>
+            Retardo <span style="{{ $blue }}">{{ $minutosTardeDescontables }}</span><br>
+            Descuento
         </td>
-        <td style="{{ $topRight }} padding-top: 10px;">
+        <td style="{{ $topRight }}">
             $ {{ number_format($descuentoFaltas, 2) }}<br>
-            $ 0.00<br>
-            $ {{ number_format($descuentoRetardos, 2) }}<br>
-            $ {{ number_format($cuotaPrestamo, 2) }}<br>
+            -<br>
+            $ {{ number_format($prestamoDescuento, 2) }}<br>
             $ {{ number_format($descuentoImss, 2) }}<br>
             $ {{ number_format($descuentoIsr, 2) }}<br>
-            $ {{ number_format($descuentoInfonavit, 2) }}
+            $ {{ number_format($descuentoInfonavit, 2) }}<br>
+            $ {{ number_format($descuentoRetardos, 2) }}<br>
+            $ {{ number_format($deduccionManual, 2) }}
         </td>
     </tr>
     <tr>
-        <td colspan="2" style="{{ $cell }} font-weight: bold;">
-            TOTAL DE PERCEPCIONES: $ {{ number_format($totalPercepciones, 2) }}
-        </td>
-        <td colspan="2" style="{{ $cell }} font-weight: bold;">
-            TOTAL DE DEDUCCIONES: $ {{ number_format($totalDeducciones, 2) }}
-        </td>
+        <td colspan="2" style="{{ $right }} font-weight: bold;">TOTAL DE PERCEPCIONES:</td>
+        <td colspan="2" style="{{ $right }} font-weight: bold;">$ {{ number_format($totalPercepciones, 2) }}</td>
     </tr>
     <tr>
-        <td colspan="4" style="{{ $right }} background-color: #ecfdf5; color: #065f46; font-size: 15px; padding: 10px; font-weight: bold;">
-            NETO A PAGAR: $ {{ number_format($pagoNeto, 2) }}
-        </td>
+        <td colspan="2" style="{{ $right }} font-weight: bold;">TOTAL DE DEDUCCIONES:</td>
+        <td colspan="2" style="{{ $right }} font-weight: bold;">$ {{ number_format($totalDeducciones, 2) }}</td>
+    </tr>
+    <tr>
+        <td colspan="2" style="{{ $right }} font-weight: bold; font-size: 13px;">NETO A PAGAR:</td>
+        <td colspan="2" style="{{ $right }} font-weight: bold; font-size: 13px;">$ {{ number_format($pagoNeto, 2) }}</td>
     </tr>
 
-    <tr style="height: 70px;">
-        <td colspan="2" style="{{ $cell }} color: #334155; font-size: 9px; padding: 12px; text-align: justify; vertical-align: top;">
-            Recibí de: PROMATEC, LUGARTH la cantidad anotada en este Recibo de pago de mi sueldo; además<br><br>
-            certifico que no se me adeuda a la fecha cantidad alguna por tiempo extra.
+    <tr style="height: 58px;">
+        <td colspan="2" style="{{ $cell }} font-size: 8px; text-align: justify; vertical-align: top;">
+            Recibi de: PROMATEC, LUGARTH la cantidad anotada en este Recibo de pago de mi sueldo; ademas certifico que no se me adeuda a la fecha cantidad alguna por tiempo extra.
         </td>
         <td colspan="2" style="{{ $center }} vertical-align: bottom;">
             ___________________________________<br>

@@ -46,9 +46,11 @@ class BaseDatosController extends Controller
         }
 
         $request->validate([
-            'archivo_sql' => 'required|file|max:51200',
+            'archivo_sql' => 'required|file|max:102400',
             'confirmacion' => 'required|in:RESTAURAR',
         ], [
+            'archivo_sql.uploaded' => 'El respaldo no pudo subirse. Revisa que upload_max_filesize y post_max_size permitan este tamano.',
+            'archivo_sql.max' => 'El respaldo no debe pesar mas de 100 MB.',
             'confirmacion.in' => 'Escribe RESTAURAR para confirmar la importacion.',
         ]);
 

@@ -8,7 +8,7 @@ const props = defineProps({
   totalEmpleados:    { type: Number, default: 0 },
   semanaContable:    { type: Number, default: 0 },
   gastoSemanal:      { type: [Number, String], default: '0.00' },
-  corteSemana:       { type: String, default: 'Miércoles a martes' },
+  corteSemana:       { type: String, default: 'Jueves a miércoles' },
   nominasPendientes: { type: Number, default: 0 },
   kpis:              Object,
   graficaAsistencia: Array,

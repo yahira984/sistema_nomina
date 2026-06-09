@@ -29,7 +29,9 @@ class Empleado extends Model
     public function getAntiguedadAniosAttribute()
     {
         if (!$this->fecha_ingreso) return 0;
-        return Carbon::parse($this->fecha_ingreso)->age;
+        $fin = $this->fecha_baja ? Carbon::parse($this->fecha_baja) : Carbon::now();
+
+        return Carbon::parse($this->fecha_ingreso)->diffInYears($fin);
     }
 
     public function getDiasVacacionesTotalesAttribute()

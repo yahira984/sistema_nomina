@@ -38,6 +38,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/empleados', [EmpleadoController::class, 'store'])->name('empleados.store');
     Route::put('/empleados/{empleado}', [EmpleadoController::class, 'update'])->name('empleados.update');
     Route::delete('/empleados/{empleado}', [EmpleadoController::class, 'destroy'])->name('empleados.destroy');
+    Route::put('/empleados/{empleado}/restaurar', [EmpleadoController::class, 'restaurar'])->name('empleados.restaurar');
     Route::get('/empleados/{id}/perfil', [EmpleadoController::class, 'show'])->name('empleados.show');
     
     // Asistencias
@@ -54,6 +55,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/nominas/generar/{empleado_id}', [NominaController::class, 'generarRecibo'])->name('nominas.generar');
     Route::get('/nominas/excel-individual/{empleado_id}', [NominaController::class, 'exportarExcelIndividual'])->name('nominas.excel-individual');
     Route::get('/nominas/descargar/{nomina}', [NominaController::class, 'descargar'])->name('nominas.descargar');
+    Route::put('/nominas/ajustes/{empleado_id}', [NominaController::class, 'actualizarAjustes'])->name('nominas.ajustes');
     Route::put('/nominas/{nomina}/pagar', [NominaController::class, 'pagar'])->name('nominas.pagar');
     Route::get('/nominas/reporte-global/{semana}', [NominaController::class, 'reporteGlobal'])->name('nominas.reporte');
 });

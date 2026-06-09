@@ -13,7 +13,7 @@ return new class extends Migration
             $table->foreignId('empleado_id')->constrained('empleados')->onDelete('cascade');
             $table->integer('numero_semana'); // Ej: Semana 20
             $table->date('fecha_inicio'); // El Miércoles que empezó
-            $table->date('fecha_fin'); // El Martes que terminó
+            $table->date('fecha_fin'); // El miercoles que termino
             
             $table->decimal('horas_normales', 5, 2)->default(0); 
             $table->decimal('horas_extra', 5, 2)->default(0); // Lo que se trabajó en sábado
