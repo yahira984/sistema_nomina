@@ -161,8 +161,68 @@ class NominaController extends Controller
 
     public function pagar(Nomina $nomina)
     {
-        $nomina->update(['pagado' => !$nomina->pagado]);
-        return back();
+        $pagado = DB::transaction(function () use ($nomina) {
+            $nomina = Nomina::whereKey($nomina->id)->lockForUpdate()->firstOrFail();
+            $empleado = Empleado::findOrFail($nomina->empleado_id);
+            $controlPrestamoAplicado = $this->controlPrestamoAplicadoDisponible();
+            [$prestamoOtorgadoAplicado, $prestamoDescuentoAplicado] = $this->prestamoAplicadoAnterior($nomina, $controlPrestamoAplicado);
+
+            if ($nomina->pagado) {
+                $this->aplicarMovimientoPrestamoEmpleado(
+                    $empleado,
+                    0,
+                    $prestamoOtorgadoAplicado,
+                    0,
+                    $prestamoDescuentoAplicado
+                );
+
+                $datos = ['pagado' => false];
+
+                if ($controlPrestamoAplicado) {
+                    $datos = array_merge($datos, [
+                        'prestamo_saldo_aplicado_otorgado' => 0,
+                        'prestamo_saldo_aplicado_descuento' => 0,
+                        'prestamo_saldo_aplicado_at' => null,
+                    ]);
+                }
+
+                $nomina->forceFill($datos)->save();
+
+                return false;
+            }
+
+            $prestamoOtorgadoNomina = (float) ($nomina->prestamo_otorgado ?? 0);
+            $prestamoDescuentoNomina = (float) ($nomina->prestamo_descuento ?? 0);
+
+            $this->aplicarMovimientoPrestamoEmpleado(
+                $empleado,
+                $prestamoOtorgadoNomina,
+                $prestamoOtorgadoAplicado,
+                $prestamoDescuentoNomina,
+                $prestamoDescuentoAplicado
+            );
+
+            $datos = ['pagado' => true];
+
+            if ($controlPrestamoAplicado) {
+                $datos = array_merge($datos, [
+                    'prestamo_saldo_aplicado_otorgado' => $prestamoOtorgadoNomina,
+                    'prestamo_saldo_aplicado_descuento' => $prestamoDescuentoNomina,
+                    'prestamo_saldo_aplicado_at' => now(),
+                ]);
+            }
+
+            $nomina->forceFill($datos)->save();
+
+            return true;
+        });
+
+        return back()->with(
+            'success',
+            $pagado
+                ? 'Nomina marcada como pagada. Prestamos aplicados al saldo del empleado.'
+                : 'Nomina regresada a pendiente. Prestamos revertidos del saldo del empleado.'
+        );
     }
 
     private function resolverSemanaNomina(Request $request): array
@@ -329,8 +389,6 @@ class NominaController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            $controlPrestamoAplicado = $this->controlPrestamoAplicadoDisponible();
-            [$prestamoOtorgadoAnterior, $prestamoDescuentoAnterior] = $this->prestamoAplicadoAnterior($nomina, $controlPrestamoAplicado);
             $datos = $this->datosNominaParaGuardar($inicioSemana, $finSemana, $desglose);
 
             if ($nomina) {
@@ -340,22 +398,6 @@ class NominaController extends Controller
                 $nomina = Nomina::create(array_merge([
                     'empleado_id' => $empleado->id,
                 ], $datos));
-            }
-
-            $this->aplicarMovimientoPrestamoEmpleado(
-                $empleado,
-                (float) $desglose['prestamo_otorgado'],
-                $prestamoOtorgadoAnterior,
-                (float) $desglose['prestamo_descuento'],
-                $prestamoDescuentoAnterior
-            );
-
-            if ($controlPrestamoAplicado) {
-                $nomina->forceFill([
-                    'prestamo_saldo_aplicado_otorgado' => (float) $desglose['prestamo_otorgado'],
-                    'prestamo_saldo_aplicado_descuento' => (float) $desglose['prestamo_descuento'],
-                    'prestamo_saldo_aplicado_at' => now(),
-                ])->save();
             }
 
             return $nomina->fresh();
@@ -369,10 +411,25 @@ class NominaController extends Controller
         }
 
         if ($controlPrestamoAplicado) {
+            if ($nomina->prestamo_saldo_aplicado_at) {
+                return [
+                    (float) ($nomina->prestamo_saldo_aplicado_otorgado ?? 0),
+                    (float) ($nomina->prestamo_saldo_aplicado_descuento ?? 0),
+                ];
+            }
+
+            if (!$nomina->pagado) {
+                return [0.0, 0.0];
+            }
+
             return [
-                (float) ($nomina->prestamo_saldo_aplicado_otorgado ?? 0),
-                (float) ($nomina->prestamo_saldo_aplicado_descuento ?? 0),
+                (float) ($nomina->prestamo_otorgado ?? 0),
+                (float) ($nomina->prestamo_descuento ?? 0),
             ];
+        }
+
+        if (!$nomina->pagado) {
+            return [0.0, 0.0];
         }
 
         return [
@@ -398,10 +455,18 @@ class NominaController extends Controller
 
         $empleadoPrestamo = Empleado::whereKey($empleado->id)->lockForUpdate()->firstOrFail();
         $saldoActual = (float) ($empleadoPrestamo->saldo_prestamo ?? 0);
+        $nuevoSaldo = max(0, round($saldoActual + $movimientoSaldo, 2));
+        $datosEmpleado = [
+            'saldo_prestamo' => $nuevoSaldo,
+        ];
 
-        $empleadoPrestamo->forceFill([
-            'saldo_prestamo' => max(0, round($saldoActual + $movimientoSaldo, 2)),
-        ])->save();
+        if ($nuevoSaldo <= 0) {
+            $datosEmpleado['cuota_prestamo'] = 0;
+        } elseif ((float) ($empleadoPrestamo->cuota_prestamo ?? 0) <= 0 && $prestamoDescuentoAnterior > 0) {
+            $datosEmpleado['cuota_prestamo'] = round($prestamoDescuentoAnterior, 2);
+        }
+
+        $empleadoPrestamo->forceFill($datosEmpleado)->save();
 
         $empleado->refresh();
     }
