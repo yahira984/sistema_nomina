@@ -18,7 +18,8 @@ class Empleado extends Model
         'dias_vacaciones_totales', 
         'dias_vacaciones_tomados', 
         'dias_vacaciones_restantes',
-        'dias_faltas_totales'
+        'dias_faltas_totales',
+        'dias_laborados'
     ];
 
     public function asistencias()
@@ -29,9 +30,14 @@ class Empleado extends Model
     public function getAntiguedadAniosAttribute()
     {
         if (!$this->fecha_ingreso) return 0;
-        $fin = $this->fecha_baja ? Carbon::parse($this->fecha_baja) : Carbon::now();
+        $inicio = Carbon::parse($this->fecha_ingreso)->startOfDay();
+        $fin = $this->fecha_baja ? Carbon::parse($this->fecha_baja)->startOfDay() : Carbon::now()->startOfDay();
 
-        return Carbon::parse($this->fecha_ingreso)->diffInYears($fin);
+        if ($fin->lt($inicio)) {
+            return 0;
+        }
+
+        return (int) floor($inicio->diffInYears($fin));
     }
 
     public function getDiasVacacionesTotalesAttribute()
@@ -39,19 +45,9 @@ class Empleado extends Model
         $anios = $this->antiguedad_anios;
         
         if ($anios < 1) return 0;
-        if ($anios == 1) return 12;
-        if ($anios == 2) return 14;
-        if ($anios == 3) return 16;
-        if ($anios == 4) return 18;
-        if ($anios == 5) return 20;
-        if ($anios >= 6 && $anios <= 10) return 22;
-        if ($anios >= 11 && $anios <= 15) return 24;
-        if ($anios >= 16 && $anios <= 20) return 26;
-        if ($anios >= 21 && $anios <= 25) return 28;
-        if ($anios >= 26 && $anios <= 30) return 30;
-        if ($anios >= 31 && $anios <= 35) return 32;
-        
-        return 32;
+        if ($anios <= 5) return 10 + ($anios * 2);
+
+        return 20 + ((int) ceil(($anios - 5) / 5) * 2);
     }
 
     public function getDiasVacacionesTomadosAttribute()
@@ -72,5 +68,25 @@ class Empleado extends Model
         return $this->asistencias()
             ->where('tipo_asistencia', 'Falta')
             ->count(); 
+    }
+
+    public function getDiasLaboradosAttribute($value)
+    {
+        if ((int) $value > 0) {
+            return (int) $value;
+        }
+
+        if (!$this->fecha_ingreso || !$this->fecha_baja) {
+            return 0;
+        }
+
+        $inicio = Carbon::parse($this->fecha_ingreso)->startOfDay();
+        $fin = Carbon::parse($this->fecha_baja)->startOfDay();
+
+        if ($fin->lt($inicio)) {
+            return 0;
+        }
+
+        return (int) $inicio->diffInDays($fin) + 1;
     }
 }
