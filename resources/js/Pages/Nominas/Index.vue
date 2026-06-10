@@ -12,6 +12,7 @@ const props = defineProps({
 });
 
 const searchQuery = ref('');
+const historialSearch = ref('');
 const showToast = ref(false);
 const toastTitle = ref('');
 const toastMessage = ref('');
@@ -23,7 +24,18 @@ const selectedCorte = ref(props.fechaCorteActual);
 
 // --- VARIABLES DE FILTRADO Y ORDENAMIENTO ---
 const filtroEstado = ref('todos'); // 'todos', 'pendiente', 'liquidado'
+const filtroBanco = ref('todos');
 const criterioOrden = ref('asc');   // 'asc', 'desc', 'num_asc', 'num_desc'
+
+const nombreBancoEmpleado = (empleado) => {
+    const banco = String(empleado.banco || '').trim();
+    return banco ? banco.toUpperCase() : 'EFECTIVO / SIN BANCO';
+};
+
+const bancosDisponibles = computed(() => {
+    const bancos = new Set(props.empleados.map((empleado) => nombreBancoEmpleado(empleado)));
+    return Array.from(bancos).sort();
+});
 
 // Extrae el número de semana correspondiente a la fecha de corte seleccionada actualmente
 const numeroSemanaSeleccionada = computed(() => {
@@ -157,6 +169,10 @@ const empleadosFiltrados = computed(() => {
     }
 
     // Filtro C: Lógica de Ordenamiento
+    if (filtroBanco.value !== 'todos') {
+        resultado = resultado.filter(emp => nombreBancoEmpleado(emp) === filtroBanco.value);
+    }
+
     resultado.sort((a, b) => {
         // --- ORDEN NUMÉRICO ---
         if (criterioOrden.value === 'num_asc' || criterioOrden.value === 'num_desc') {
@@ -222,6 +238,29 @@ const toggleTodosFiltrados = (checked) => {
     selectedEmpleadoIds.value = Array.from(actuales);
 };
 
+const empleadosGrupoSeleccionados = (empleadosGrupo) => {
+    return empleadosGrupo.length > 0
+        && empleadosGrupo.every((empleado) => empleadoSeleccionado(empleado.id));
+};
+
+const toggleEmpleadosGrupo = (empleadosGrupo, checked) => {
+    const actuales = new Set(selectedEmpleadoIds.value);
+
+    empleadosGrupo.forEach((empleado) => {
+        if (checked) {
+            actuales.add(empleado.id);
+        } else {
+            actuales.delete(empleado.id);
+        }
+    });
+
+    selectedEmpleadoIds.value = Array.from(actuales);
+};
+
+const seleccionarBanco = (empleadosBanco) => {
+    toggleEmpleadosGrupo(empleadosBanco, true);
+};
+
 const urlRecibosMasivos = (todos = false) => {
     const parametros = {
         fecha_corte: selectedCorte.value,
@@ -234,6 +273,13 @@ const urlRecibosMasivos = (todos = false) => {
     return route('nominas.recibos-masivos', parametros);
 };
 
+const urlRecibosGrupo = (empleadosGrupo) => {
+    return route('nominas.recibos-masivos', {
+        fecha_corte: selectedCorte.value,
+        empleado_ids: empleadosGrupo.map((empleado) => empleado.id),
+    });
+};
+
 watch(() => props.empleados, (empleados) => {
     const idsActuales = new Set(empleados.map((empleado) => empleado.id));
     selectedEmpleadoIds.value = selectedEmpleadoIds.value.filter((id) => idsActuales.has(id));
@@ -244,7 +290,7 @@ const empleadosAgrupados = computed(() => {
     const grupos = {};
     
     empleadosFiltrados.value.forEach(empleado => {
-        const nombreBanco = empleado.banco ? empleado.banco.toUpperCase() : 'EFECTIVO / SIN BANCO';
+        const nombreBanco = nombreBancoEmpleado(empleado);
         
         if (!grupos[nombreBanco]) {
             grupos[nombreBanco] = [];
@@ -256,6 +302,24 @@ const empleadosAgrupados = computed(() => {
         obj[key] = grupos[key];
         return obj;
     }, {});
+});
+
+const historialFiltrado = computed(() => {
+    const term = historialSearch.value.toLowerCase().trim();
+
+    if (!term) {
+        return props.historial;
+    }
+
+    return props.historial.filter((registro) => {
+        const empleado = registro.empleado || {};
+
+        return String(empleado.nombre_completo || '').toLowerCase().includes(term)
+            || String(empleado.numero_empleado || '').toLowerCase().includes(term)
+            || String(registro.numero_semana || '').toLowerCase().includes(term)
+            || String(registro.fecha_inicio || '').toLowerCase().includes(term)
+            || String(registro.fecha_fin || '').toLowerCase().includes(term);
+    });
 });
 
 const copiarCuenta = (banco, cuenta) => {
@@ -377,6 +441,20 @@ const cambiarEstadoPago = (nominaId) => {
                             </div>
 
                             <div class="relative w-full sm:w-auto">
+                                <select v-model="filtroBanco" class="field-input-soft appearance-none pr-10 text-slate-700 text-sm font-medium">
+                                    <option value="todos">Todos los bancos</option>
+                                    <option v-for="banco in bancosDisponibles" :key="banco" :value="banco">
+                                        {{ banco }}
+                                    </option>
+                                </select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <div class="relative w-full sm:w-auto">
                                 <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                                     <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
@@ -440,6 +518,24 @@ const cambiarEstadoPago = (nominaId) => {
                                     <span class="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">
                                         {{ empleadosBanco.length }} empleado(s)
                                     </span>
+                                    <div class="ml-auto flex w-full flex-wrap gap-2 sm:w-auto">
+                                        <button
+                                            type="button"
+                                            @click="seleccionarBanco(empleadosBanco)"
+                                            class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 sm:flex-none"
+                                        >
+                                            <i class="ti ti-checks" aria-hidden="true"></i>
+                                            Seleccionar banco
+                                        </button>
+                                        <a
+                                            :href="urlRecibosGrupo(empleadosBanco)"
+                                            target="_blank"
+                                            class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800 sm:flex-none"
+                                        >
+                                            <i class="ti ti-printer" aria-hidden="true"></i>
+                                            PDF banco
+                                        </a>
+                                    </div>
                                 </div>
 
                                 <div class="overflow-hidden rounded-xl border border-slate-200 shadow-sm">
@@ -450,10 +546,10 @@ const cambiarEstadoPago = (nominaId) => {
                                                     <th class="w-12 text-center">
                                                         <input
                                                             type="checkbox"
-                                                            :checked="todosFiltradosSeleccionados"
-                                                            @change="toggleTodosFiltrados($event.target.checked)"
+                                                            :checked="empleadosGrupoSeleccionados(empleadosBanco)"
+                                                            @change="toggleEmpleadosGrupo(empleadosBanco, $event.target.checked)"
                                                             class="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                                                            title="Seleccionar filtrados"
+                                                            title="Seleccionar banco"
                                                         />
                                                     </th>
                                                     <th>Empleado</th>
@@ -675,6 +771,17 @@ const cambiarEstadoPago = (nominaId) => {
                                 <p class="panel-subtitle">Consulta pagos anteriores, estatus y archivos PDF.</p>
                             </div>
                         </div>
+                        <div class="relative w-full sm:w-80">
+                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                                <i class="ti ti-search" aria-hidden="true"></i>
+                            </div>
+                            <input
+                                v-model="historialSearch"
+                                type="text"
+                                class="field-input-soft pl-9"
+                                placeholder="Buscar nombre o numero..."
+                            />
+                        </div>
                     </div>
 
                     <div class="overflow-x-auto">
@@ -689,12 +796,12 @@ const cambiarEstadoPago = (nominaId) => {
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="registro in historial" :key="registro.id">
+                                <tr v-for="registro in historialFiltrado" :key="registro.id">
                                     <td class="whitespace-nowrap">
                                         <div class="font-semibold text-slate-950">Semana {{ registro.numero_semana }}</div>
                                         <div class="text-xs text-slate-500">{{ registro.fecha_inicio }} al {{ registro.fecha_fin }}</div>
                                     </td>
-                                    <td class="whitespace-nowrap font-semibold text-slate-900">{{ registro.empleado.nombre_completo }}</td>
+                                    <td class="whitespace-nowrap font-semibold text-slate-900">{{ registro.empleado?.nombre_completo || 'Sin empleado' }}</td>
                                     <td class="whitespace-nowrap text-center">
                                         <div class="flex flex-col items-center justify-center gap-1.5">
                                             <span :class="registro.pagado ? 'status-success' : 'status-warning'" class="status-pill">
@@ -727,7 +834,7 @@ const cambiarEstadoPago = (nominaId) => {
                                         </a>
                                     </td>
                                 </tr>
-                                <tr v-if="historial.length === 0">
+                                <tr v-if="historialFiltrado.length === 0">
                                     <td colspan="5" class="empty-state">
                                         Todavía no hay recibos emitidos en el historial.
                                     </td>
