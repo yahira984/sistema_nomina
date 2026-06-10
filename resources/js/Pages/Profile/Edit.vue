@@ -20,9 +20,9 @@ defineProps({
 
     <AuthenticatedLayout>
         <template #header>
-            <div>
+            <div class="min-w-0">
                 <p class="text-sm font-semibold text-teal-700">Cuenta de usuario</p>
-                <h2 class="text-2xl font-semibold text-slate-950">Perfil</h2>
+                <h2 class="text-xl font-semibold text-slate-950 sm:text-2xl">Perfil</h2>
             </div>
         </template>
 

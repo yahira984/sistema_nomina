@@ -152,15 +152,15 @@ const restaurarEmpleado = (id, nombre) => {
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex items-center gap-4">
+            <div class="flex min-w-0 items-center gap-3 sm:gap-4">
                 <Link :href="route('dashboard')" class="icon-button" aria-label="Volver al panel">
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19 3 12m0 0 7-7m-7 7h18" />
                     </svg>
                 </Link>
-                <div>
+                <div class="min-w-0">
                     <p class="text-sm font-semibold text-teal-700">Gestión de personal</p>
-                    <h2 class="text-2xl font-semibold text-slate-950">Directorio de Personal</h2>
+                    <h2 class="text-xl font-semibold text-slate-950 sm:text-2xl">Directorio de Personal</h2>
                 </div>
             </div>
         </template>
@@ -181,7 +181,7 @@ const restaurarEmpleado = (id, nombre) => {
                             </div>
                         </div>
 
-                        <button v-if="editando" @click="cancelarEdicion" class="btn-secondary" type="button">
+                        <button v-if="editando" @click="cancelarEdicion" class="btn-secondary w-full sm:w-auto" type="button">
                             <i class="ti ti-x" aria-hidden="true"></i>
                             Cancelar edición
                         </button>
@@ -300,7 +300,7 @@ const restaurarEmpleado = (id, nombre) => {
                                 </select>
                             </div>
 
-                            <div class="md:col-span-1 flex items-center pl-2 pt-6">
+                            <div class="flex items-center pt-2 md:col-span-1 md:pl-2 md:pt-6">
                                 <label class="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" v-model="form.es_estudiante" class="w-5 h-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
                                     <span class="text-sm font-semibold text-slate-700">Mod. Estudiante</span>
@@ -369,8 +369,8 @@ const restaurarEmpleado = (id, nombre) => {
                                 <input v-model="form.rfc" type="text" maxlength="13"  class="field-input-soft" placeholder="12 o 13 caracteres" @input="form.rfc = form.rfc.toUpperCase().replace(/[^A-Z0-9&]/g, '')" />
                             </div>
 
-                            <div class="flex justify-end md:col-span-4 mt-2">
-                                <button type="submit" :disabled="form.processing" :class="editando ? 'btn-warning' : 'btn-accent'">
+                            <div class="mt-2 flex justify-stretch md:col-span-4 sm:justify-end">
+                                <button type="submit" :disabled="form.processing" :class="editando ? 'btn-warning w-full sm:w-auto' : 'btn-accent w-full sm:w-auto'">
                                     <i :class="['ti', editando ? 'ti-device-floppy' : 'ti-user-plus']" aria-hidden="true"></i>
                                     {{ form.processing ? 'Guardando...' : (editando ? 'Actualizar expediente' : 'Registrar empleado') }}
                                 </button>
@@ -486,11 +486,12 @@ const restaurarEmpleado = (id, nombre) => {
                                         </div>
                                     </td>
                                     <td class="whitespace-nowrap text-right">
-                                        <Link :href="route('empleados.show', empleado.id)" class="btn-accent text-xs mr-2">
+                                        <div class="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                                        <Link :href="route('empleados.show', empleado.id)" class="btn-accent text-xs">
                                             <i class="ti ti-user-screen" aria-hidden="true"></i>
                                             Ver perfil
                                         </Link>
-                                        <button @click="editarEmpleado(empleado)" class="btn-secondary text-xs mr-2">
+                                        <button @click="editarEmpleado(empleado)" class="btn-secondary text-xs">
                                             <i class="ti ti-pencil" aria-hidden="true"></i>
                                             Editar
                                         </button>
@@ -502,6 +503,7 @@ const restaurarEmpleado = (id, nombre) => {
                                             <i class="ti ti-restore" aria-hidden="true"></i>
                                             Restaurar
                                         </button>
+                                        </div>
                                     </td>
                                 </tr>
                             </tbody>

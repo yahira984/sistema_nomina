@@ -46,16 +46,16 @@ const importar = () => {
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex items-center gap-4">
+            <div class="flex min-w-0 items-center gap-3 sm:gap-4">
                 <Link :href="route('dashboard')" class="icon-button" aria-label="Volver al panel">
                     <i class="ti ti-arrow-left" aria-hidden="true"></i>
                 </Link>
-                <div>
+                <div class="min-w-0">
                     <p class="page-kicker">
                         <i class="ti ti-database" aria-hidden="true"></i>
                         Sistema
                     </p>
-                    <h2 class="mt-2 text-2xl font-bold text-slate-950">Respaldo de Base de Datos</h2>
+                    <h2 class="mt-2 text-xl font-bold text-slate-950 sm:text-2xl">Respaldo de Base de Datos</h2>
                     <p class="mt-1 text-sm text-slate-500">Exporta un respaldo SQL o restaura un respaldo generado por este sistema.</p>
                 </div>
             </div>
@@ -70,10 +70,10 @@ const importar = () => {
 
                 <section class="grid gap-6 lg:grid-cols-3">
                     <div class="metric-card">
-                        <div class="flex items-center justify-between">
-                            <div>
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="min-w-0">
                                 <p class="metric-label">Conexion</p>
-                                <p class="metric-value text-2xl">{{ conexion }}</p>
+                                <p class="metric-value break-words text-2xl">{{ conexion }}</p>
                             </div>
                             <div class="soft-icon-blue">
                                 <i class="ti ti-plug-connected text-xl" aria-hidden="true"></i>
@@ -82,10 +82,10 @@ const importar = () => {
                     </div>
 
                     <div class="metric-card">
-                        <div class="flex items-center justify-between">
-                            <div>
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="min-w-0">
                                 <p class="metric-label">Base activa</p>
-                                <p class="metric-value text-2xl">{{ baseDatos }}</p>
+                                <p class="metric-value break-words text-2xl">{{ baseDatos }}</p>
                             </div>
                             <div class="soft-icon-teal">
                                 <i class="ti ti-database text-xl" aria-hidden="true"></i>
@@ -94,8 +94,8 @@ const importar = () => {
                     </div>
 
                     <div class="metric-card">
-                        <div class="flex items-center justify-between">
-                            <div>
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="min-w-0">
                                 <p class="metric-label">Tablas</p>
                                 <p class="metric-value text-2xl">{{ totalTablas }}</p>
                             </div>

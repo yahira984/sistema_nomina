@@ -39,15 +39,15 @@ const prestamoActivo = computed(() => saldoPrestamo.value > 0);
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex items-center gap-4">
+            <div class="flex min-w-0 items-center gap-3 sm:gap-4">
                 <Link :href="route('empleados.index')" class="icon-button" aria-label="Volver">
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19 3 12m0 0 7-7m-7 7h18" />
                     </svg>
                 </Link>
-                <div>
+                <div class="min-w-0">
                     <p class="text-sm font-semibold text-teal-700">Expediente Digital</p>
-                    <h2 class="text-2xl font-semibold text-slate-950">Perfil del Empleado</h2>
+                    <h2 class="text-xl font-semibold text-slate-950 sm:text-2xl">Perfil del Empleado</h2>
                 </div>
             </div>
         </template>
@@ -55,16 +55,16 @@ const prestamoActivo = computed(() => saldoPrestamo.value > 0);
         <div class="page-shell">
             <div class="content-wrap space-y-6">
                 
-                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col md:flex-row items-start md:items-center gap-6 relative overflow-hidden">
+                <div class="relative flex flex-col items-start gap-5 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 md:flex-row md:items-center md:gap-6">
                     <div class="absolute top-0 left-0 w-full h-16 bg-gradient-to-r from-teal-500 to-emerald-600 opacity-20"></div>
                     
-                    <div class="h-24 w-24 rounded-full bg-gradient-to-br from-teal-600 to-emerald-800 text-white flex items-center justify-center text-3xl font-black shadow-lg z-10 border-4 border-white">
+                    <div class="z-10 flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-teal-600 to-emerald-800 text-2xl font-black text-white shadow-lg sm:h-24 sm:w-24 sm:text-3xl">
                         {{ iniciales }}
                     </div>
                     
-                    <div class="flex-1 z-10">
-                        <div class="flex items-center gap-3 mb-1">
-                            <h1 class="text-2xl font-bold text-slate-900">{{ empleado.nombre_completo }}</h1>
+                    <div class="z-10 min-w-0 flex-1">
+                        <div class="mb-1 flex flex-wrap items-center gap-2 sm:gap-3">
+                            <h1 class="break-words text-xl font-bold leading-tight text-slate-900 sm:text-2xl">{{ empleado.nombre_completo }}</h1>
                             <span v-if="empleado.estatus" class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200">Activo</span>
                             <span v-else class="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 text-xs font-bold border border-rose-200">Baja</span>
                             <span v-if="prestamoActivo" class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-800">
@@ -76,7 +76,7 @@ const prestamoActivo = computed(() => saldoPrestamo.value > 0);
                                 Sin deuda
                             </span>
                         </div>
-                        <p class="text-slate-600 font-medium mb-3 flex items-center gap-2">
+                        <p class="mb-3 flex flex-wrap items-center gap-2 text-sm font-medium text-slate-600 sm:text-base">
                             <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                             {{ empleado.puesto || 'Puesto no asignado' }} • ID: #{{ empleado.numero_empleado || empleado.numero_empleado_baja || empleado.id }}
                         </p>
@@ -85,15 +85,15 @@ const prestamoActivo = computed(() => saldoPrestamo.value > 0);
                         </div>
                         
                         <div class="mt-4 flex flex-wrap gap-2 border-b border-slate-200 pb-2">
-                            <button @click="tabActiva = 'perfil'" :class="tabActiva === 'perfil' ? 'bg-teal-50 text-teal-700 border-teal-200 font-bold' : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700'" class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all">
+                            <button @click="tabActiva = 'perfil'" :class="tabActiva === 'perfil' ? 'bg-teal-50 text-teal-700 border-teal-200 font-bold' : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700'" class="inline-flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all sm:w-auto">
                                 <i class="ti ti-id" aria-hidden="true"></i>
                                 Datos Personales
                             </button>
-                            <button @click="tabActiva = 'nomina'" :class="tabActiva === 'nomina' ? 'bg-blue-50 text-blue-700 border-blue-200 font-bold' : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700'" class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all">
+                            <button @click="tabActiva = 'nomina'" :class="tabActiva === 'nomina' ? 'bg-blue-50 text-blue-700 border-blue-200 font-bold' : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700'" class="inline-flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all sm:w-auto">
                                 <i class="ti ti-report-money" aria-hidden="true"></i>
                                 Nómina y Puesto
                             </button>
-                            <button @click="tabActiva = 'asistencia'" :class="tabActiva === 'asistencia' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 font-bold' : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700'" class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all">
+                            <button @click="tabActiva = 'asistencia'" :class="tabActiva === 'asistencia' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 font-bold' : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700'" class="inline-flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all sm:w-auto">
                                 <i class="ti ti-calendar-check" aria-hidden="true"></i>
                                 Asistencia y Vacaciones
                             </button>
@@ -110,7 +110,7 @@ const prestamoActivo = computed(() => saldoPrestamo.value > 0);
                         <div class="space-y-4">
                             <div><p class="text-xs text-slate-500 uppercase font-semibold">CURP</p><p class="font-medium">{{ empleado.curp || 'No registrado' }}</p></div>
                             <div><p class="text-xs text-slate-500 uppercase font-semibold">Fecha de Nacimiento</p><p class="font-medium">{{ empleado.fecha_nacimiento || 'No registrada' }}</p></div>
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div><p class="text-xs text-slate-500 uppercase font-semibold">Género</p><p class="font-medium">{{ empleado.genero || '--' }}</p></div>
                                 <div><p class="text-xs text-slate-500 uppercase font-semibold">Estado Civil</p><p class="font-medium">{{ empleado.estado_civil || '--' }}</p></div>
                             </div>
@@ -139,7 +139,7 @@ const prestamoActivo = computed(() => saldoPrestamo.value > 0);
                 <div v-show="tabActiva === 'nomina'" class="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
                     <div class="md:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
                         <h3 class="font-bold text-slate-800 border-b border-slate-100 pb-2 mb-4">Esquema de Pago</h3>
-                        <div class="grid grid-cols-2 gap-6">
+                        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-6">
                             <div>
                                 <p class="text-xs text-slate-500 uppercase font-semibold">Salario Base</p>
                                 <p class="text-2xl font-black text-emerald-600">
@@ -184,7 +184,7 @@ const prestamoActivo = computed(() => saldoPrestamo.value > 0);
                 </div>
 
                 <div v-show="tabActiva === 'asistencia'" class="space-y-6 animate-fade-in">
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
                         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                             <p class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase">
                                 <i class="ti ti-timeline" aria-hidden="true"></i>

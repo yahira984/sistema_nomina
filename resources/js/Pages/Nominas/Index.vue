@@ -17,6 +17,7 @@ const toastTitle = ref('');
 const toastMessage = ref('');
 const ajustesNomina = ref({});
 const guardandoAjuste = ref(null);
+const selectedEmpleadoIds = ref([]);
 
 const selectedCorte = ref(props.fechaCorteActual);
 
@@ -186,6 +187,58 @@ const empleadosFiltrados = computed(() => {
     return resultado;
 });
 
+const seleccionadosCount = computed(() => selectedEmpleadoIds.value.length);
+
+const empleadoSeleccionado = (empleadoId) => selectedEmpleadoIds.value.includes(empleadoId);
+
+const toggleEmpleado = (empleadoId, checked) => {
+    const actuales = new Set(selectedEmpleadoIds.value);
+
+    if (checked) {
+        actuales.add(empleadoId);
+    } else {
+        actuales.delete(empleadoId);
+    }
+
+    selectedEmpleadoIds.value = Array.from(actuales);
+};
+
+const todosFiltradosSeleccionados = computed(() => {
+    return empleadosFiltrados.value.length > 0
+        && empleadosFiltrados.value.every((empleado) => empleadoSeleccionado(empleado.id));
+});
+
+const toggleTodosFiltrados = (checked) => {
+    const actuales = new Set(selectedEmpleadoIds.value);
+
+    empleadosFiltrados.value.forEach((empleado) => {
+        if (checked) {
+            actuales.add(empleado.id);
+        } else {
+            actuales.delete(empleado.id);
+        }
+    });
+
+    selectedEmpleadoIds.value = Array.from(actuales);
+};
+
+const urlRecibosMasivos = (todos = false) => {
+    const parametros = {
+        fecha_corte: selectedCorte.value,
+    };
+
+    if (!todos) {
+        parametros.empleado_ids = selectedEmpleadoIds.value;
+    }
+
+    return route('nominas.recibos-masivos', parametros);
+};
+
+watch(() => props.empleados, (empleados) => {
+    const idsActuales = new Set(empleados.map((empleado) => empleado.id));
+    selectedEmpleadoIds.value = selectedEmpleadoIds.value.filter((id) => idsActuales.has(id));
+}, { deep: true });
+
 // 2. Agrupamos los filtrados por su Banco
 const empleadosAgrupados = computed(() => {
     const grupos = {};
@@ -236,15 +289,15 @@ const cambiarEstadoPago = (nominaId) => {
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex items-center gap-4">
+            <div class="flex min-w-0 items-center gap-3 sm:gap-4">
                 <Link :href="route('dashboard')" class="icon-button" aria-label="Volver al panel">
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19 3 12m0 0 7-7m-7 7h18" />
                     </svg>
                 </Link>
-                <div>
+                <div class="min-w-0">
                     <p class="text-sm font-semibold text-teal-700">Pagos y recibos</p>
-                    <h2 class="text-2xl font-semibold text-slate-950">Control y Pago de Nóminas</h2>
+                    <h2 class="text-xl font-semibold text-slate-950 sm:text-2xl">Control y Pago de Nóminas</h2>
                 </div>
             </div>
         </template>
@@ -265,7 +318,7 @@ const cambiarEstadoPago = (nominaId) => {
                             </div>
                         </div>
 
-                        <div class="flex flex-wrap items-center gap-3">
+                        <div class="flex w-full flex-wrap items-center gap-3 lg:w-auto">
                             <div class="relative w-full sm:w-auto">
                                 <select v-model="selectedCorte" class="field-input-soft appearance-none pr-10 font-semibold text-slate-800">
                                     <option v-for="sem in semanasDisponibles" :key="sem.fecha_corte" :value="sem.fecha_corte">
@@ -338,6 +391,34 @@ const cambiarEstadoPago = (nominaId) => {
                                 </svg>
                                 Excel Global
                             </a>
+
+                            <a
+                                v-if="seleccionadosCount > 0"
+                                :href="urlRecibosMasivos(false)"
+                                target="_blank"
+                                class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-sky-700 sm:w-auto"
+                            >
+                                <i class="ti ti-printer" aria-hidden="true"></i>
+                                PDF seleccionados ({{ seleccionadosCount }})
+                            </a>
+                            <button
+                                v-else
+                                type="button"
+                                disabled
+                                class="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-slate-200 px-4 py-2.5 text-sm font-bold text-slate-500 sm:w-auto"
+                            >
+                                <i class="ti ti-printer" aria-hidden="true"></i>
+                                PDF seleccionados
+                            </button>
+
+                            <a
+                                :href="urlRecibosMasivos(true)"
+                                target="_blank"
+                                class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 sm:w-auto"
+                            >
+                                <i class="ti ti-printer" aria-hidden="true"></i>
+                                PDF todos
+                            </a>
                         </div>
                     </div>
 
@@ -349,7 +430,7 @@ const cambiarEstadoPago = (nominaId) => {
                         <div v-else>
                             <div v-for="(empleadosBanco, nombreBanco) in empleadosAgrupados" :key="nombreBanco" class="mb-10 last:mb-0">
                                 
-                                <div class="mb-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-100/80 px-4 py-3">
+                                <div class="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-100/80 px-4 py-3">
                                     <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-sm">
                                         <svg class="h-4 w-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3Z" />
@@ -366,6 +447,15 @@ const cambiarEstadoPago = (nominaId) => {
                                         <table class="table-premium w-full !border-0">
                                             <thead class="bg-slate-50">
                                                 <tr>
+                                                    <th class="w-12 text-center">
+                                                        <input
+                                                            type="checkbox"
+                                                            :checked="todosFiltradosSeleccionados"
+                                                            @change="toggleTodosFiltrados($event.target.checked)"
+                                                            class="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                                            title="Seleccionar filtrados"
+                                                        />
+                                                    </th>
                                                     <th>Empleado</th>
                                                     <th>Datos de depósito</th>
                                                     <th class="text-center">Estado de pago</th>
@@ -375,6 +465,15 @@ const cambiarEstadoPago = (nominaId) => {
                                             </thead>
                                             <tbody>
                                                 <tr v-for="empleado in empleadosBanco" :key="empleado.id" class="border-t border-slate-100 hover:bg-slate-50">
+                                                    <td class="px-4 py-3 text-center">
+                                                        <input
+                                                            type="checkbox"
+                                                            :checked="empleadoSeleccionado(empleado.id)"
+                                                            @change="toggleEmpleado(empleado.id, $event.target.checked)"
+                                                            class="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                                            :title="`Seleccionar ${empleado.nombre_completo}`"
+                                                        />
+                                                    </td>
                                                     <td class="whitespace-nowrap px-4 py-3">
                                                         <div class="flex items-center gap-3">
                                                             <div class="flex h-10 min-w-10 max-w-16 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 px-2 text-xs font-bold text-teal-700">
@@ -528,23 +627,23 @@ const cambiarEstadoPago = (nominaId) => {
                                                     </td>
 
                                                     <td class="whitespace-nowrap px-4 py-3 text-right">
-                                                        <div class="flex items-center justify-end gap-2">
+                                                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                                                             <a
                                                                 :href="route('nominas.excel-individual', parametrosNomina(empleado))"
-                                                                class="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-green-700 active:scale-95"
+                                                                class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-green-700 active:scale-95 sm:w-auto"
                                                                 title="Descargar Recibo en Excel"
                                                             >
                                                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
                                                                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8.5 19l-1.5-2.5L5.5 19H4l2-3.5L4 12h1.5l1.5 2.5L8.5 12H10l-2 3.5 2 3.5H8.5zm4.5 0h-1.3l-2-7h1.3l1.4 5.2 1.4-5.2H15l-2 7z"/>
                                                                 </svg>
-                                                                <span class="hidden md:inline">Excel</span>
+                                                                <span class="hidden sm:inline">Excel</span>
                                                             </a>
 
                                                             <a
                                                                 :href="route('nominas.generar', parametrosNomina(empleado))"
                                                                 target="_blank"
                                                                 @click="marcarComoGenerado(empleado)"
-                                                                :class="empleado.nomina_generada ? 'btn-warning' : 'btn-accent'"
+                                                                :class="empleado.nomina_generada ? 'btn-warning w-full sm:w-auto' : 'btn-accent w-full sm:w-auto'"
                                                             >
                                                                 <svg class="h-4 w-4 mr-1.5 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2m2 4h6a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2Zm8-12V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4h10Z" />
@@ -640,7 +739,7 @@ const cambiarEstadoPago = (nominaId) => {
             </div>
 
             <div
-                class="fixed bottom-5 right-5 z-50 transition duration-300"
+                class="fixed inset-x-3 bottom-4 z-50 transition duration-300 sm:inset-x-auto sm:bottom-5 sm:right-5"
                 :class="showToast ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'"
             >
                 <div class="flex items-center gap-3 rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-white shadow-2xl">
