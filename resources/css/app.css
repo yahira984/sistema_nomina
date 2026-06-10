@@ -226,4 +226,117 @@
     .info-row-icon {
         @apply mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600;
     }
+
+    .overflow-x-auto {
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 transparent;
+    }
+
+    .overflow-x-auto::-webkit-scrollbar {
+        height: 8px;
+    }
+
+    .overflow-x-auto::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .overflow-x-auto::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 999px;
+    }
+
+    @media (max-width: 640px) {
+        .app-panel {
+            border-radius: 0.875rem;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.055);
+        }
+
+        .panel-header {
+            gap: 0.875rem;
+            padding: 1rem;
+        }
+
+        .panel-header > * {
+            min-width: 0;
+        }
+
+        .panel-title {
+            font-size: 1rem;
+            line-height: 1.35;
+        }
+
+        .panel-subtitle {
+            font-size: 0.8125rem;
+            line-height: 1.35;
+        }
+
+        .field-input,
+        .field-input-soft {
+            min-height: 44px;
+            font-size: 0.9375rem;
+        }
+
+        .btn-primary,
+        .btn-accent,
+        .btn-secondary,
+        .btn-warning,
+        .btn-danger {
+            min-height: 44px;
+            padding-inline: 0.875rem;
+        }
+
+        .tab-strip {
+            gap: 0.375rem;
+            padding: 0.375rem;
+        }
+
+        .tab-button {
+            min-height: 42px;
+            justify-content: flex-start;
+            padding: 0.625rem 0.75rem;
+            font-size: 0.8125rem;
+        }
+
+        .table-premium {
+            min-width: 720px;
+        }
+
+        .table-premium th {
+            padding: 0.75rem;
+            font-size: 0.6875rem;
+        }
+
+        .table-premium td {
+            padding: 0.75rem;
+            font-size: 0.8125rem;
+        }
+
+        .status-pill {
+            white-space: nowrap;
+        }
+
+        .metric-card {
+            padding: 1rem;
+        }
+
+        .metric-value {
+            margin-top: 0.5rem;
+            font-size: 1.5rem;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+        }
+
+        .empty-state {
+            padding: 2.5rem 1rem;
+        }
+
+        .section-divider {
+            padding-top: 1rem;
+        }
+
+        .info-row {
+            padding: 0.875rem;
+        }
+    }
 }

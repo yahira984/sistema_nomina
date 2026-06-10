@@ -54,6 +54,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/nominas', [NominaController::class, 'index'])->name('nominas.index');
     Route::get('/nominas/generar/{empleado_id}', [NominaController::class, 'generarRecibo'])->name('nominas.generar');
     Route::get('/nominas/excel-individual/{empleado_id}', [NominaController::class, 'exportarExcelIndividual'])->name('nominas.excel-individual');
+    Route::get('/nominas/recibos-masivos', [NominaController::class, 'generarRecibosMasivos'])->name('nominas.recibos-masivos');
     Route::get('/nominas/descargar/{nomina}', [NominaController::class, 'descargar'])->name('nominas.descargar');
     Route::put('/nominas/ajustes/{empleado_id}', [NominaController::class, 'actualizarAjustes'])->name('nominas.ajustes');
     Route::put('/nominas/{nomina}/pagar', [NominaController::class, 'pagar'])->name('nominas.pagar');

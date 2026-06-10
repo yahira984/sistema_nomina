@@ -56,7 +56,7 @@ const closeModal = () => {
         </DangerButton>
 
         <Modal :show="confirmingUserDeletion" @close="closeModal">
-            <div class="p-6">
+            <div class="p-5 sm:p-6">
                 <h2 class="text-lg font-semibold text-slate-950">¿Eliminar esta cuenta?</h2>
 
                 <p class="mt-2 text-sm leading-6 text-slate-500">
@@ -83,7 +83,7 @@ const closeModal = () => {
                     <InputError :message="form.errors.password" class="mt-2" />
                 </div>
 
-                <div class="mt-6 flex justify-end gap-3">
+                <div class="mt-6 flex flex-col justify-end gap-3 sm:flex-row">
                     <SecondaryButton @click="closeModal">
                         Cancelar
                     </SecondaryButton>

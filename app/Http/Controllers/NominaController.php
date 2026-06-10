@@ -100,6 +100,41 @@ class NominaController extends Controller
         return Excel::download(new ReciboIndividualExport($datosExcel), $nombreArchivo);
     }
 
+    public function generarRecibosMasivos(Request $request)
+    {
+        [$inicioSemana, $finSemana, $numeroSemana] = $this->resolverSemanaNomina($request);
+        $empleadoIds = $this->empleadoIdsDesdeRequest($request);
+
+        $empleados = Empleado::where('estatus', true)
+            ->when(count($empleadoIds) > 0, fn ($query) => $query->whereIn('id', $empleadoIds))
+            ->orderBy('banco')
+            ->orderBy('nombre_completo')
+            ->get();
+
+        abort_if($empleados->isEmpty(), 404, 'No hay empleados activos para imprimir en este periodo.');
+
+        $recibos = $empleados->map(function ($empleado) use ($inicioSemana, $finSemana) {
+            $ajustes = $this->ajustesDesdeNomina(
+                $this->buscarNominaPeriodo($empleado->id, $inicioSemana, $finSemana),
+                $empleado
+            );
+            $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
+            $nomina = $this->guardarNominaPeriodo($empleado, $inicioSemana, $finSemana, $desglose);
+
+            $nomina->setRelation('empleado', $empleado);
+
+            return $this->datosVistaRecibo($nomina, $empleado, $desglose);
+        })->values();
+
+        $pdf = Pdf::loadView('pdf.recibos_nomina_masivos', [
+            'recibos' => $recibos,
+        ]);
+
+        $sufijo = count($empleadoIds) > 0 ? 'seleccionados' : 'todos';
+
+        return $pdf->stream('Recibos_Semana_' . $numeroSemana . '_' . $sufijo . '.pdf');
+    }
+
     public function reporteGlobal(Request $request, $semana)
     {
         [$inicioSemana, $finSemana, $numeroSemana] = $this->resolverSemanaNomina($request);
@@ -148,6 +183,7 @@ class NominaController extends Controller
         $horasNormales = (float) $asistencias->where('tipo_asistencia', 'Normal')->sum('horas_trabajadas');
         $horasExtraPeriodo = (float) $asistencias
             ->where('tipo_asistencia', 'Normal')
+            ->reject(fn ($asistencia) => $this->esMiercolesDeCorte($asistencia, $finSemana))
             ->sum(fn ($asistencia) => $this->horasExtraRedondeadas($asistencia));
         $horasExtraMiercolesAnterior = $this->horasExtraMiercolesAnterior($empleado, $inicioSemana);
         $horasExtra = $horasExtraPeriodo + $horasExtraMiercolesAnterior;
@@ -264,6 +300,26 @@ class NominaController extends Controller
             ->first();
     }
 
+    private function empleadoIdsDesdeRequest(Request $request): array
+    {
+        $empleadoIds = $request->input('empleado_ids', []);
+
+        if (is_string($empleadoIds)) {
+            $empleadoIds = explode(',', $empleadoIds);
+        }
+
+        if (!is_array($empleadoIds)) {
+            return [];
+        }
+
+        return collect($empleadoIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     private function guardarNominaPeriodo(Empleado $empleado, Carbon $inicioSemana, Carbon $finSemana, array $desglose): Nomina
     {
         return DB::transaction(function () use ($empleado, $inicioSemana, $finSemana, $desglose) {
@@ -364,6 +420,13 @@ class NominaController extends Controller
             ->first();
 
         return $asistencia ? $this->horasExtraRedondeadas($asistencia) : 0;
+    }
+
+    private function esMiercolesDeCorte(Asistencia $asistencia, Carbon $finSemana): bool
+    {
+        $fecha = Carbon::parse($asistencia->fecha);
+
+        return $fecha->isWednesday() && $fecha->isSameDay($finSemana);
     }
 
     private function horasExtraRedondeadas(Asistencia $asistencia): float

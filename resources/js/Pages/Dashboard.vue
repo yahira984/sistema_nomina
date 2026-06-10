@@ -59,37 +59,37 @@ const barOptions = computed(() => ({
 
   <AuthenticatedLayout>
 
-    <div class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div class="mb-6 flex flex-col justify-between gap-4 md:mb-8 md:flex-row md:items-center">
       <div>
-        <h1 class="font-['Sora'] text-2xl font-bold text-slate-900 tracking-tight">Resumen Operativo</h1>
+        <h1 class="font-['Sora'] text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">Resumen Operativo</h1>
         <p class="text-sm font-medium text-slate-500 mt-1">Sistema PROMATEC-LUGARTH · Semana {{ semanaContable }}</p>
       </div>
-      <div class="flex items-center gap-2 bg-blue-50 border border-blue-100 px-4 py-2 rounded-full shadow-sm">
+      <div class="flex w-full items-center justify-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 shadow-sm sm:w-auto">
         <i class="ti ti-calendar text-blue-600 text-lg"></i>
         <span class="text-sm font-bold text-blue-700">Corte: {{ corteSemana }}</span>
       </div>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-      <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+    <div class="mb-6 grid grid-cols-1 gap-4 md:mb-8 md:grid-cols-3 md:gap-6">
+      <div class="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md sm:p-6">
         <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform"><i class="ti ti-users text-6xl text-blue-600"></i></div>
         <div class="h-12 w-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl mb-4 border border-blue-100"><i class="ti ti-users"></i></div>
         <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Personal activo</p>
-        <p class="font-['Sora'] text-3xl font-extrabold text-slate-800">{{ totalEmpleados }}</p>
+        <p class="font-['Sora'] text-2xl font-extrabold text-slate-800 sm:text-3xl">{{ totalEmpleados }}</p>
       </div>
 
-      <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+      <div class="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md sm:p-6">
         <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform"><i class="ti ti-calendar-stats text-6xl text-teal-600"></i></div>
         <div class="h-12 w-12 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-2xl mb-4 border border-teal-100"><i class="ti ti-calendar-stats"></i></div>
         <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Semana contable</p>
-        <p class="font-['Sora'] text-3xl font-extrabold text-slate-800">No. {{ semanaContable }}</p>
+        <p class="font-['Sora'] text-2xl font-extrabold text-slate-800 sm:text-3xl">No. {{ semanaContable }}</p>
       </div>
 
-      <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+      <div class="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md sm:p-6">
         <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform"><i class="ti ti-cash text-6xl text-amber-500"></i></div>
         <div class="h-12 w-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-2xl mb-4 border border-amber-100"><i class="ti ti-cash"></i></div>
         <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Gasto semanal</p>
-        <p class="font-['Sora'] text-3xl font-extrabold text-slate-800">${{ gastoSemanal }}</p>
+        <p class="break-words font-['Sora'] text-2xl font-extrabold text-slate-800 sm:text-3xl">${{ gastoSemanal }}</p>
       </div>
     </div>
 
@@ -119,7 +119,7 @@ const barOptions = computed(() => ({
           <h2 class="font-['Sora'] text-base font-bold text-slate-800">Estado del sistema</h2>
           <p class="text-xs text-slate-500 mt-0.5">Indicadores en tiempo real</p>
         </div>
-        <div class="p-6 flex-1 flex flex-col">
+        <div class="flex flex-1 flex-col p-5 sm:p-6">
           <div class="space-y-4 flex-1">
             <div class="flex items-center justify-between pb-4 border-b border-slate-100">
               <span class="text-sm font-semibold text-slate-600">Faltas del mes</span>
@@ -138,7 +138,7 @@ const barOptions = computed(() => ({
               </span>
             </div>
           </div>
-          <div class="mt-6 flex gap-3 pt-6 border-t border-slate-100">
+          <div class="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row">
             <Link :href="route('nominas.index')" class="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-2.5 rounded-lg text-center transition-colors shadow-sm">
               <i class="ti ti-file-plus mr-1" aria-hidden="true"></i>
               Nueva nómina
@@ -154,19 +154,19 @@ const barOptions = computed(() => ({
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <h2 class="font-['Sora'] text-sm font-bold text-slate-800 mb-1">Tipos de Asistencia</h2>
         <p class="text-xs text-slate-500 mb-6">Distribución del mes actual</p>
         <div class="flex justify-center"><VueApexCharts width="100%" height="280" :options="donutOptions" :series="graficaAsistencia" /></div>
       </div>
 
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <h2 class="font-['Sora'] text-sm font-bold text-slate-800 mb-1">Tendencia de Horas Extra</h2>
         <p class="text-xs text-slate-500 mb-4">Histórico general últimos 7 días</p>
         <VueApexCharts width="100%" height="280" :options="barOptions" :series="barSeries" />
       </div>
 
-      <div class="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl border border-indigo-100 shadow-sm p-6 relative overflow-hidden">
+      <div class="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-purple-50 p-5 shadow-sm sm:p-6">
         <i class="ti ti-confetti absolute -right-4 -bottom-4 text-8xl text-indigo-500/10"></i>
         <div class="relative z-10">
           <div class="flex items-center gap-2 mb-1">

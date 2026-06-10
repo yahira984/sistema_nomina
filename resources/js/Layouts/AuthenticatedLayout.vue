@@ -47,13 +47,13 @@ function toggleSidebar() {
 
     <div v-if="isSidebarOpenMobile" class="sidebar-overlay" @click="isSidebarOpenMobile = false"></div>
 
-    <aside :class="['sidebar', isSidebarCollapsedDesktop ? 'sidebar--collapsed' : '', isSidebarOpenMobile ? 'sidebar--mobile-open' : '']">
+    <aside :class="['sidebar', isSidebarCollapsedDesktop && !isSidebarOpenMobile ? 'sidebar--collapsed' : '', isSidebarOpenMobile ? 'sidebar--mobile-open' : '']">
 
       <div class="sidebar-logo">
         <div class="logo-badge">
           <i class="ti ti-file-invoice" aria-hidden="true"></i>
         </div>
-        <div class="logo-text" v-show="!isSidebarCollapsedDesktop">
+        <div class="logo-text" v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile">
           <p class="logo-name">PROMATEC</p>
           <p class="logo-sub">LUGARTH</p>
         </div>
@@ -61,18 +61,18 @@ function toggleSidebar() {
 
       <nav class="sidebar-nav custom-scrollbar">
         <template v-for="group in navItems" :key="group.label">
-          <p v-show="!isSidebarCollapsedDesktop" class="nav-section-label">{{ group.label }}</p>
-          <div v-show="isSidebarCollapsedDesktop" class="nav-section-divider"></div>
+          <p v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="nav-section-label">{{ group.label }}</p>
+          <div v-show="isSidebarCollapsedDesktop && !isSidebarOpenMobile" class="nav-section-divider"></div>
 
           <Link
             v-for="item in group.links"
             :key="item.route"
             :href="route(item.route)"
             :class="['nav-item', { 'nav-item--active': isActive(item.route) }]"
-            :title="isSidebarCollapsedDesktop ? item.name : ''"
+            :title="isSidebarCollapsedDesktop && !isSidebarOpenMobile ? item.name : ''"
           >
             <i :class="['ti', item.icon]" aria-hidden="true"></i>
-            <span v-show="!isSidebarCollapsedDesktop" class="nav-item-text">{{ item.name }}</span>
+            <span v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="nav-item-text">{{ item.name }}</span>
           </Link>
         </template>
       </nav>
@@ -306,6 +306,7 @@ function toggleSidebar() {
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
 }
 
 .hamburger-btn {
@@ -432,6 +433,7 @@ function toggleSidebar() {
 .page-container {
   max-width: 1400px;
   margin: 0 auto;
+  width: 100%;
 }
 
 .content-header {
@@ -451,34 +453,99 @@ function toggleSidebar() {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
 /* ─── Responsive (Celulares y Tablets) ─────── */
-@media (max-width: 1024px) {
+@media (max-width: 1023px) {
+  .layout-root {
+    display: block;
+  }
+
   .sidebar {
     position: fixed;
-    left: -260px;
-    width: 260px;
-    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    inset: 0 auto 0 0;
+    left: 0;
+    width: min(84vw, 300px);
+    max-width: 300px;
+    transform: translateX(-105%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 60;
+  }
+
+  .sidebar--collapsed {
+    width: min(84vw, 300px);
+  }
+
+  .sidebar--collapsed .nav-item {
+    justify-content: flex-start;
+    padding: 12px 14px;
   }
 
   .sidebar--mobile-open {
-    left: 0;
-    box-shadow: 10px 0 25px rgba(0,0,0,0.1);
+    transform: translateX(0);
+    box-shadow: 18px 0 42px rgba(15, 23, 42, 0.22);
   }
 
   .sidebar-overlay {
     display: block;
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.4);
+    background: rgba(15, 23, 42, 0.48);
     backdrop-filter: blur(2px);
-    z-index: 35;
+    z-index: 50;
   }
 
-  .page-content {
-    padding: 24px 16px;
+  .main-wrapper {
+    width: 100%;
+    min-height: 100vh;
+  }
+
+  .sidebar-logo {
+    padding: 16px 18px;
   }
 
   .topbar {
-    padding: 0 16px;
+    min-height: 64px;
+    height: auto;
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .topbar-left,
+  .topbar-right {
+    gap: 10px;
+  }
+
+  .page-content {
+    padding: 14px 12px 24px;
+  }
+
+  .content-header {
+    margin-bottom: 16px;
+    border-radius: 14px;
+    padding: 16px;
+  }
+
+  .topbar-divider {
+    display: none;
+  }
+
+  .logout-btn {
+    padding: 8px 10px;
+  }
+}
+
+@media (max-width: 640px) {
+  .hamburger-btn,
+  .user-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+  }
+
+  .page-content {
+    padding-inline: 10px;
+  }
+
+  .content-header {
+    padding: 14px;
   }
 }
 </style>

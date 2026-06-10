@@ -97,7 +97,7 @@ const updatePassword = () => {
                 />
             </div>
 
-            <div class="flex items-center gap-4">
+            <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
                 <PrimaryButton :disabled="form.processing">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />

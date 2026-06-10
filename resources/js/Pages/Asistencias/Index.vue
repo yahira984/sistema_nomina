@@ -395,22 +395,22 @@ const descartarRevision = () => {
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex items-center gap-4">
+            <div class="flex min-w-0 items-center gap-3 sm:gap-4">
                 <Link :href="route('dashboard')" class="icon-button" aria-label="Volver al panel">
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19 3 12m0 0 7-7m-7 7h18" />
                     </svg>
                 </Link>
-                <div>
+                <div class="min-w-0">
                     <p class="text-sm font-semibold text-teal-700">Registro y Control</p>
-                    <h2 class="text-2xl font-semibold text-slate-950">Jornadas e Incidencias</h2>
+                    <h2 class="text-xl font-semibold text-slate-950 sm:text-2xl">Jornadas e Incidencias</h2>
                 </div>
             </div>
         </template>
 
         <div class="page-shell">
             <div class="content-wrap space-y-6">
-                <div class="tab-strip md:grid-cols-4">
+                <div class="tab-strip sm:grid-cols-2 md:grid-cols-4">
                     <button
                         @click="tabActiva = 'captura'"
                         :class="tabActiva === 'captura' ? 'bg-white text-teal-700 shadow font-bold' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'"
@@ -486,7 +486,7 @@ const descartarRevision = () => {
                                 </div>
                             </div>
 
-                            <button type="submit" :disabled="formUpload.processing" class="btn-accent">
+                            <button type="submit" :disabled="formUpload.processing" class="btn-accent w-full lg:w-auto">
                                 <svg v-if="!formUpload.processing" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4v12m0-12 4 4m-4-4-4 4" />
                                 </svg>
@@ -510,7 +510,7 @@ const descartarRevision = () => {
                                     <p class="panel-subtitle">Selecciona empleado, fecha y tipo de jornada.</p>
                                 </div>
                             </div>
-                            <button v-if="editando" @click="cancelarEdicion" class="btn-secondary" type="button">Cancelar edicion</button>
+                            <button v-if="editando" @click="cancelarEdicion" class="btn-secondary w-full sm:w-auto" type="button">Cancelar edicion</button>
                         </div>
 
                         <div class="bg-slate-50/50 p-5 sm:p-6">
@@ -544,7 +544,7 @@ const descartarRevision = () => {
                                 </div>
                             </div>
 
-                            <div v-if="empleadoSeleccionado" class="mb-6 grid grid-cols-2 gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
+                            <div v-if="empleadoSeleccionado" class="mb-6 grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 md:grid-cols-4">
                                 <div class="rounded-lg border border-slate-100 bg-slate-50 p-3">
                                     <p class="text-xs font-semibold uppercase text-slate-500">Antiguedad</p>
                                     <p class="text-lg font-bold text-slate-800">{{ empleadoSeleccionado.antiguedad_anios }} anio(s)</p>
@@ -607,8 +607,8 @@ const descartarRevision = () => {
                                     />
                                 </div>
 
-                                <div class="flex justify-end md:col-span-4">
-                                    <button type="submit" :disabled="form.processing" :class="editando ? 'btn-warning' : 'btn-accent'">
+                                <div class="flex justify-stretch md:col-span-4 sm:justify-end">
+                                    <button type="submit" :disabled="form.processing" :class="editando ? 'btn-warning w-full sm:w-auto' : 'btn-accent w-full sm:w-auto'">
                                         <svg v-if="!form.processing" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 13 4 4L19 7" />
                                         </svg>
@@ -630,7 +630,7 @@ const descartarRevision = () => {
                                 <p class="panel-subtitle">{{ asistenciasFiltradas.length }} asistencia(s) visibles</p>
                                 </div>
                             </div>
-                            <div v-if="form.empleado_id" class="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
+                            <div v-if="form.empleado_id" class="inline-flex w-full items-center justify-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-center text-sm font-semibold text-blue-700 sm:w-auto">
                                 Filtrando a: {{ empleados.find((empleado) => Number(empleado.id) === Number(form.empleado_id))?.nombre_completo }}
                             </div>
                         </div>
@@ -705,11 +705,11 @@ const descartarRevision = () => {
                                 </div>
                             </div>
                             <div class="flex flex-col gap-2 sm:flex-row">
-                                <button @click="seleccionarRevision(true)" :disabled="!filasRevision.length" class="btn-secondary" type="button">
+                                <button @click="seleccionarRevision(true)" :disabled="!filasRevision.length" class="btn-secondary w-full sm:w-auto" type="button">
                                     <i class="ti ti-checks" aria-hidden="true"></i>
                                     Seleccionar todo
                                 </button>
-                                <button @click="seleccionarRevision(false)" :disabled="!filasRevision.length" class="btn-secondary" type="button">
+                                <button @click="seleccionarRevision(false)" :disabled="!filasRevision.length" class="btn-secondary w-full sm:w-auto" type="button">
                                     <i class="ti ti-square-x" aria-hidden="true"></i>
                                     Quitar seleccion
                                 </button>
@@ -843,11 +843,11 @@ const descartarRevision = () => {
                             </div>
 
                             <div class="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end">
-                                <button @click="descartarRevision" :disabled="formRevision.processing" class="btn-secondary" type="button">
+                                <button @click="descartarRevision" :disabled="formRevision.processing" class="btn-secondary w-full sm:w-auto" type="button">
                                     <i class="ti ti-trash" aria-hidden="true"></i>
                                     Descartar revision
                                 </button>
-                                <button @click="aprobarRevision" :disabled="formRevision.processing || resumenRevision.seleccionadas === 0" class="btn-accent" type="button">
+                                <button @click="aprobarRevision" :disabled="formRevision.processing || resumenRevision.seleccionadas === 0" class="btn-accent w-full sm:w-auto" type="button">
                                     <svg v-if="!formRevision.processing" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 13 4 4L19 7" />
                                     </svg>
@@ -874,7 +874,7 @@ const descartarRevision = () => {
                                 <p class="panel-subtitle">Control global de dias correspondientes, tomados y restantes.</p>
                                 </div>
                             </div>
-                            <input v-model="busquedaGlobal" type="text" class="field-input-soft lg:w-96" placeholder="Buscar trabajador..." />
+                            <input v-model="busquedaGlobal" type="text" class="field-input-soft w-full lg:w-96" placeholder="Buscar trabajador..." />
                         </div>
 
                         <div class="overflow-x-auto">
@@ -945,7 +945,7 @@ const descartarRevision = () => {
                                 <p class="panel-subtitle">Acumulado anual de ausencias por empleado.</p>
                                 </div>
                             </div>
-                            <input v-model="busquedaGlobal" type="text" class="field-input-soft lg:w-96 focus:border-rose-400 focus:ring-rose-500/20" placeholder="Buscar trabajador..." />
+                            <input v-model="busquedaGlobal" type="text" class="field-input-soft w-full lg:w-96 focus:border-rose-400 focus:ring-rose-500/20" placeholder="Buscar trabajador..." />
                         </div>
 
                         <div class="overflow-x-auto">
