@@ -83,6 +83,10 @@ const tieneDeuda = (empleado) => saldoPrestamoEmpleado(empleado) > 0;
 const empleadosConDeuda = computed(() => props.empleados.filter(emp => Boolean(Number(emp.estatus ?? 0)) && tieneDeuda(emp)).length);
 
 const submitForm = () => {
+    if (Number(form.saldo_prestamo || 0) <= 0) {
+        form.cuota_prestamo = 0;
+    }
+
     if (editando.value) {
         form.put(route('empleados.update', empleadoId.value), {
             onSuccess: () => cancelarEdicion()
@@ -107,7 +111,7 @@ const editarEmpleado = (empleado) => {
     form.sueldo_semanal = empleado.sueldo_semanal || '';
     form.sueldo_por_hora = empleado.sueldo_por_hora || '';
     form.saldo_prestamo = empleado.saldo_prestamo || ''; 
-    form.cuota_prestamo = empleado.cuota_prestamo || ''; 
+    form.cuota_prestamo = saldoPrestamoEmpleado(empleado) > 0 ? (empleado.cuota_prestamo || '') : 0;
     form.descuento_imss = empleado.descuento_imss || ''; 
     form.descuento_isr = empleado.descuento_isr || ''; 
     form.descuento_infonavit = empleado.descuento_infonavit || ''; 
@@ -471,7 +475,7 @@ const restaurarEmpleado = (id, nombre) => {
                                             <i class="ti ti-circle-check" aria-hidden="true"></i>
                                             Sin deuda
                                         </div>
-                                        <div v-if="Number(empleado.cuota_prestamo || 0) > 0" class="mt-1 text-[11px] font-semibold text-slate-500">
+                                        <div v-if="tieneDeuda(empleado) && Number(empleado.cuota_prestamo || 0) > 0" class="mt-1 text-[11px] font-semibold text-slate-500">
                                             Desc. sem. ${{ moneda(empleado.cuota_prestamo) }}
                                         </div>
                                     </td>

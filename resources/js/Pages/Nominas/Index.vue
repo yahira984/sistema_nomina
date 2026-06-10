@@ -340,8 +340,17 @@ const marcarComoGenerado = (empleado) => {
     }, 1500);
 };
 
-const cambiarEstadoPago = (nominaId) => {
+const cambiarEstadoPago = (nominaId, pagadoActual = false) => {
     if(!nominaId) return;
+
+    const mensaje = pagadoActual
+        ? 'Marcar esta nomina como pendiente? Se revertira el movimiento de prestamo aplicado.'
+        : 'Marcar esta nomina como pagada? En este momento se aplicara el movimiento de prestamo al saldo del empleado.';
+
+    if (!confirm(mensaje)) {
+        return;
+    }
+
     router.put(route('nominas.pagar', nominaId), {}, {
         preserveScroll: true
     });
@@ -614,11 +623,11 @@ const cambiarEstadoPago = (nominaId) => {
                                                                 {{ empleado.pagado ? 'Liquidado' : 'Pendiente' }}
                                                             </span>
                                                             <button
-                                                                @click="cambiarEstadoPago(empleado.nomina_id)"
+                                                                @click="cambiarEstadoPago(empleado.nomina_id, empleado.pagado)"
                                                                 class="text-xs font-semibold text-slate-500 underline decoration-slate-300 transition hover:text-teal-700 hover:decoration-teal-500"
                                                                 type="button"
                                                             >
-                                                                {{ empleado.pagado ? 'Marcar pendiente' : 'Marcar pagado' }}
+                                                                {{ empleado.pagado ? 'Revertir pago' : 'Marcar pagado y aplicar prestamo' }}
                                                             </button>
                                                         </div>
                                                     </td>
@@ -808,11 +817,11 @@ const cambiarEstadoPago = (nominaId) => {
                                                 {{ registro.pagado ? 'Liquidado' : 'Pendiente' }}
                                             </span>
                                             <button
-                                                @click="cambiarEstadoPago(registro.id)"
+                                                @click="cambiarEstadoPago(registro.id, registro.pagado)"
                                                 class="text-xs font-semibold text-slate-500 underline decoration-slate-300 transition hover:text-teal-700 hover:decoration-teal-500"
                                                 type="button"
                                             >
-                                                Cambiar
+                                                {{ registro.pagado ? 'Revertir pago' : 'Marcar pagado' }}
                                             </button>
                                         </div>
                                     </td>
