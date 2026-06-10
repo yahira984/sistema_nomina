@@ -23,6 +23,7 @@ const tabActiva = ref(props.previewImportacion ? 'revision' : 'captura');
 const busquedaGlobal = ref('');
 const busquedaEmpleadoManual = ref('');
 const busquedaRevision = ref('');
+const busquedaUltimosRegistros = ref('');
 const editando = ref(false);
 const asistenciaId = ref(null);
 const archivoInput = ref(null);
@@ -89,11 +90,26 @@ const empleadosPorId = computed(() => {
 });
 
 const asistenciasFiltradas = computed(() => {
-    if (!form.empleado_id) {
-        return props.asistencias;
+    let resultado = props.asistencias;
+
+    if (form.empleado_id) {
+        resultado = resultado.filter((asistencia) => Number(asistencia.empleado_id) === Number(form.empleado_id));
     }
 
-    return props.asistencias.filter((asistencia) => Number(asistencia.empleado_id) === Number(form.empleado_id));
+    const term = busquedaUltimosRegistros.value.toLowerCase().trim();
+
+    if (!term) {
+        return resultado;
+    }
+
+    return resultado.filter((asistencia) => {
+        const empleado = asistencia.empleado || {};
+
+        return String(empleado.nombre_completo || '').toLowerCase().includes(term)
+            || String(empleado.numero_empleado || '').toLowerCase().includes(term)
+            || String(asistencia.fecha || '').toLowerCase().includes(term)
+            || String(asistencia.tipo_asistencia || '').toLowerCase().includes(term);
+    });
 });
 
 const empleadosFiltradosGlobal = computed(() => {
@@ -630,8 +646,21 @@ const descartarRevision = () => {
                                 <p class="panel-subtitle">{{ asistenciasFiltradas.length }} asistencia(s) visibles</p>
                                 </div>
                             </div>
-                            <div v-if="form.empleado_id" class="inline-flex w-full items-center justify-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-center text-sm font-semibold text-blue-700 sm:w-auto">
-                                Filtrando a: {{ empleados.find((empleado) => Number(empleado.id) === Number(form.empleado_id))?.nombre_completo }}
+                            <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+                                <div v-if="form.empleado_id" class="inline-flex w-full items-center justify-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-center text-sm font-semibold text-blue-700 sm:w-auto">
+                                    Filtrando a: {{ empleados.find((empleado) => Number(empleado.id) === Number(form.empleado_id))?.nombre_completo }}
+                                </div>
+                                <div class="relative w-full sm:w-80">
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                                        <i class="ti ti-search" aria-hidden="true"></i>
+                                    </div>
+                                    <input
+                                        v-model="busquedaUltimosRegistros"
+                                        type="text"
+                                        class="field-input-soft pl-9"
+                                        placeholder="Buscar nombre o numero..."
+                                    />
+                                </div>
                             </div>
                         </div>
 
