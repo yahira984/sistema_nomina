@@ -45,6 +45,7 @@ const form = useForm({
 const empleadosFiltrados = computed(() => {
     let resultado = props.empleados.filter(emp => {
         if (filtroEstado.value === 'activos') return Boolean(Number(emp.estatus ?? 0));
+        if (filtroEstado.value === 'prestamo') return Boolean(Number(emp.estatus ?? 0)) && Number(emp.saldo_prestamo ?? 0) > 0;
         if (filtroEstado.value === 'papelera') return !Boolean(Number(emp.estatus ?? 0));
         return true;
     });
@@ -62,6 +63,12 @@ const empleadosFiltrados = computed(() => {
 
 const empleadosActivos = computed(() => props.empleados.filter(emp => Boolean(Number(emp.estatus ?? 0))).length);
 const empleadosBaja = computed(() => props.empleados.length - empleadosActivos.value);
+const tituloDirectorio = computed(() => {
+    if (filtroEstado.value === 'papelera') return 'Papelera de bajas';
+    if (filtroEstado.value === 'prestamo') return 'Empleados con prestamo';
+
+    return 'Directorio activo';
+});
 
 const esEstudiante = (empleado) => Boolean(Number(empleado.es_estudiante ?? 0));
 
@@ -386,7 +393,7 @@ const restaurarEmpleado = (id, nombre) => {
                 <section class="app-panel">
                     <div class="panel-header">
                         <div>
-                            <h3 class="panel-title">{{ filtroEstado === 'papelera' ? 'Papelera de bajas' : 'Directorio activo' }}</h3>
+                            <h3 class="panel-title">{{ tituloDirectorio }}</h3>
                             <p class="panel-subtitle">{{ empleadosFiltrados.length }} trabajador(es) encontrados</p>
                             <p class="mt-1 text-xs font-semibold text-amber-700">
                                 {{ empleadosConDeuda }} con prestamo activo
@@ -411,6 +418,15 @@ const restaurarEmpleado = (id, nombre) => {
                                 >
                                     <i class="ti ti-archive" aria-hidden="true"></i>
                                     Papelera {{ empleadosBaja }}
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="filtroEstado = 'prestamo'"
+                                    :class="filtroEstado === 'prestamo' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                                    class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all"
+                                >
+                                    <i class="ti ti-cash-banknote" aria-hidden="true"></i>
+                                    Prestamo {{ empleadosConDeuda }}
                                 </button>
                             </div>
                             <div class="relative w-full lg:w-96">
