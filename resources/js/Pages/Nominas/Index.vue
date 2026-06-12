@@ -202,12 +202,14 @@ const pagoVacacionesPreview = (empleado) => {
     return diasVacacionesPreview(empleado) * numero(resumen.pago_dia_planta) * 1.25;
 };
 
+const payloadAjustesEmpleado = (empleado) => ({
+    fecha_corte: selectedCorte.value,
+    ...(ajustesNomina.value[empleado.id] || {}),
+});
+
 const guardarAjustes = (empleado) => {
     guardandoAjuste.value = empleado.id;
-    router.put(route('nominas.ajustes', empleado.id), {
-        fecha_corte: selectedCorte.value,
-        ...(ajustesNomina.value[empleado.id] || {}),
-    }, {
+    router.put(route('nominas.ajustes', empleado.id), payloadAjustesEmpleado(empleado), {
         preserveScroll: true,
         onFinish: () => {
             guardandoAjuste.value = null;
@@ -407,18 +409,20 @@ const marcarComoGenerado = (empleado) => {
     }, 1500);
 };
 
-const cambiarEstadoPago = (nominaId, pagadoActual = false) => {
+const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
     if(!nominaId) return;
 
     const mensaje = pagadoActual
-        ? 'Marcar esta nomina como pendiente? Se revertira el movimiento de prestamo aplicado.'
-        : 'Marcar esta nomina como pagada? En este momento se aplicara el movimiento de prestamo al saldo del empleado.';
+        ? 'Marcar esta nomina como pendiente? Se revertiran el prestamo y las vacaciones aplicadas.'
+        : 'Marcar esta nomina como pagada? Se aplicaran prestamo y vacaciones al saldo del empleado.';
 
     if (!confirm(mensaje)) {
         return;
     }
 
-    router.put(route('nominas.pagar', nominaId), {}, {
+    const payload = !pagadoActual && empleado ? payloadAjustesEmpleado(empleado) : {};
+
+    router.put(route('nominas.pagar', nominaId), payload, {
         preserveScroll: true
     });
 };
@@ -699,11 +703,11 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false) => {
                                                                 {{ empleado.pagado ? 'Liquidado' : 'Pendiente' }}
                                                             </span>
                                                             <button
-                                                                @click="cambiarEstadoPago(empleado.nomina_id, empleado.pagado)"
+                                                                @click="cambiarEstadoPago(empleado.nomina_id, empleado.pagado, empleado)"
                                                                 class="text-xs font-semibold text-slate-500 underline decoration-slate-300 transition hover:text-teal-700 hover:decoration-teal-500"
                                                                 type="button"
                                                             >
-                                                                {{ empleado.pagado ? 'Revertir pago' : 'Marcar pagado y aplicar prestamo' }}
+                                                                {{ empleado.pagado ? 'Revertir pago' : 'Marcar pagado y aplicar saldos' }}
                                                             </button>
                                                         </div>
                                                     </td>

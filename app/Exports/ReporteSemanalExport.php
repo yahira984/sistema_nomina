@@ -4,6 +4,7 @@ namespace App\Exports;
 
 use App\Models\Nomina;
 use Carbon\Carbon;
+use Maatwebsite\Excel\Concerns\WithCustomValueBinder;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithColumnFormatting;
@@ -14,11 +15,14 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Color;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Cell\Cell;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class ReporteSemanalExport implements FromCollection, WithHeadings, WithMapping, WithStyles, WithColumnFormatting, ShouldAutoSize
+class ReporteSemanalExport extends DefaultValueBinder implements FromCollection, WithHeadings, WithMapping, WithStyles, WithColumnFormatting, ShouldAutoSize, WithCustomValueBinder
 {
-    private const LAST_COLUMN = 'X';
+    private const LAST_COLUMN = 'Z';
 
     protected int $semana;
     protected ?Carbon $inicioSemana;
@@ -61,6 +65,8 @@ class ReporteSemanalExport implements FromCollection, WithHeadings, WithMapping,
                 'No.',
                 'INST.',
                 'NOMBRE',
+                'BANCO',
+                'CUENTA',
                 'TIPO',
                 'SUELDO BASE',
                 '$/DIARIO',
@@ -103,6 +109,8 @@ class ReporteSemanalExport implements FromCollection, WithHeadings, WithMapping,
             $empleado?->numero_empleado ?? $empleado?->numero_empleado_baja ?? 'S/N',
             'PACHUCA',
             strtoupper($empleado?->nombre_completo ?? 'SIN EMPLEADO'),
+            strtoupper($empleado?->banco ?? ''),
+            (string) ($empleado?->numero_cuenta ?? ''),
             $esEstudiante ? 'ESTUDIANTE' : 'EMPLEADO',
             $sueldoBase,
             $sueldoDiario,
@@ -130,16 +138,15 @@ class ReporteSemanalExport implements FromCollection, WithHeadings, WithMapping,
     public function columnFormats(): array
     {
         return [
-            'E' => '"$"#,##0.00',
-            'F' => '"$"#,##0.00',
+            'E' => '@',
             'G' => '"$"#,##0.00',
-            'H' => '0.00',
-            'I' => '0.00',
+            'H' => '"$"#,##0.00',
+            'I' => '"$"#,##0.00',
             'J' => '0.00',
             'K' => '0.00',
-            'N' => '0.00',
-            'O' => '"$"#,##0.00',
-            'P' => '"$"#,##0.00',
+            'L' => '0.00',
+            'M' => '0.00',
+            'P' => '0.00',
             'Q' => '"$"#,##0.00',
             'R' => '"$"#,##0.00',
             'S' => '"$"#,##0.00',
@@ -148,7 +155,20 @@ class ReporteSemanalExport implements FromCollection, WithHeadings, WithMapping,
             'V' => '"$"#,##0.00',
             'W' => '"$"#,##0.00',
             'X' => '"$"#,##0.00',
+            'Y' => '"$"#,##0.00',
+            'Z' => '"$"#,##0.00',
         ];
+    }
+
+    public function bindValue(Cell $cell, $value)
+    {
+        if ($cell->getColumn() === 'E') {
+            $cell->setValueExplicit((string) $value, DataType::TYPE_STRING);
+
+            return true;
+        }
+
+        return parent::bindValue($cell, $value);
     }
 
     public function styles(Worksheet $sheet)
@@ -206,14 +226,14 @@ class ReporteSemanalExport implements FromCollection, WithHeadings, WithMapping,
         ]);
 
         $sheet->getStyle("A{$primeraFilaDatos}:B{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("D{$primeraFilaDatos}:N{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("O{$primeraFilaDatos}:" . self::LAST_COLUMN . "{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $sheet->getStyle("F{$primeraFilaDatos}:P{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("Q{$primeraFilaDatos}:" . self::LAST_COLUMN . "{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
         $filaTotales = $ultimaFilaDatos + 1;
         $sheet->setCellValue("A{$filaTotales}", 'TOTALES');
-        $sheet->mergeCells("A{$filaTotales}:D{$filaTotales}");
+        $sheet->mergeCells("A{$filaTotales}:F{$filaTotales}");
 
-        foreach (['H', 'I', 'J', 'K', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X'] as $columna) {
+        foreach (['J', 'K', 'L', 'M', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'] as $columna) {
             $sheet->setCellValue("{$columna}{$filaTotales}", "=SUM({$columna}{$primeraFilaDatos}:{$columna}{$ultimaFilaDatos})");
         }
 
@@ -226,7 +246,7 @@ class ReporteSemanalExport implements FromCollection, WithHeadings, WithMapping,
                 'bottom' => ['borderStyle' => Border::BORDER_DOUBLE, 'color' => ['argb' => '065F46']],
             ],
         ]);
-        $sheet->getStyle("A{$filaTotales}:D{$filaTotales}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+        $sheet->getStyle("A{$filaTotales}:F{$filaTotales}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
 
         return [];
     }
