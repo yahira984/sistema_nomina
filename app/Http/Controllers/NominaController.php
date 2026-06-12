@@ -269,11 +269,27 @@ class NominaController extends Controller
             ->where('tipo_asistencia', 'Falta')
             ->filter(fn ($asistencia) => $this->esDiaFaltaDescontable($asistencia->fecha))
             ->count();
-        $diasIncapacidad = $asistencias->where('tipo_asistencia', 'Incapacidad')->count();
+        $faltasPagadas = min((int) $ajustes['faltas_pagadas'], $diasFalta);
+        $faltasDescontables = max(0, $diasFalta - $faltasPagadas);
+        $diasIncapacidadDetectadas = $asistencias->where('tipo_asistencia', 'Incapacidad')->count();
         $diasVacacionesDetectadas = $asistencias->where('tipo_asistencia', 'Vacaciones')->count();
-        $diasVacacionesPagadas = $ajustes['dias_vacaciones_pagadas'] === null
-            ? (float) $diasVacacionesDetectadas
-            : max(0, (float) $ajustes['dias_vacaciones_pagadas']);
+        $faltasCubiertasVacaciones = min(max(0, (float) $ajustes['faltas_cubiertas_vacaciones']), $faltasDescontables);
+        $faltasCubiertasIncapacidad = min(
+            max(0, (float) $ajustes['faltas_cubiertas_incapacidad']),
+            max(0, $faltasDescontables - $faltasCubiertasVacaciones)
+        );
+        $diasVacacionesAdicionales = max(0, (float) $ajustes['dias_vacaciones_adicionales']);
+        $usarTotalVacacionesLegacy = $ajustes['dias_vacaciones_pagadas'] !== null
+            && $faltasCubiertasVacaciones <= 0
+            && $diasVacacionesAdicionales <= 0;
+        $diasVacacionesPagadas = $usarTotalVacacionesLegacy
+            ? max(0, (float) $ajustes['dias_vacaciones_pagadas'])
+            : $diasVacacionesDetectadas + $faltasCubiertasVacaciones + $diasVacacionesAdicionales;
+        $diasVacacionesAdicionalesCalculadas = max(
+            0,
+            $diasVacacionesPagadas - $diasVacacionesDetectadas - $faltasCubiertasVacaciones
+        );
+        $diasIncapacidadPagadas = $diasIncapacidadDetectadas + $faltasCubiertasIncapacidad;
         $minutosTarde = (int) $asistencias
             ->where('tipo_asistencia', 'Normal')
             ->filter(fn ($asistencia) => $this->esRetardoDescontable($asistencia))
@@ -300,8 +316,6 @@ class NominaController extends Controller
             : ($sueldoSemanal > 0 ? $sueldoSemanal / self::HORAS_BASE_SEMANA : 0);
         $pagoDiaPlanta = $sueldoSemanal > 0 ? $sueldoSemanal / self::DIAS_SUELDO_SEMANA : 0;
 
-        $faltasPagadas = min((int) $ajustes['faltas_pagadas'], $diasFalta);
-        $faltasDescontables = max(0, $diasFalta - $faltasPagadas);
         $horasAdeudoGeneradas = $faltasPagadas * self::HORAS_FALTA_COMPLETA;
         $horasAdeudoDescontadas = min((float) $ajustes['horas_adeudo_descontadas'], $horasExtra);
         $horasExtraPagadas = max(0, $horasExtra - $horasAdeudoDescontadas);
@@ -322,8 +336,8 @@ class NominaController extends Controller
                 : $sueldoSemanal;
             $pagoExtra = $horasExtraPagadas * ($tarifaBaseHora * 2);
         }
-        $pagoIncapacidad = (!$esEstudiante && $diasIncapacidad > 0)
-            ? $pagoDiaPlanta * 0.60 * $diasIncapacidad
+        $pagoIncapacidad = (!$esEstudiante && $diasIncapacidadPagadas > 0)
+            ? $pagoDiaPlanta * 0.60 * $diasIncapacidadPagadas
             : 0;
         $pagoVacaciones = (!$esEstudiante && $diasVacacionesPagadas > 0)
             ? $pagoDiaPlanta * 1.25 * $diasVacacionesPagadas
@@ -369,9 +383,14 @@ class NominaController extends Controller
             'dias_falta' => $diasFalta,
             'dias_falta_pagados' => $faltasPagadas,
             'dias_falta_descontables' => $faltasDescontables,
-            'dias_incapacidad' => $diasIncapacidad,
+            'dias_incapacidad' => round($diasIncapacidadPagadas, 2),
+            'dias_incapacidad_detectadas' => $diasIncapacidadDetectadas,
+            'dias_incapacidad_pagadas' => round($diasIncapacidadPagadas, 2),
+            'faltas_cubiertas_vacaciones' => round($faltasCubiertasVacaciones, 2),
+            'faltas_cubiertas_incapacidad' => round($faltasCubiertasIncapacidad, 2),
             'dias_vacaciones' => round($diasVacacionesPagadas, 2),
             'dias_vacaciones_detectadas' => $diasVacacionesDetectadas,
+            'dias_vacaciones_adicionales' => round($diasVacacionesAdicionalesCalculadas, 2),
             'dias_vacaciones_pagadas' => round($diasVacacionesPagadas, 2),
             'minutos_tarde_acumulados' => $minutosTarde,
             'minutos_tarde_descontables' => $minutosTardeDescontables,
@@ -608,7 +627,17 @@ class NominaController extends Controller
 
     private function requestTieneAjustesNomina(Request $request): bool
     {
-        foreach (['prestamo_otorgado', 'prestamo_descuento', 'deduccion_manual', 'faltas_pagadas', 'horas_adeudo_descontadas', 'dias_vacaciones_pagadas'] as $campo) {
+        foreach ([
+            'prestamo_otorgado',
+            'prestamo_descuento',
+            'deduccion_manual',
+            'faltas_pagadas',
+            'faltas_cubiertas_vacaciones',
+            'faltas_cubiertas_incapacidad',
+            'horas_adeudo_descontadas',
+            'dias_vacaciones_adicionales',
+            'dias_vacaciones_pagadas',
+        ] as $campo) {
             if ($request->has($campo)) {
                 return true;
             }
@@ -625,7 +654,10 @@ class NominaController extends Controller
             'prestamo_descuento' => 'nullable|numeric|min:0',
             'deduccion_manual' => 'nullable|numeric|min:0',
             'faltas_pagadas' => 'nullable|integer|min:0',
+            'faltas_cubiertas_vacaciones' => 'nullable|numeric|min:0',
+            'faltas_cubiertas_incapacidad' => 'nullable|numeric|min:0',
             'horas_adeudo_descontadas' => 'nullable|numeric|min:0',
+            'dias_vacaciones_adicionales' => 'nullable|numeric|min:0',
             'dias_vacaciones_pagadas' => 'nullable|numeric|min:0',
         ]);
 
@@ -636,7 +668,10 @@ class NominaController extends Controller
             'prestamo_descuento' => (float) ($validated['prestamo_descuento'] ?? $default['prestamo_descuento']),
             'deduccion_manual' => (float) ($validated['deduccion_manual'] ?? $default['deduccion_manual']),
             'faltas_pagadas' => (int) ($validated['faltas_pagadas'] ?? $default['faltas_pagadas']),
+            'faltas_cubiertas_vacaciones' => (float) ($validated['faltas_cubiertas_vacaciones'] ?? $default['faltas_cubiertas_vacaciones']),
+            'faltas_cubiertas_incapacidad' => (float) ($validated['faltas_cubiertas_incapacidad'] ?? $default['faltas_cubiertas_incapacidad']),
             'horas_adeudo_descontadas' => (float) ($validated['horas_adeudo_descontadas'] ?? $default['horas_adeudo_descontadas']),
+            'dias_vacaciones_adicionales' => (float) ($validated['dias_vacaciones_adicionales'] ?? $default['dias_vacaciones_adicionales']),
             'dias_vacaciones_pagadas' => array_key_exists('dias_vacaciones_pagadas', $validated)
                 ? (float) $validated['dias_vacaciones_pagadas']
                 : $default['dias_vacaciones_pagadas'],
@@ -654,7 +689,10 @@ class NominaController extends Controller
             'prestamo_descuento' => (float) ($nomina->prestamo_descuento ?? $this->deduccionPrestamoSugerida($empleado)),
             'deduccion_manual' => (float) ($nomina->deduccion_manual ?? 0),
             'faltas_pagadas' => (int) ($nomina->faltas_pagadas ?? 0),
+            'faltas_cubiertas_vacaciones' => (float) ($nomina->faltas_cubiertas_vacaciones ?? 0),
+            'faltas_cubiertas_incapacidad' => (float) ($nomina->faltas_cubiertas_incapacidad ?? 0),
             'horas_adeudo_descontadas' => (float) ($nomina->horas_adeudo_descontadas ?? 0),
+            'dias_vacaciones_adicionales' => (float) ($nomina->dias_vacaciones_adicionales ?? 0),
             'dias_vacaciones_pagadas' => $nomina->dias_vacaciones_pagadas !== null
                 ? (float) $nomina->dias_vacaciones_pagadas
                 : null,
@@ -668,7 +706,10 @@ class NominaController extends Controller
             'prestamo_descuento' => $this->deduccionPrestamoSugerida($empleado),
             'deduccion_manual' => 0,
             'faltas_pagadas' => 0,
+            'faltas_cubiertas_vacaciones' => 0,
+            'faltas_cubiertas_incapacidad' => 0,
             'horas_adeudo_descontadas' => 0,
+            'dias_vacaciones_adicionales' => 0,
             'dias_vacaciones_pagadas' => null,
         ];
     }
@@ -700,8 +741,14 @@ class NominaController extends Controller
             'faltas_detectadas' => $desglose['dias_falta'],
             'faltas_pagadas' => $desglose['dias_falta_pagados'],
             'faltas_descontables' => $desglose['dias_falta_descontables'],
+            'faltas_cubiertas_vacaciones' => $desglose['faltas_cubiertas_vacaciones'],
+            'faltas_cubiertas_incapacidad' => $desglose['faltas_cubiertas_incapacidad'],
+            'dias_incapacidad_detectadas' => $desglose['dias_incapacidad_detectadas'],
+            'dias_incapacidad_pagadas' => $desglose['dias_incapacidad_pagadas'],
             'dias_vacaciones_detectadas' => $desglose['dias_vacaciones_detectadas'],
+            'dias_vacaciones_adicionales' => $desglose['dias_vacaciones_adicionales'],
             'dias_vacaciones_pagadas' => $desglose['dias_vacaciones_pagadas'],
+            'pago_incapacidad' => $desglose['pago_incapacidad'],
             'pago_vacaciones' => $desglose['pago_vacaciones'],
             'pago_dia_planta' => $desglose['pago_dia_planta'],
             'horas_extra_detectadas' => $desglose['horas_extra'],
@@ -751,7 +798,7 @@ class NominaController extends Controller
 
     private function datosNominaParaGuardar(Carbon $inicioSemana, Carbon $finSemana, array $desglose): array
     {
-        return [
+        $datos = [
             'numero_semana' => $inicioSemana->weekOfYear,
             'fecha_inicio' => $inicioSemana->format('Y-m-d'),
             'fecha_fin' => $finSemana->format('Y-m-d'),
@@ -769,6 +816,18 @@ class NominaController extends Controller
             'total_deducciones' => $desglose['total_deducciones'],
             'pago_neto' => $desglose['pago_neto'],
         ];
+
+        foreach ([
+            'faltas_cubiertas_vacaciones',
+            'faltas_cubiertas_incapacidad',
+            'dias_vacaciones_adicionales',
+        ] as $campo) {
+            if (Schema::hasColumn('nominas', $campo)) {
+                $datos[$campo] = $desglose[$campo];
+            }
+        }
+
+        return $datos;
     }
 
     private function datosVistaRecibo(Nomina $nomina, Empleado $empleado, array $desglose): array
