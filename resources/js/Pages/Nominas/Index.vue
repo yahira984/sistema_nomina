@@ -55,6 +55,69 @@ const moneda = (valor) => numero(valor).toLocaleString('es-MX', {
 });
 const horas = (valor) => numero(valor).toFixed(1);
 
+const empleadosSinHorasExtra = new Set(['8', '9', '22']);
+const empleadosSinRetardos = new Set(['14', '76', '78']);
+const empleadosPagoPorHoraTopado = new Set(['76', '78']);
+
+const numeroEmpleadoNomina = (empleado) => {
+    const texto = String(empleado?.numero_empleado || empleado?.numero_empleado_baja || '').trim();
+    const sinCeros = texto.replace(/^0+/, '');
+
+    return sinCeros || texto || '';
+};
+
+const reglasEspecialesEmpleado = (empleado) => {
+    const numeroEmpleado = numeroEmpleadoNomina(empleado);
+    const reglas = [];
+
+    if (empleadosSinHorasExtra.has(numeroEmpleado)) {
+        reglas.push({
+            texto: 'Sin H.E.',
+            clase: 'border-sky-200 bg-sky-50 text-sky-700',
+        });
+    }
+
+    if (empleadosSinRetardos.has(numeroEmpleado)) {
+        reglas.push({
+            texto: 'Sin retardos',
+            clase: 'border-amber-200 bg-amber-50 text-amber-800',
+        });
+    }
+
+    if (empleadosPagoPorHoraTopado.has(numeroEmpleado)) {
+        reglas.push({
+            texto: 'Tope 48 h',
+            clase: 'border-violet-200 bg-violet-50 text-violet-700',
+        });
+    }
+
+    return reglas;
+};
+
+const tieneReglaEspecial = (empleado) => reglasEspecialesEmpleado(empleado).length > 0;
+
+const claseFilaNomina = (empleado) => {
+    return tieneReglaEspecial(empleado)
+        ? 'border-t border-l-4 border-l-amber-400 border-slate-100 bg-amber-50/35 hover:bg-amber-50/70'
+        : 'border-t border-slate-100 hover:bg-slate-50';
+};
+
+const claseNumeroNomina = (empleado) => {
+    if (empleadosPagoPorHoraTopado.has(numeroEmpleadoNomina(empleado))) {
+        return 'border-violet-200 bg-violet-50 text-violet-700';
+    }
+
+    if (empleadosSinHorasExtra.has(numeroEmpleadoNomina(empleado))) {
+        return 'border-sky-200 bg-sky-50 text-sky-700';
+    }
+
+    if (empleadosSinRetardos.has(numeroEmpleadoNomina(empleado))) {
+        return 'border-amber-200 bg-amber-50 text-amber-800';
+    }
+
+    return 'border-teal-200 bg-teal-50 text-teal-700';
+};
+
 const inicializarAjustes = () => {
     const actuales = { ...ajustesNomina.value };
 
@@ -119,6 +182,10 @@ const saldoHorasPreview = (empleado) => {
 
 const horasExtraPagadasPreview = (empleado) => {
     const resumen = resumenNomina(empleado);
+
+    if (resumen.pago_por_hora_topado) {
+        return 0;
+    }
 
     return Math.max(0, numero(resumen.horas_extra_detectadas) - horasAdeudoDescontadasPreview(empleado));
 };
@@ -569,7 +636,7 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false) => {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                <tr v-for="empleado in empleadosBanco" :key="empleado.id" class="border-t border-slate-100 hover:bg-slate-50">
+                                                <tr v-for="empleado in empleadosBanco" :key="empleado.id" :class="claseFilaNomina(empleado)">
                                                     <td class="px-4 py-3 text-center">
                                                         <input
                                                             type="checkbox"
@@ -581,12 +648,21 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false) => {
                                                     </td>
                                                     <td class="whitespace-nowrap px-4 py-3">
                                                         <div class="flex items-center gap-3">
-                                                            <div class="flex h-10 min-w-10 max-w-16 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 px-2 text-xs font-bold text-teal-700">
+                                                            <div :class="['flex h-10 min-w-10 max-w-16 items-center justify-center rounded-lg border px-2 text-xs font-bold', claseNumeroNomina(empleado)]">
                                                                 {{ empleado.numero_empleado || 'S/N' }}
                                                             </div>
                                                             <div class="min-w-0">
                                                                 <div class="truncate font-semibold text-slate-950">{{ empleado.nombre_completo }}</div>
                                                                 <div class="text-xs text-slate-500">{{ empleado.puesto || 'Sin puesto asignado' }}</div>
+                                                                <div v-if="tieneReglaEspecial(empleado)" class="mt-1 flex flex-wrap gap-1">
+                                                                    <span
+                                                                        v-for="regla in reglasEspecialesEmpleado(empleado)"
+                                                                        :key="regla.texto"
+                                                                        :class="['rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide', regla.clase]"
+                                                                    >
+                                                                        {{ regla.texto }}
+                                                                    </span>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </td>

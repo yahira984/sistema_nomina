@@ -261,6 +261,8 @@ class ReporteSemanalExport implements FromCollection, WithHeadings, WithMapping,
         $faltas = $nomina->empleado->asistencias()
             ->whereBetween('fecha', [$this->inicioSemana->format('Y-m-d'), $this->finSemana->format('Y-m-d')])
             ->where('tipo_asistencia', 'Falta')
+            ->get(['fecha'])
+            ->filter(fn ($asistencia) => !Carbon::parse($asistencia->fecha)->isWeekend())
             ->count();
 
         return max(0, $faltas - (int) ($nomina->faltas_pagadas ?? 0));

@@ -19,6 +19,7 @@ class Empleado extends Model
         'dias_vacaciones_tomados', 
         'dias_vacaciones_restantes',
         'dias_faltas_totales',
+        'fechas_faltas',
         'dias_laborados'
     ];
 
@@ -67,7 +68,25 @@ class Empleado extends Model
     {
         return $this->asistencias()
             ->where('tipo_asistencia', 'Falta')
+            ->get(['fecha'])
+            ->filter(fn ($asistencia) => !$this->esFechaFinDeSemana($asistencia->fecha))
             ->count(); 
+    }
+
+    public function getFechasFaltasAttribute()
+    {
+        return $this->asistencias()
+            ->where('tipo_asistencia', 'Falta')
+            ->orderBy('fecha', 'desc')
+            ->get(['fecha'])
+            ->filter(fn ($asistencia) => !$this->esFechaFinDeSemana($asistencia->fecha))
+            ->map(fn ($asistencia) => Carbon::parse($asistencia->fecha)->format('Y-m-d'))
+            ->values();
+    }
+
+    private function esFechaFinDeSemana($fecha): bool
+    {
+        return Carbon::parse($fecha)->isWeekend();
     }
 
     public function getDiasLaboradosAttribute($value)

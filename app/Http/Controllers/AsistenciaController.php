@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Asistencia;
 use App\Models\Empleado;
+use App\Support\ReglasNominaEmpleado;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -32,7 +33,8 @@ class AsistenciaController extends Controller
             'tipo_asistencia' => 'required|string|in:Normal,Falta,Incapacidad,Vacaciones',
         ]);
 
-        $datosCalculados = $this->calcularHoras($request->fecha, $request->hora_entrada, $request->hora_salida, $request->tipo_asistencia);
+        $empleado = Empleado::findOrFail($request->empleado_id);
+        $datosCalculados = $this->calcularHoras($request->fecha, $request->hora_entrada, $request->hora_salida, $request->tipo_asistencia, $empleado);
 
         Asistencia::create(array_merge([
             'empleado_id' => $request->empleado_id,
@@ -53,7 +55,7 @@ class AsistenciaController extends Controller
         ]);
 
         $asistencia = Asistencia::findOrFail($id);
-        $datosCalculados = $this->calcularHoras($request->fecha, $request->hora_entrada, $request->hora_salida, $request->tipo_asistencia);
+        $datosCalculados = $this->calcularHoras($request->fecha, $request->hora_entrada, $request->hora_salida, $request->tipo_asistencia, $asistencia->empleado);
 
         $asistencia->update(array_merge([
             'fecha' => $request->fecha,
@@ -140,7 +142,13 @@ class AsistenciaController extends Controller
             $horaEntrada = $tipoAsistencia === 'Normal' ? ($fila['hora_entrada'] ?? null) : null;
             $horaSalida = $tipoAsistencia === 'Normal' ? ($fila['hora_salida'] ?? null) : null;
 
-            $datosCalculados = $this->calcularHoras($fila['fecha'], $horaEntrada, $horaSalida, $tipoAsistencia);
+            if ($tipoAsistencia === 'Normal' && (!$horaEntrada || !$horaSalida)) {
+                $omitidas++;
+                continue;
+            }
+
+            $empleado = Empleado::find($fila['empleado_id']);
+            $datosCalculados = $this->calcularHoras($fila['fecha'], $horaEntrada, $horaSalida, $tipoAsistencia, $empleado);
 
             Asistencia::updateOrCreate(
                 [
@@ -195,19 +203,11 @@ class AsistenciaController extends Controller
                     continue;
                 }
 
-                sort($horas);
-                $horaEntrada = $horas[0] ?? null;
-                $horaSalida = count($horas) > 1 ? end($horas) : null;
+                $horario = $this->resolverHorarioMarcajes($fecha, $horas);
+                $horaEntrada = $horario['hora_entrada'];
+                $horaSalida = $horario['hora_salida'];
 
-                // 🔥 REGLA PROMATEC / LUGARTH: EL "MIÉRCOLES FANTASMA" 🔥
-                // Si el día es miércoles y no hay salida registrada (porque el corte se hace a las 5:00 pm),
-                // inyectamos automáticamente la salida a las 17:30 para cerrar nómina.
-                // La siguiente semana, si el CSV trae la hora real de ese mismo miércoles, sobrescribirá este valor.
-                if (Carbon::parse($fecha)->isWednesday() && !$horaSalida) {
-                    $horaSalida = '17:30'; 
-                }
-
-                $datosCalculados = $this->calcularHoras($fecha, $horaEntrada, $horaSalida, 'Normal');
+                $datosCalculados = $this->calcularHoras($fecha, $horaEntrada, $horaSalida, 'Normal', $empleado);
 
                 if (!$empleado) {
                     $noEncontradas++;
@@ -222,7 +222,7 @@ class AsistenciaController extends Controller
                         'hora_salida' => $horaSalida,
                         'estado' => 'no_encontrado',
                         'mensaje' => 'El numero del CSV no existe en empleados activos. Selecciona un empleado o deja la fila sin aprobar.',
-                        'marcas' => count($horas),
+                        'marcas' => $horario['marcas'],
                     ], $datosCalculados);
                     continue;
                 }
@@ -232,8 +232,13 @@ class AsistenciaController extends Controller
                 $yaExiste = isset($existentes[$clave]);
                 $detectadasCsv++;
 
+                $estado = $horario['incompleta'] ? 'incompleta' : ($yaExiste ? 'actualiza' : 'detectada');
+                $mensaje = $horario['incompleta']
+                    ? $horario['mensaje']
+                    : ($yaExiste ? 'Ya habia una asistencia para este dia; al aprobar se actualizara.' : $horario['mensaje']);
+
                 $filas[] = array_merge([
-                    'aprobado' => true,
+                    'aprobado' => !$horario['incompleta'],
                     'empleado_id' => $empleado->id,
                     'numero_empleado' => $empleado->numero_empleado,
                     'nombre_completo' => $empleado->nombre_completo,
@@ -241,11 +246,9 @@ class AsistenciaController extends Controller
                     'tipo_asistencia' => 'Normal',
                     'hora_entrada' => $horaEntrada,
                     'hora_salida' => $horaSalida,
-                    'estado' => $yaExiste ? 'actualiza' : 'detectada',
-                    'mensaje' => $yaExiste
-                        ? 'Ya habia una asistencia para este dia; al aprobar se actualizara.'
-                        : (count($horas) === 1 && !Carbon::parse($fecha)->isWednesday() ? 'Solo se detecto una marca del reloj.' : 'Marcajes detectados en CSV.'),
-                    'marcas' => count($horas),
+                    'estado' => $estado,
+                    'mensaje' => $mensaje,
+                    'marcas' => $horario['marcas'],
                 ], $datosCalculados);
             }
         }
@@ -283,7 +286,17 @@ class AsistenciaController extends Controller
         }
 
         usort($filas, function ($a, $b) {
-            return [$a['fecha'], $a['nombre_completo'], $a['estado']] <=> [$b['fecha'], $b['nombre_completo'], $b['estado']];
+            return [
+                $this->numeroOrdenRevision($a),
+                $a['nombre_completo'] ?? '',
+                $a['fecha'] ?? '',
+                $a['estado'] ?? '',
+            ] <=> [
+                $this->numeroOrdenRevision($b),
+                $b['nombre_completo'] ?? '',
+                $b['fecha'] ?? '',
+                $b['estado'] ?? '',
+            ];
         });
 
         return [
@@ -297,6 +310,111 @@ class AsistenciaController extends Controller
                 'fecha_fin' => $rango ? $rango['fin']->format('Y-m-d') : null,
             ],
         ];
+    }
+
+    private function resolverHorarioMarcajes(string $fecha, array $horas): array
+    {
+        $marcas = array_values(array_unique(array_filter($horas)));
+        sort($marcas);
+
+        $entrada = null;
+        $salida = null;
+        $mensaje = 'Marcajes detectados en CSV.';
+
+        if (count($marcas) === 1) {
+            $marca = $marcas[0];
+
+            if ($this->horaMenorOIgual($marca, '12:00')) {
+                $entrada = $marca;
+            } else {
+                $salida = $marca;
+            }
+        } elseif (count($marcas) > 1) {
+            $entrada = $this->primeraMarcaAntesDe($marcas, '12:00');
+            $salida = $this->ultimaMarcaDespuesDe($marcas, '10:00');
+
+            if ($entrada && $salida && !$this->horaMayorQue($salida, $entrada)) {
+                $salida = null;
+            }
+        }
+
+        if (Carbon::parse($fecha)->isWednesday() && $entrada && !$salida) {
+            $salida = '17:30';
+            $mensaje = 'Miercoles sin salida: se ajusto salida a 17:30 para el corte.';
+        }
+
+        $incompleta = !$entrada || !$salida;
+
+        if ($incompleta) {
+            $mensaje = $this->mensajeMarcajeIncompleto($entrada, $salida);
+        }
+
+        return [
+            'hora_entrada' => $entrada,
+            'hora_salida' => $salida,
+            'incompleta' => $incompleta,
+            'mensaje' => $mensaje,
+            'marcas' => count($marcas),
+        ];
+    }
+
+    private function primeraMarcaAntesDe(array $marcas, string $limite): ?string
+    {
+        foreach ($marcas as $marca) {
+            if ($this->horaMenorOIgual($marca, $limite)) {
+                return $marca;
+            }
+        }
+
+        return null;
+    }
+
+    private function ultimaMarcaDespuesDe(array $marcas, string $limite): ?string
+    {
+        $resultado = null;
+
+        foreach ($marcas as $marca) {
+            if ($this->horaMayorOIgual($marca, $limite)) {
+                $resultado = $marca;
+            }
+        }
+
+        return $resultado;
+    }
+
+    private function mensajeMarcajeIncompleto(?string $entrada, ?string $salida): string
+    {
+        if ($entrada && !$salida) {
+            return "Marca incompleta: solo se detecto entrada {$entrada}. Captura la salida antes de aprobar.";
+        }
+
+        if (!$entrada && $salida) {
+            return "Marca incompleta: solo se detecto posible salida {$salida}. Captura la entrada antes de aprobar.";
+        }
+
+        return 'Marca incompleta: revisa entrada y salida antes de aprobar.';
+    }
+
+    private function horaMenorOIgual(string $hora, string $limite): bool
+    {
+        return $this->minutosHora($hora) <= $this->minutosHora($limite);
+    }
+
+    private function horaMayorOIgual(string $hora, string $limite): bool
+    {
+        return $this->minutosHora($hora) >= $this->minutosHora($limite);
+    }
+
+    private function horaMayorQue(string $hora, string $limite): bool
+    {
+        return $this->minutosHora($hora) > $this->minutosHora($limite);
+    }
+
+    private function minutosHora(string $hora): int
+    {
+        [$horas, $minutos] = array_pad(explode(':', substr($hora, 0, 5)), 2, 0);
+
+        return ((int) $horas * 60) + (int) $minutos;
     }
 
     private function leerMarcajesCsv(string $path): array
@@ -369,6 +487,13 @@ class AsistenciaController extends Controller
         $normalizado = ltrim($this->limpiarNumeroEmpleado($numero), '0');
 
         return $normalizado === '' ? '0' : $normalizado;
+    }
+
+    private function numeroOrdenRevision(array $fila): int
+    {
+        $numero = $this->normalizarNumeroEmpleado((string) ($fila['numero_empleado'] ?? $fila['csv_numero_empleado'] ?? ''));
+
+        return is_numeric($numero) ? (int) $numero : PHP_INT_MAX;
     }
 
     private function indexarEmpleadosPorNumero($empleados): array
@@ -453,7 +578,7 @@ class AsistenciaController extends Controller
         $limite = $fin->copy()->startOfDay();
 
         while ($cursor->lte($limite)) {
-            if (!$cursor->isSunday()) {
+            if (!$cursor->isWeekend()) {
                 $dias[] = $cursor->format('Y-m-d');
             }
 
@@ -495,6 +620,9 @@ class AsistenciaController extends Controller
     {
         $hora = strtoupper(trim((string) $hora));
         $hora = str_replace('.', '', $hora);
+        $hora = preg_replace('/\bA\s*M\b/u', 'AM', $hora);
+        $hora = preg_replace('/\bP\s*M\b/u', 'PM', $hora);
+        $hora = preg_replace('/\s+/', ' ', $hora);
 
         if ($hora === '') {
             return null;
@@ -515,7 +643,7 @@ class AsistenciaController extends Controller
         }
     }
 
-    private function calcularHoras($fecha, $hora_entrada, $hora_salida, $tipo_asistencia)
+    private function calcularHoras($fecha, $hora_entrada, $hora_salida, $tipo_asistencia, ?Empleado $empleado = null)
     {
         $minutos_tarde = 0;
         $horas_normales = 0;
@@ -527,13 +655,21 @@ class AsistenciaController extends Controller
             $salida = Carbon::parse($fecha . ' ' . $hora_salida);
             $hora_oficial = Carbon::parse($fecha . ' 08:00:00');
 
+            if ($salida->lessThanOrEqualTo($entrada)) {
+                return [
+                    'minutos_tarde' => 0,
+                    'horas_trabajadas' => 0,
+                    'horas_extra' => 0,
+                ];
+            }
+
             if ($entrada->greaterThan($hora_oficial)) {
                 $minutos_tarde = $hora_oficial->diffInMinutes($entrada);
             }
 
             if ($fecha_carbon->isSaturday()) {
                 $inicioSabado = $entrada->lessThan($hora_oficial) ? $hora_oficial : $entrada;
-                $horas_extra_diarias = $this->redondearHoraCompletaInferior(max(0, $inicioSabado->diffInMinutes($salida) / 60));
+                $horas_extra_diarias = $this->redondearHoraCompletaCercana(max(0, $inicioSabado->diffInMinutes($salida) / 60));
             } else {
                 $limite_normal = Carbon::parse($fecha . ' 17:30:00');
                 $inicioJornada = $entrada->lessThan($hora_oficial) || $minutos_tarde < 30
@@ -549,6 +685,16 @@ class AsistenciaController extends Controller
             }
         }
 
+        if ($empleado) {
+            if (ReglasNominaEmpleado::sinRetardos($empleado)) {
+                $minutos_tarde = 0;
+            }
+
+            if (ReglasNominaEmpleado::sinHorasExtra($empleado)) {
+                $horas_extra_diarias = 0;
+            }
+        }
+
         return [
             'minutos_tarde' => $minutos_tarde,
             'horas_trabajadas' => round($horas_normales, 2),
@@ -559,5 +705,10 @@ class AsistenciaController extends Controller
     private function redondearHoraCompletaInferior(float $horas): float
     {
         return floor($horas);
+    }
+
+    private function redondearHoraCompletaCercana(float $horas): float
+    {
+        return max(0, round($horas));
     }
 }
