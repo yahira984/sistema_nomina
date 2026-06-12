@@ -128,8 +128,10 @@ const inicializarAjustes = () => {
             prestamo_descuento: valorDecimal(ajuste.prestamo_descuento),
             deduccion_manual: valorDecimal(ajuste.deduccion_manual),
             faltas_pagadas: ajuste.faltas_pagadas ?? 0,
+            faltas_cubiertas_vacaciones: valorDecimal(ajuste.faltas_cubiertas_vacaciones),
+            faltas_cubiertas_incapacidad: valorDecimal(ajuste.faltas_cubiertas_incapacidad),
             horas_adeudo_descontadas: valorDecimal(ajuste.horas_adeudo_descontadas),
-            dias_vacaciones_pagadas: valorDecimal(ajuste.dias_vacaciones_pagadas),
+            dias_vacaciones_adicionales: valorDecimal(ajuste.dias_vacaciones_adicionales),
         };
     });
 
@@ -165,6 +167,27 @@ const faltasPagadasPreview = (empleado) => {
     return Math.min(numero(ajuste.faltas_pagadas), detectadas);
 };
 
+const faltasCubiertasVacacionesPreview = (empleado) => {
+    const ajuste = ajustesNomina.value[empleado.id] || {};
+    const disponibles = Math.max(0, numero(resumenNomina(empleado).faltas_detectadas) - faltasPagadasPreview(empleado));
+
+    return Math.min(numero(ajuste.faltas_cubiertas_vacaciones), disponibles);
+};
+
+const faltasCubiertasIncapacidadPreview = (empleado) => {
+    const ajuste = ajustesNomina.value[empleado.id] || {};
+    const restantes = Math.max(
+        0,
+        numero(resumenNomina(empleado).faltas_detectadas) - faltasPagadasPreview(empleado) - faltasCubiertasVacacionesPreview(empleado),
+    );
+
+    return Math.min(numero(ajuste.faltas_cubiertas_incapacidad), restantes);
+};
+
+const faltasConDescuentoPreview = (empleado) => {
+    return Math.max(0, numero(resumenNomina(empleado).faltas_detectadas) - faltasPagadasPreview(empleado));
+};
+
 const horasAdeudoGeneradasPreview = (empleado) => faltasPagadasPreview(empleado) * 9.5;
 
 const horasAdeudoDescontadasPreview = (empleado) => {
@@ -190,16 +213,33 @@ const horasExtraPagadasPreview = (empleado) => {
     return Math.max(0, numero(resumen.horas_extra_detectadas) - horasAdeudoDescontadasPreview(empleado));
 };
 
-const diasVacacionesPreview = (empleado) => {
+const diasVacacionesAdicionalesPreview = (empleado) => {
     const ajuste = ajustesNomina.value[empleado.id] || {};
 
-    return numero(ajuste.dias_vacaciones_pagadas);
+    return numero(ajuste.dias_vacaciones_adicionales);
+};
+
+const diasVacacionesPreview = (empleado) => {
+    return numero(resumenNomina(empleado).dias_vacaciones_detectadas)
+        + faltasCubiertasVacacionesPreview(empleado)
+        + diasVacacionesAdicionalesPreview(empleado);
+};
+
+const diasIncapacidadPreview = (empleado) => {
+    return numero(resumenNomina(empleado).dias_incapacidad_detectadas)
+        + faltasCubiertasIncapacidadPreview(empleado);
 };
 
 const pagoVacacionesPreview = (empleado) => {
     const resumen = resumenNomina(empleado);
 
     return diasVacacionesPreview(empleado) * numero(resumen.pago_dia_planta) * 1.25;
+};
+
+const pagoIncapacidadPreview = (empleado) => {
+    const resumen = resumenNomina(empleado);
+
+    return diasIncapacidadPreview(empleado) * numero(resumen.pago_dia_planta) * 0.60;
 };
 
 const payloadAjustesEmpleado = (empleado) => ({
@@ -733,7 +773,7 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
                                                                 </div>
                                                             </div>
 
-                                                            <div class="grid gap-3 p-3 lg:grid-cols-[0.95fr_1.25fr_0.8fr]">
+                                                            <div class="grid gap-3 p-3 xl:grid-cols-[0.85fr_1.8fr_0.9fr]">
                                                                 <section class="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
                                                                     <div class="mb-3 flex items-center gap-2 text-sm font-black text-blue-900">
                                                                         <i class="ti ti-cash-banknote" aria-hidden="true"></i>
@@ -755,26 +795,43 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
                                                                     <div class="mb-3 flex items-center justify-between gap-3">
                                                                         <div class="flex items-center gap-2 text-sm font-black text-amber-900">
                                                                             <i class="ti ti-calendar-exclamation" aria-hidden="true"></i>
-                                                                            Faltas pagadas y horas
+                                                                            Faltas y coberturas
                                                                         </div>
                                                                         <span class="rounded-full border border-rose-200 bg-white px-2 py-1 text-[11px] font-bold text-rose-700">
-                                                                            {{ resumenNomina(empleado).faltas_detectadas || 0 }} falta(s)
+                                                                            {{ resumenNomina(empleado).faltas_detectadas || 0 }} falta(s) reales
                                                                         </span>
                                                                     </div>
-                                                                    <div class="grid grid-cols-2 gap-2">
+
+                                                                    <div class="grid grid-cols-2 gap-2 text-[11px] font-bold md:grid-cols-4">
+                                                                        <span class="rounded-md bg-white px-2 py-1 text-rose-700">{{ faltasConDescuentoPreview(empleado) }} desc.</span>
+                                                                        <span class="rounded-md bg-white px-2 py-1 text-blue-700">{{ faltasPagadasPreview(empleado) }} con horas</span>
+                                                                        <span class="rounded-md bg-white px-2 py-1 text-emerald-700">{{ faltasCubiertasVacacionesPreview(empleado) }} vac.</span>
+                                                                        <span class="rounded-md bg-white px-2 py-1 text-violet-700">{{ faltasCubiertasIncapacidadPreview(empleado) }} incap.</span>
+                                                                    </div>
+
+                                                                    <div class="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
                                                                         <label class="block">
-                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-amber-700">Faltas que se pagaron</span>
+                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-amber-700">Sin descuento / adeuda h</span>
                                                                             <input v-model="ajustesNomina[empleado.id].faltas_pagadas" type="number" step="1" min="0" :max="resumenNomina(empleado).faltas_detectadas || 0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                                        </label>
+                                                                        <label class="block">
+                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-emerald-700">Pagar con vacaciones</span>
+                                                                            <input v-model="ajustesNomina[empleado.id].faltas_cubiertas_vacaciones" type="number" step="1" min="0" :max="Math.max(0, Number(resumenNomina(empleado).faltas_detectadas || 0) - faltasPagadasPreview(empleado))" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                                        </label>
+                                                                        <label class="block">
+                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-violet-700">Pagar con incapacidad</span>
+                                                                            <input v-model="ajustesNomina[empleado.id].faltas_cubiertas_incapacidad" type="number" step="1" min="0" :max="Math.max(0, Number(resumenNomina(empleado).faltas_detectadas || 0) - faltasPagadasPreview(empleado) - faltasCubiertasVacacionesPreview(empleado))" class="field-input-soft px-2 py-1.5 text-xs" />
                                                                         </label>
                                                                         <label class="block">
                                                                             <span class="mb-1 block text-[10px] font-bold uppercase text-amber-700">Hrs extra a tomar</span>
                                                                             <input v-model="ajustesNomina[empleado.id].horas_adeudo_descontadas" type="number" step="0.5" min="0" :max="resumenNomina(empleado).horas_extra_detectadas || 0" class="field-input-soft px-2 py-1.5 text-xs" />
                                                                         </label>
                                                                     </div>
-                                                                    <div class="mt-3 grid grid-cols-3 gap-2 text-[11px] font-bold">
+                                                                    <div class="mt-3 grid grid-cols-2 gap-2 text-[11px] font-bold xl:grid-cols-4">
                                                                         <span class="rounded-md bg-white px-2 py-1 text-slate-600">Genera {{ horas(horasAdeudoGeneradasPreview(empleado)) }} h</span>
                                                                         <span class="rounded-md bg-white px-2 py-1 text-slate-600">Extra {{ horas(resumenNomina(empleado).horas_extra_detectadas) }} h</span>
                                                                         <span class="rounded-md bg-white px-2 py-1 text-emerald-700">Paga {{ horas(horasExtraPagadasPreview(empleado)) }} h</span>
+                                                                        <span class="rounded-md bg-white px-2 py-1 text-amber-700">Saldo {{ horas(saldoHorasPreview(empleado)) }} h</span>
                                                                     </div>
                                                                     <div v-if="Number(resumenNomina(empleado).horas_extra_miercoles_anterior || 0) > 0" class="mt-2 text-[11px] font-semibold text-amber-800">
                                                                         Incluye {{ horas(resumenNomina(empleado).horas_extra_miercoles_anterior) }} h del miercoles anterior.
@@ -792,12 +849,14 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
                                                                             <input v-model="ajustesNomina[empleado.id].deduccion_manual" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
                                                                         </label>
                                                                         <label class="mt-2 block">
-                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-slate-500">Dias vac. +25%</span>
-                                                                            <input v-model="ajustesNomina[empleado.id].dias_vacaciones_pagadas" type="number" step="0.5" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-slate-500">Vac. adicionales</span>
+                                                                            <input v-model="ajustesNomina[empleado.id].dias_vacaciones_adicionales" type="number" step="0.5" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
                                                                         </label>
                                                                         <div class="mt-3 grid grid-cols-2 gap-2 text-[11px] font-bold">
-                                                                            <span class="rounded-md bg-white px-2 py-1 text-rose-700">{{ resumenNomina(empleado).faltas_descontables || 0 }} falta(s) desc.</span>
+                                                                            <span class="rounded-md bg-white px-2 py-1 text-rose-700">{{ faltasConDescuentoPreview(empleado) }} falta(s) desc.</span>
                                                                             <span class="rounded-md bg-white px-2 py-1 text-amber-700">{{ resumenNomina(empleado).minutos_tarde_descontables || 0 }} min ret.</span>
+                                                                            <span class="rounded-md bg-white px-2 py-1 text-violet-700">{{ horas(diasIncapacidadPreview(empleado)) }} incap.</span>
+                                                                            <span class="rounded-md bg-white px-2 py-1 text-violet-700">${{ moneda(pagoIncapacidadPreview(empleado)) }}</span>
                                                                             <span class="rounded-md bg-white px-2 py-1 text-blue-700">{{ horas(diasVacacionesPreview(empleado)) }} dia(s) vac.</span>
                                                                             <span class="rounded-md bg-white px-2 py-1 text-emerald-700">${{ moneda(pagoVacacionesPreview(empleado)) }}</span>
                                                                         </div>
