@@ -5,7 +5,8 @@
     <title>Recibos de Sueldo</title>
     <style>
         @page {
-            margin: 0.35in 0.25in;
+            size: letter portrait;
+            margin: 0.25in;
         }
 
         body {
@@ -14,6 +15,7 @@
         }
 
         .recibo-page {
+            height: 10.45in;
             page-break-after: always;
         }
 
@@ -21,15 +23,31 @@
             page-break-after: auto;
         }
 
-        .recibo-page table {
-            width: 100%;
+        .recibo-slot {
+            height: 5.12in;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .recibo-slot:first-child {
+            margin-bottom: 0.12in;
+            padding-bottom: 0.08in;
+            border-bottom: 1px dashed #cbd5e1;
+        }
+
+        .recibo-slot table {
+            width: 100% !important;
         }
     </style>
 </head>
 <body>
-    @foreach($recibos as $recibo)
+    @foreach(collect($recibos)->chunk(2) as $paginaRecibos)
         <div class="recibo-page">
-            @include('excel.recibo_individual', $recibo)
+            @foreach($paginaRecibos as $recibo)
+                <div class="recibo-slot">
+                    @include('excel.recibo_individual', $recibo)
+                </div>
+            @endforeach
         </div>
     @endforeach
 </body>
