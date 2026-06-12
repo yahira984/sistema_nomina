@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, useForm, router, Link } from '@inertiajs/vue3';
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 
 const props = defineProps({
     empleados: {
@@ -24,6 +24,7 @@ const busquedaGlobal = ref('');
 const busquedaEmpleadoManual = ref('');
 const busquedaRevision = ref('');
 const busquedaUltimosRegistros = ref('');
+const empleadoRegistrosId = ref('');
 const ordenUltimosRegistros = ref('fecha_desc');
 const ordenControlEmpleados = ref('num_asc');
 const empleadoFaltasExpandido = ref(null);
@@ -196,8 +197,8 @@ const ordenarFilasRevision = (filas) => {
 const asistenciasFiltradas = computed(() => {
     let resultado = [...props.asistencias];
 
-    if (form.empleado_id) {
-        resultado = resultado.filter((asistencia) => Number(asistencia.empleado_id) === Number(form.empleado_id));
+    if (empleadoRegistrosId.value) {
+        resultado = resultado.filter((asistencia) => Number(asistencia.empleado_id) === Number(empleadoRegistrosId.value));
     }
 
     const term = busquedaUltimosRegistros.value.toLowerCase().trim();
@@ -241,6 +242,13 @@ const empleadosFiltradosGlobal = computed(() => {
 const etiquetaEmpleado = (empleado) => {
     return `${empleado.numero_empleado ? '#' + empleado.numero_empleado + ' - ' : ''}${empleado.nombre_completo}`;
 };
+
+const empleadosOrdenadosFiltro = computed(() => ordenarEmpleados(props.empleados, 'num_asc'));
+
+const empleadoRegistrosSeleccionado = computed(() => {
+    if (!empleadoRegistrosId.value) return null;
+    return props.empleados.find((empleado) => Number(empleado.id) === Number(empleadoRegistrosId.value));
+});
 
 const empleadosFiltradosManual = computed(() => {
     const term = busquedaEmpleadoManual.value.toLowerCase().trim();
@@ -379,7 +387,7 @@ const cambiarPaginaRevision = (delta) => {
     );
 };
 
-watch([busquedaUltimosRegistros, ordenUltimosRegistros, () => form.empleado_id], () => {
+watch([busquedaUltimosRegistros, empleadoRegistrosId, ordenUltimosRegistros], () => {
     paginaUltimosRegistros.value = 1;
 });
 
@@ -455,6 +463,33 @@ const cancelarEdicion = () => {
     editando.value = false;
     asistenciaId.value = null;
     form.reset('hora_entrada', 'hora_salida', 'tipo_asistencia');
+};
+
+const enfocarUltimosRegistros = () => {
+    nextTick(() => {
+        document.getElementById('ultimos-registros')?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+        });
+    });
+};
+
+const verRegistrosEmpleadoSeleccionado = () => {
+    if (!form.empleado_id) {
+        return;
+    }
+
+    empleadoRegistrosId.value = form.empleado_id;
+    busquedaUltimosRegistros.value = '';
+    paginaUltimosRegistros.value = 1;
+    enfocarUltimosRegistros();
+};
+
+const limpiarFiltrosRegistros = () => {
+    empleadoRegistrosId.value = '';
+    busquedaUltimosRegistros.value = '';
+    ordenUltimosRegistros.value = 'fecha_desc';
+    paginaUltimosRegistros.value = 1;
 };
 
 const eliminarAsistencia = (id) => {
@@ -782,7 +817,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                 </div>
                             </div>
 
-                            <div v-if="empleadoSeleccionado" class="mb-6 grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 md:grid-cols-4">
+                            <div v-if="empleadoSeleccionado" class="mb-6 grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-5">
                                 <div class="rounded-lg border border-slate-100 bg-slate-50 p-3">
                                     <p class="text-xs font-semibold uppercase text-slate-500">Antiguedad</p>
                                     <p class="text-lg font-bold text-slate-800">{{ empleadoSeleccionado.antiguedad_anios }} anio(s)</p>
@@ -802,6 +837,16 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                 <div class="rounded-lg border border-rose-100 bg-rose-50 p-3">
                                     <p class="text-xs font-semibold uppercase text-rose-600">Faltas totales</p>
                                     <p class="text-lg font-bold text-rose-700">{{ empleadoSeleccionado.dias_faltas_totales }} faltas</p>
+                                </div>
+                                <div class="flex flex-col justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                                    <div>
+                                        <p class="text-xs font-semibold uppercase text-blue-600">Historial</p>
+                                        <p class="text-sm font-semibold text-blue-900">{{ numeroEmpleado(empleadoSeleccionado) ? '#' + numeroEmpleado(empleadoSeleccionado) : 'Empleado seleccionado' }}</p>
+                                    </div>
+                                    <button @click="verRegistrosEmpleadoSeleccionado" type="button" class="btn-secondary justify-center text-xs">
+                                        <i class="ti ti-list-search" aria-hidden="true"></i>
+                                        Ver registros
+                                    </button>
                                 </div>
                             </div>
 
@@ -857,7 +902,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                         </div>
                     </section>
 
-                    <section class="app-panel">
+                    <section id="ultimos-registros" class="app-panel scroll-mt-6">
                         <div class="panel-header">
                             <div class="flex items-start gap-3">
                                 <div class="soft-icon-teal">
@@ -865,13 +910,22 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                 </div>
                                 <div>
                                 <h3 class="panel-title">Ultimos registros</h3>
-                                <p class="panel-subtitle">{{ asistenciasFiltradas.length }} asistencia(s) visibles</p>
+                                <p class="panel-subtitle">
+                                    {{ asistenciasFiltradas.length }} asistencia(s) visibles
+                                    <span v-if="empleadoRegistrosSeleccionado">de {{ etiquetaEmpleado(empleadoRegistrosSeleccionado) }}</span>
+                                </p>
                                 </div>
                             </div>
-                            <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-                                <div v-if="form.empleado_id" class="inline-flex w-full items-center justify-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-center text-sm font-semibold text-blue-700 sm:w-auto">
-                                    Filtrando a: {{ empleados.find((empleado) => Number(empleado.id) === Number(form.empleado_id))?.nombre_completo }}
-                                </div>
+                            <div class="flex w-full flex-col gap-3 xl:w-auto xl:flex-row xl:items-end">
+                                <label class="block w-full xl:w-72">
+                                    <span class="field-label mb-1">Empleado</span>
+                                    <select v-model="empleadoRegistrosId" class="field-input-soft">
+                                        <option value="">Todos los empleados</option>
+                                        <option v-for="empleado in empleadosOrdenadosFiltro" :key="empleado.id" :value="empleado.id">
+                                            {{ etiquetaEmpleado(empleado) }}
+                                        </option>
+                                    </select>
+                                </label>
                                 <label class="block w-full sm:w-56">
                                     <span class="field-label mb-1">Ordenar por</span>
                                     <select v-model="ordenUltimosRegistros" class="field-input-soft">
@@ -896,6 +950,15 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                         />
                                     </div>
                                 </div>
+                                <button
+                                    v-if="empleadoRegistrosId || busquedaUltimosRegistros || ordenUltimosRegistros !== 'fecha_desc'"
+                                    type="button"
+                                    class="btn-secondary w-full justify-center text-xs xl:w-auto"
+                                    @click="limpiarFiltrosRegistros"
+                                >
+                                    <i class="ti ti-filter-x" aria-hidden="true"></i>
+                                    Limpiar
+                                </button>
                             </div>
                         </div>
 
