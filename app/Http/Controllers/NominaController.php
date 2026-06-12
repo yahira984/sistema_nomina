@@ -107,8 +107,8 @@ class NominaController extends Controller
 
         $empleados = Empleado::where('estatus', true)
             ->when(count($empleadoIds) > 0, fn ($query) => $query->whereIn('id', $empleadoIds))
-            ->orderBy('banco')
-            ->orderBy('nombre_completo')
+            ->orderByRaw('CAST(COALESCE(numero_empleado, numero_empleado_baja, id) AS UNSIGNED) ASC')
+            ->orderBy('id')
             ->get();
 
         abort_if($empleados->isEmpty(), 404, 'No hay empleados activos para imprimir en este periodo.');
