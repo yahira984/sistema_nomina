@@ -159,9 +159,9 @@ class NominaController extends Controller
         return $pdf->stream('Recibo_Semana_' . $nomina->numero_semana . '_' . $empleado->nombre_completo . '.pdf');
     }
 
-    public function pagar(Nomina $nomina)
+    public function pagar(Request $request, Nomina $nomina)
     {
-        $pagado = DB::transaction(function () use ($nomina) {
+        $pagado = DB::transaction(function () use ($request, $nomina) {
             $nomina = Nomina::whereKey($nomina->id)->lockForUpdate()->firstOrFail();
             $empleado = Empleado::findOrFail($nomina->empleado_id);
             $controlPrestamoAplicado = $this->controlPrestamoAplicadoDisponible();
@@ -189,6 +189,17 @@ class NominaController extends Controller
                 $nomina->forceFill($datos)->save();
 
                 return false;
+            }
+
+            if ($this->requestTieneAjustesNomina($request)) {
+                $inicioSemana = Carbon::parse($nomina->fecha_inicio)->startOfDay();
+                $finSemana = Carbon::parse($nomina->fecha_fin)->endOfDay();
+                $ajustes = $this->ajustesDesdeRequest($request, $empleado);
+                $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
+
+                $nomina->fill($this->datosNominaParaGuardar($inicioSemana, $finSemana, $desglose));
+                $nomina->save();
+                $nomina->refresh();
             }
 
             $prestamoOtorgadoNomina = (float) ($nomina->prestamo_otorgado ?? 0);
@@ -220,8 +231,8 @@ class NominaController extends Controller
         return back()->with(
             'success',
             $pagado
-                ? 'Nomina marcada como pagada. Prestamos aplicados al saldo del empleado.'
-                : 'Nomina regresada a pendiente. Prestamos revertidos del saldo del empleado.'
+                ? 'Nomina marcada como pagada. Prestamos y vacaciones aplicados al saldo del empleado.'
+                : 'Nomina regresada a pendiente. Prestamos y vacaciones revertidos del saldo del empleado.'
         );
     }
 

@@ -28,6 +28,11 @@ class Empleado extends Model
         return $this->hasMany(Asistencia::class);
     }
 
+    public function nominas()
+    {
+        return $this->hasMany(Nomina::class);
+    }
+
     public function getAntiguedadAniosAttribute()
     {
         if (!$this->fecha_ingreso) return 0;
@@ -53,9 +58,15 @@ class Empleado extends Model
 
     public function getDiasVacacionesTomadosAttribute()
     {
-        return $this->asistencias()
+        $diasCapturados = (float) $this->asistencias()
             ->where('tipo_asistencia', 'Vacaciones')
-            ->count(); 
+            ->count();
+
+        $diasPagadosEnNomina = (float) $this->nominas()
+            ->where('pagado', true)
+            ->sum('dias_vacaciones_pagadas');
+
+        return round(max($diasCapturados, $diasPagadosEnNomina), 2);
     }
 
     public function getDiasVacacionesRestantesAttribute()
