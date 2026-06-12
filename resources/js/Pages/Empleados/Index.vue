@@ -11,6 +11,39 @@ const editando = ref(false);
 const empleadoId = ref(null);
 const searchQuery = ref('');
 const filtroEstado = ref('activos');
+const criterioOrdenDirectorio = ref('num_asc');
+
+const normalizarNumeroEmpleado = (numero) => {
+    const texto = String(numero || '').trim();
+    const sinCeros = texto.replace(/^0+/, '');
+    return sinCeros || texto || '';
+};
+
+const valorNumeroEmpleado = (empleado) => {
+    const valor = parseInt(normalizarNumeroEmpleado(empleado.numero_empleado || empleado.numero_empleado_baja), 10);
+    return Number.isFinite(valor) ? valor : Number.MAX_SAFE_INTEGER;
+};
+
+const ordenarEmpleadosDirectorio = (empleados) => {
+    return [...empleados].sort((a, b) => {
+        if (criterioOrdenDirectorio.value === 'num_asc' || criterioOrdenDirectorio.value === 'num_desc') {
+            const diferencia = valorNumeroEmpleado(a) - valorNumeroEmpleado(b);
+
+            if (diferencia !== 0) {
+                return criterioOrdenDirectorio.value === 'num_asc' ? diferencia : -diferencia;
+            }
+        }
+
+        const nombreA = String(a.nombre_completo || '');
+        const nombreB = String(b.nombre_completo || '');
+
+        if (criterioOrdenDirectorio.value === 'nombre_desc') {
+            return nombreB.localeCompare(nombreA, 'es');
+        }
+
+        return nombreA.localeCompare(nombreB, 'es');
+    });
+};
 
 const form = useForm({
     numero_empleado: '',
@@ -50,15 +83,17 @@ const empleadosFiltrados = computed(() => {
         return true;
     });
 
-    if (!searchQuery.value) return resultado;
+    if (searchQuery.value) {
+        resultado = resultado.filter(emp => {
+            const query = searchQuery.value.toLowerCase();
+            const nombreMatch = emp.nombre_completo.toLowerCase().includes(query);
+            const numeroMatch = (emp.numero_empleado && emp.numero_empleado.toLowerCase().includes(query))
+                || (emp.numero_empleado_baja && emp.numero_empleado_baja.toLowerCase().includes(query));
+            return nombreMatch || numeroMatch;
+        });
+    }
 
-    return resultado.filter(emp => {
-        const query = searchQuery.value.toLowerCase();
-        const nombreMatch = emp.nombre_completo.toLowerCase().includes(query);
-        const numeroMatch = (emp.numero_empleado && emp.numero_empleado.toLowerCase().includes(query))
-            || (emp.numero_empleado_baja && emp.numero_empleado_baja.toLowerCase().includes(query));
-        return nombreMatch || numeroMatch;
-    });
+    return ordenarEmpleadosDirectorio(resultado);
 });
 
 const empleadosActivos = computed(() => props.empleados.filter(emp => Boolean(Number(emp.estatus ?? 0))).length);
@@ -433,6 +468,15 @@ const restaurarEmpleado = (id, nombre) => {
                                 <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-slate-400" aria-hidden="true"></i>
                                 <input v-model="searchQuery" type="text" class="field-input-soft pl-10" placeholder="Buscar por nombre o número..." />
                             </div>
+                            <label class="block w-full lg:w-56">
+                                <span class="field-label mb-1">Ordenar por</span>
+                                <select v-model="criterioOrdenDirectorio" class="field-input-soft">
+                                    <option value="num_asc">No. empleado menor</option>
+                                    <option value="num_desc">No. empleado mayor</option>
+                                    <option value="nombre_asc">Nombre A - Z</option>
+                                    <option value="nombre_desc">Nombre Z - A</option>
+                                </select>
+                            </label>
                         </div>
                     </div>
 

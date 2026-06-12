@@ -24,9 +24,18 @@ const busquedaGlobal = ref('');
 const busquedaEmpleadoManual = ref('');
 const busquedaRevision = ref('');
 const busquedaUltimosRegistros = ref('');
+const ordenUltimosRegistros = ref('fecha_desc');
+const ordenControlEmpleados = ref('num_asc');
+const empleadoFaltasExpandido = ref(null);
+const paginaUltimosRegistros = ref(1);
+const paginaRevision = ref(1);
 const editando = ref(false);
 const asistenciaId = ref(null);
 const archivoInput = ref(null);
+
+const REGISTROS_POR_PAGINA = 25;
+const empleadosSinHorasExtra = new Set(['8', '9', '22']);
+const empleadosSinRetardos = new Set(['14', '76', '78']);
 
 const form = useForm({
     empleado_id: '',
@@ -79,6 +88,7 @@ watch(
     () => props.previewImportacion,
     (preview) => {
         filasRevision.value = clonarFilasRevision(preview?.filas || []);
+        paginaRevision.value = 1;
         if (filasRevision.value.length > 0) {
             tabActiva.value = 'revision';
         }
@@ -89,8 +99,102 @@ const empleadosPorId = computed(() => {
     return new Map(props.empleados.map((empleado) => [Number(empleado.id), empleado]));
 });
 
+const normalizarNumeroEmpleado = (numero) => {
+    const texto = String(numero || '').trim();
+    const sinCeros = texto.replace(/^0+/, '');
+    return sinCeros || texto || '';
+};
+
+const numeroEmpleado = (empleado) => normalizarNumeroEmpleado(empleado?.numero_empleado || empleado?.numero_empleado_baja);
+
+const valorNumeroEmpleado = (empleado) => {
+    const valor = parseInt(numeroEmpleado(empleado), 10);
+    return Number.isFinite(valor) ? valor : Number.MAX_SAFE_INTEGER;
+};
+
+const valorNumeroFilaRevision = (fila) => {
+    const valor = parseInt(normalizarNumeroEmpleado(fila.numero_empleado || fila.csv_numero_empleado), 10);
+    return Number.isFinite(valor) ? valor : Number.MAX_SAFE_INTEGER;
+};
+
+const empleadoEnRegla = (empleado, reglas) => reglas.has(numeroEmpleado(empleado));
+
+const compararEmpleados = (a, b, criterio) => {
+    if (criterio === 'nombre_desc') {
+        return String(b.nombre_completo || '').localeCompare(String(a.nombre_completo || ''), 'es');
+    }
+
+    if (criterio === 'num_asc' || criterio === 'num_desc') {
+        const diferencia = valorNumeroEmpleado(a) - valorNumeroEmpleado(b);
+        return criterio === 'num_asc' ? diferencia : -diferencia;
+    }
+
+    return String(a.nombre_completo || '').localeCompare(String(b.nombre_completo || ''), 'es');
+};
+
+const ordenarEmpleados = (empleados, criterio) => {
+    return [...empleados].sort((a, b) => {
+        const comparacion = compararEmpleados(a, b, criterio);
+
+        if (comparacion !== 0) {
+            return comparacion;
+        }
+
+        return valorNumeroEmpleado(a) - valorNumeroEmpleado(b);
+    });
+};
+
+const ordenarAsistencias = (asistencias) => {
+    return [...asistencias].sort((a, b) => {
+        const empleadoA = a.empleado || {};
+        const empleadoB = b.empleado || {};
+
+        if (ordenUltimosRegistros.value === 'num_asc' || ordenUltimosRegistros.value === 'num_desc') {
+            const diferencia = valorNumeroEmpleado(empleadoA) - valorNumeroEmpleado(empleadoB);
+
+            if (diferencia !== 0) {
+                return ordenUltimosRegistros.value === 'num_asc' ? diferencia : -diferencia;
+            }
+        }
+
+        if (ordenUltimosRegistros.value === 'nombre_asc' || ordenUltimosRegistros.value === 'nombre_desc') {
+            const comparacion = compararEmpleados(empleadoA, empleadoB, ordenUltimosRegistros.value);
+
+            if (comparacion !== 0) {
+                return comparacion;
+            }
+        }
+
+        return String(b.fecha || '').localeCompare(String(a.fecha || ''));
+    });
+};
+
+const ordenarFilasRevision = (filas) => {
+    return [...filas].sort((a, b) => {
+        const diferenciaNumero = valorNumeroFilaRevision(a) - valorNumeroFilaRevision(b);
+
+        if (diferenciaNumero !== 0) {
+            return diferenciaNumero;
+        }
+
+        const diferenciaNombre = String(a.nombre_completo || '').localeCompare(String(b.nombre_completo || ''), 'es');
+
+        if (diferenciaNombre !== 0) {
+            return diferenciaNombre;
+        }
+
+        const diferenciaFecha = String(a.fecha || '').localeCompare(String(b.fecha || ''));
+
+        if (diferenciaFecha !== 0) {
+            return diferenciaFecha;
+        }
+
+        return String(a.estado || '').localeCompare(String(b.estado || ''), 'es');
+    });
+};
+
 const asistenciasFiltradas = computed(() => {
-    let resultado = props.asistencias;
+    let resultado = [...props.asistencias];
 
     if (form.empleado_id) {
         resultado = resultado.filter((asistencia) => Number(asistencia.empleado_id) === Number(form.empleado_id));
@@ -98,28 +202,40 @@ const asistenciasFiltradas = computed(() => {
 
     const term = busquedaUltimosRegistros.value.toLowerCase().trim();
 
-    if (!term) {
-        return resultado;
+    if (term) {
+        resultado = resultado.filter((asistencia) => {
+            const empleado = asistencia.empleado || {};
+
+            return String(empleado.nombre_completo || '').toLowerCase().includes(term)
+                || String(empleado.numero_empleado || '').toLowerCase().includes(term)
+                || String(asistencia.fecha || '').toLowerCase().includes(term)
+                || String(asistencia.tipo_asistencia || '').toLowerCase().includes(term);
+        });
     }
 
-    return resultado.filter((asistencia) => {
-        const empleado = asistencia.empleado || {};
+    return ordenarAsistencias(resultado);
+});
 
-        return String(empleado.nombre_completo || '').toLowerCase().includes(term)
-            || String(empleado.numero_empleado || '').toLowerCase().includes(term)
-            || String(asistencia.fecha || '').toLowerCase().includes(term)
-            || String(asistencia.tipo_asistencia || '').toLowerCase().includes(term);
-    });
+const totalPaginasUltimosRegistros = computed(() => Math.max(1, Math.ceil(asistenciasFiltradas.value.length / REGISTROS_POR_PAGINA)));
+
+const asistenciasPaginadas = computed(() => {
+    const inicio = (paginaUltimosRegistros.value - 1) * REGISTROS_POR_PAGINA;
+
+    return asistenciasFiltradas.value.slice(inicio, inicio + REGISTROS_POR_PAGINA);
 });
 
 const empleadosFiltradosGlobal = computed(() => {
-    if (!busquedaGlobal.value) return props.empleados;
+    let resultado = [...props.empleados];
 
-    const term = busquedaGlobal.value.toLowerCase();
-    return props.empleados.filter((empleado) => {
-        return empleado.nombre_completo.toLowerCase().includes(term)
-            || (empleado.numero_empleado && String(empleado.numero_empleado).toLowerCase().includes(term));
-    });
+    if (busquedaGlobal.value) {
+        const term = busquedaGlobal.value.toLowerCase();
+        resultado = resultado.filter((empleado) => {
+            return empleado.nombre_completo.toLowerCase().includes(term)
+                || (empleado.numero_empleado && String(empleado.numero_empleado).toLowerCase().includes(term));
+        });
+    }
+
+    return ordenarEmpleados(resultado, ordenControlEmpleados.value);
 });
 
 const etiquetaEmpleado = (empleado) => {
@@ -159,15 +275,27 @@ const sincronizarBusquedaManual = () => {
 };
 
 const filasRevisionFiltradas = computed(() => {
-    if (!busquedaRevision.value) return filasRevision.value;
+    let resultado = [...filasRevision.value];
 
-    const term = busquedaRevision.value.toLowerCase();
-    return filasRevision.value.filter((fila) => {
-        return String(fila.numero_empleado || '').toLowerCase().includes(term)
-            || String(fila.nombre_completo || '').toLowerCase().includes(term)
-            || String(fila.fecha || '').toLowerCase().includes(term)
-            || String(fila.estado || '').toLowerCase().includes(term);
-    });
+    if (busquedaRevision.value) {
+        const term = busquedaRevision.value.toLowerCase();
+        resultado = resultado.filter((fila) => {
+            return String(fila.numero_empleado || '').toLowerCase().includes(term)
+                || String(fila.nombre_completo || '').toLowerCase().includes(term)
+                || String(fila.fecha || '').toLowerCase().includes(term)
+                || String(fila.estado || '').toLowerCase().includes(term);
+        });
+    }
+
+    return ordenarFilasRevision(resultado);
+});
+
+const totalPaginasRevision = computed(() => Math.max(1, Math.ceil(filasRevisionFiltradas.value.length / REGISTROS_POR_PAGINA)));
+
+const filasRevisionPaginadas = computed(() => {
+    const inicio = (paginaRevision.value - 1) * REGISTROS_POR_PAGINA;
+
+    return filasRevisionFiltradas.value.slice(inicio, inicio + REGISTROS_POR_PAGINA);
 });
 
 const resumenRevision = computed(() => {
@@ -177,6 +305,7 @@ const resumenRevision = computed(() => {
         total: filas.length,
         seleccionadas: filas.filter((fila) => fila.aprobado && fila.empleado_id).length,
         sinRegistro: filas.filter((fila) => fila.estado === 'sin_registro').length,
+        incompletas: filas.filter((fila) => fila.estado === 'incompleta').length,
         noEncontradas: filas.filter((fila) => fila.estado === 'no_encontrado').length,
         actualiza: filas.filter((fila) => fila.estado === 'actualiza').length,
     };
@@ -211,6 +340,7 @@ const claseTipo = (tipo) => {
 
 const claseEstadoRevision = (estado) => {
     if (estado === 'sin_registro') return 'border-rose-200 bg-rose-50 text-rose-700';
+    if (estado === 'incompleta') return 'border-orange-200 bg-orange-50 text-orange-700';
     if (estado === 'no_encontrado') return 'border-slate-300 bg-slate-100 text-slate-700';
     if (estado === 'actualiza') return 'border-amber-200 bg-amber-50 text-amber-700';
     return 'border-emerald-200 bg-emerald-50 text-emerald-700';
@@ -218,10 +348,56 @@ const claseEstadoRevision = (estado) => {
 
 const textoEstadoRevision = (estado) => {
     if (estado === 'sin_registro') return 'Sin registro';
+    if (estado === 'incompleta') return 'Incompleta';
     if (estado === 'no_encontrado') return 'Sin empleado';
     if (estado === 'actualiza') return 'Actualiza';
     return 'Detectada';
 };
+
+const rangoPagina = (pagina, total) => {
+    if (total === 0) {
+        return '0 de 0';
+    }
+
+    const inicio = ((pagina - 1) * REGISTROS_POR_PAGINA) + 1;
+    const fin = Math.min(total, pagina * REGISTROS_POR_PAGINA);
+
+    return `${inicio}-${fin} de ${total}`;
+};
+
+const cambiarPaginaUltimos = (delta) => {
+    paginaUltimosRegistros.value = Math.min(
+        totalPaginasUltimosRegistros.value,
+        Math.max(1, paginaUltimosRegistros.value + delta),
+    );
+};
+
+const cambiarPaginaRevision = (delta) => {
+    paginaRevision.value = Math.min(
+        totalPaginasRevision.value,
+        Math.max(1, paginaRevision.value + delta),
+    );
+};
+
+watch([busquedaUltimosRegistros, ordenUltimosRegistros, () => form.empleado_id], () => {
+    paginaUltimosRegistros.value = 1;
+});
+
+watch(asistenciasFiltradas, () => {
+    if (paginaUltimosRegistros.value > totalPaginasUltimosRegistros.value) {
+        paginaUltimosRegistros.value = totalPaginasUltimosRegistros.value;
+    }
+});
+
+watch(busquedaRevision, () => {
+    paginaRevision.value = 1;
+});
+
+watch(filasRevisionFiltradas, () => {
+    if (paginaRevision.value > totalPaginasRevision.value) {
+        paginaRevision.value = totalPaginasRevision.value;
+    }
+});
 
 const seleccionarArchivo = (event) => {
     formUpload.archivo_reloj = event.target.files[0] || null;
@@ -300,6 +476,23 @@ const sincronizarEmpleadoFila = (fila) => {
     fila.numero_empleado = empleado.numero_empleado || '';
     fila.nombre_completo = empleado.nombre_completo;
     fila.aprobado = true;
+    calcularHorasFilaRevision(fila);
+};
+
+const aplicarReglasFilaRevision = (fila) => {
+    const empleado = empleadosPorId.value.get(Number(fila.empleado_id));
+
+    if (!empleado) {
+        return;
+    }
+
+    if (empleadoEnRegla(empleado, empleadosSinRetardos)) {
+        fila.minutos_tarde = 0;
+    }
+
+    if (empleadoEnRegla(empleado, empleadosSinHorasExtra)) {
+        fila.horas_extra = 0;
+    }
 };
 
 const calcularHorasFilaRevision = (fila) => {
@@ -321,24 +514,35 @@ const calcularHorasFilaRevision = (fila) => {
         return;
     }
 
+    if (fila.estado === 'incompleta') {
+        fila.estado = 'detectada';
+        fila.mensaje = 'Horario completado manualmente en revision.';
+        fila.aprobado = Boolean(fila.empleado_id);
+    }
+
     fila.minutos_tarde = entrada > horaOficial ? Math.round((entrada - horaOficial) / 60000) : 0;
 
     if (entrada.getDay() === 6) {
+        const inicioSabado = entrada < horaOficial ? horaOficial : entrada;
         fila.horas_trabajadas = 0;
-        fila.horas_extra = (salida - entrada) / 3600000;
+        fila.horas_extra = Math.max(0, Math.round((salida - inicioSabado) / 3600000));
+        aplicarReglasFilaRevision(fila);
         return;
     }
 
     const limiteNormal = new Date(`${fila.fecha}T17:30:00`);
+    const inicioJornada = entrada < horaOficial || fila.minutos_tarde < 30 ? horaOficial : entrada;
 
     if (salida > limiteNormal) {
-        fila.horas_trabajadas = Math.max(0, (limiteNormal - entrada) / 3600000);
-        fila.horas_extra = (salida - limiteNormal) / 3600000;
+        fila.horas_trabajadas = Math.max(0, (limiteNormal - inicioJornada) / 3600000);
+        fila.horas_extra = Math.max(0, Math.floor((salida - limiteNormal) / 3600000));
+        aplicarReglasFilaRevision(fila);
         return;
     }
 
-    fila.horas_trabajadas = (salida - entrada) / 3600000;
+    fila.horas_trabajadas = Math.max(0, (salida - inicioJornada) / 3600000);
     fila.horas_extra = 0;
+    aplicarReglasFilaRevision(fila);
 };
 
 const prepararCambioTipo = (fila) => {
@@ -360,11 +564,23 @@ const descartarFilaRevision = (uid) => {
 
 const seleccionarRevision = (seleccionar) => {
     filasRevision.value.forEach((fila) => {
-        fila.aprobado = seleccionar && Boolean(fila.empleado_id);
+        fila.aprobado = seleccionar && Boolean(fila.empleado_id) && fila.estado !== 'incompleta';
     });
 };
 
 const aprobarRevision = () => {
+    const incompletasAprobadas = filasRevision.value.filter((fila) => {
+        return fila.aprobado
+            && fila.empleado_id
+            && fila.tipo_asistencia === 'Normal'
+            && (!fila.hora_entrada || !fila.hora_salida);
+    });
+
+    if (incompletasAprobadas.length > 0) {
+        alert('Hay marcas incompletas seleccionadas. Captura entrada y salida o quita la palomita antes de aprobar.');
+        return;
+    }
+
     const filas = filasRevision.value
         .filter((fila) => fila.aprobado && fila.empleado_id)
         .map((fila) => ({
@@ -404,6 +620,12 @@ const descartarRevision = () => {
         },
     });
 };
+
+const toggleDetalleFaltas = (empleadoId) => {
+    empleadoFaltasExpandido.value = empleadoFaltasExpandido.value === empleadoId ? null : empleadoId;
+};
+
+const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
 </script>
 
 <template>
@@ -650,16 +872,29 @@ const descartarRevision = () => {
                                 <div v-if="form.empleado_id" class="inline-flex w-full items-center justify-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-center text-sm font-semibold text-blue-700 sm:w-auto">
                                     Filtrando a: {{ empleados.find((empleado) => Number(empleado.id) === Number(form.empleado_id))?.nombre_completo }}
                                 </div>
-                                <div class="relative w-full sm:w-80">
-                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                                        <i class="ti ti-search" aria-hidden="true"></i>
+                                <label class="block w-full sm:w-56">
+                                    <span class="field-label mb-1">Ordenar por</span>
+                                    <select v-model="ordenUltimosRegistros" class="field-input-soft">
+                                        <option value="fecha_desc">Fecha reciente</option>
+                                        <option value="num_asc">No. empleado menor</option>
+                                        <option value="num_desc">No. empleado mayor</option>
+                                        <option value="nombre_asc">Nombre A - Z</option>
+                                        <option value="nombre_desc">Nombre Z - A</option>
+                                    </select>
+                                </label>
+                                <div class="w-full sm:w-80">
+                                    <span class="field-label mb-1 block">Buscar</span>
+                                    <div class="relative">
+                                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                                            <i class="ti ti-search" aria-hidden="true"></i>
+                                        </div>
+                                        <input
+                                            v-model="busquedaUltimosRegistros"
+                                            type="text"
+                                            class="field-input-soft pl-9"
+                                            placeholder="Buscar nombre o numero..."
+                                        />
                                     </div>
-                                    <input
-                                        v-model="busquedaUltimosRegistros"
-                                        type="text"
-                                        class="field-input-soft pl-9"
-                                        placeholder="Buscar nombre o numero..."
-                                    />
                                 </div>
                             </div>
                         </div>
@@ -681,7 +916,7 @@ const descartarRevision = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="asistencia in asistenciasFiltradas" :key="asistencia.id">
+                                    <tr v-for="asistencia in asistenciasPaginadas" :key="asistencia.id">
                                         <td class="whitespace-nowrap font-bold text-slate-500">{{ asistencia.empleado?.numero_empleado || 'S/N' }}</td>
                                         <td class="min-w-56 whitespace-nowrap font-semibold text-slate-900">{{ asistencia.empleado?.nombre_completo || 'Sin empleado' }}</td>
                                         <td class="whitespace-nowrap text-slate-600">{{ formatoFecha(asistencia.fecha) }}</td>
@@ -716,6 +951,33 @@ const descartarRevision = () => {
                                 </tbody>
                             </table>
                         </div>
+
+                        <div v-if="asistenciasFiltradas.length > 0" class="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 text-sm font-semibold text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+                            <span>Mostrando {{ rangoPagina(paginaUltimosRegistros, asistenciasFiltradas.length) }}</span>
+                            <div class="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    class="btn-secondary text-xs"
+                                    :disabled="paginaUltimosRegistros === 1"
+                                    @click="cambiarPaginaUltimos(-1)"
+                                >
+                                    <i class="ti ti-chevron-left" aria-hidden="true"></i>
+                                    Anterior
+                                </button>
+                                <span class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700">
+                                    Pagina {{ paginaUltimosRegistros }} de {{ totalPaginasUltimosRegistros }}
+                                </span>
+                                <button
+                                    type="button"
+                                    class="btn-secondary text-xs"
+                                    :disabled="paginaUltimosRegistros === totalPaginasUltimosRegistros"
+                                    @click="cambiarPaginaUltimos(1)"
+                                >
+                                    Siguiente
+                                    <i class="ti ti-chevron-right" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
                     </section>
                 </div>
 
@@ -746,7 +1008,7 @@ const descartarRevision = () => {
                         </div>
 
                         <div v-if="filasRevision.length" class="space-y-5 p-5 sm:p-6">
-                            <div class="grid gap-3 md:grid-cols-5">
+                            <div class="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
                                 <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
                                     <p class="metric-label">Total</p>
                                     <p class="mt-2 text-2xl font-bold text-slate-950">{{ resumenRevision.total }}</p>
@@ -758,6 +1020,10 @@ const descartarRevision = () => {
                                 <div class="rounded-lg border border-rose-200 bg-rose-50 p-4">
                                     <p class="metric-label text-rose-700">Sin registro</p>
                                     <p class="mt-2 text-2xl font-bold text-rose-700">{{ resumenRevision.sinRegistro }}</p>
+                                </div>
+                                <div class="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                                    <p class="metric-label text-orange-700">Incompletas</p>
+                                    <p class="mt-2 text-2xl font-bold text-orange-700">{{ resumenRevision.incompletas }}</p>
                                 </div>
                                 <div class="rounded-lg border border-amber-200 bg-amber-50 p-4">
                                     <p class="metric-label text-amber-700">Actualizan</p>
@@ -777,8 +1043,14 @@ const descartarRevision = () => {
                                         -
                                         {{ previewImportacion?.resumen?.fecha_fin ? formatoFecha(previewImportacion.resumen.fecha_fin) : '--' }}
                                     </span>
+                                    <span class="ml-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                                        Ordenado por empleado
+                                    </span>
                                 </div>
-                                <input v-model="busquedaRevision" type="text" class="field-input-soft lg:w-96" placeholder="Buscar en revision..." />
+                                <label class="block w-full lg:w-96">
+                                    <span class="field-label mb-1">Buscar en revision</span>
+                                    <input v-model="busquedaRevision" type="text" class="field-input-soft" placeholder="Numero, nombre, fecha o estado..." />
+                                </label>
                             </div>
 
                             <div class="overflow-x-auto rounded-lg border border-slate-200">
@@ -799,7 +1071,7 @@ const descartarRevision = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="fila in filasRevisionFiltradas" :key="fila._uid" :class="!fila.aprobado ? 'bg-slate-50/80 opacity-75' : ''">
+                                        <tr v-for="fila in filasRevisionPaginadas" :key="fila._uid" :class="!fila.aprobado ? 'bg-slate-50/80 opacity-75' : ''">
                                             <td class="text-center">
                                                 <input
                                                     v-model="fila.aprobado"
@@ -871,6 +1143,33 @@ const descartarRevision = () => {
                                 </table>
                             </div>
 
+                            <div v-if="filasRevisionFiltradas.length > 0" class="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+                                <span>Mostrando {{ rangoPagina(paginaRevision, filasRevisionFiltradas.length) }}</span>
+                                <div class="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        class="btn-secondary text-xs"
+                                        :disabled="paginaRevision === 1"
+                                        @click="cambiarPaginaRevision(-1)"
+                                    >
+                                        <i class="ti ti-chevron-left" aria-hidden="true"></i>
+                                        Anterior
+                                    </button>
+                                    <span class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">
+                                        Pagina {{ paginaRevision }} de {{ totalPaginasRevision }}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        class="btn-secondary text-xs"
+                                        :disabled="paginaRevision === totalPaginasRevision"
+                                        @click="cambiarPaginaRevision(1)"
+                                    >
+                                        Siguiente
+                                        <i class="ti ti-chevron-right" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                            </div>
+
                             <div class="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end">
                                 <button @click="descartarRevision" :disabled="formRevision.processing" class="btn-secondary w-full sm:w-auto" type="button">
                                     <i class="ti ti-trash" aria-hidden="true"></i>
@@ -903,7 +1202,21 @@ const descartarRevision = () => {
                                 <p class="panel-subtitle">Control global de dias correspondientes, tomados y restantes.</p>
                                 </div>
                             </div>
-                            <input v-model="busquedaGlobal" type="text" class="field-input-soft w-full lg:w-96" placeholder="Buscar trabajador..." />
+                            <div class="flex w-full flex-col gap-3 lg:w-auto lg:flex-row">
+                                <label class="block w-full lg:w-56">
+                                    <span class="field-label mb-1">Ordenar por</span>
+                                    <select v-model="ordenControlEmpleados" class="field-input-soft">
+                                        <option value="num_asc">No. empleado menor</option>
+                                        <option value="num_desc">No. empleado mayor</option>
+                                        <option value="nombre_asc">Nombre A - Z</option>
+                                        <option value="nombre_desc">Nombre Z - A</option>
+                                    </select>
+                                </label>
+                                <label class="block w-full lg:w-96">
+                                    <span class="field-label mb-1">Buscar</span>
+                                    <input v-model="busquedaGlobal" type="text" class="field-input-soft" placeholder="Buscar trabajador..." />
+                                </label>
+                            </div>
                         </div>
 
                         <div class="overflow-x-auto">
@@ -974,7 +1287,21 @@ const descartarRevision = () => {
                                 <p class="panel-subtitle">Acumulado anual de ausencias por empleado.</p>
                                 </div>
                             </div>
-                            <input v-model="busquedaGlobal" type="text" class="field-input-soft w-full lg:w-96 focus:border-rose-400 focus:ring-rose-500/20" placeholder="Buscar trabajador..." />
+                            <div class="flex w-full flex-col gap-3 lg:w-auto lg:flex-row">
+                                <label class="block w-full lg:w-56">
+                                    <span class="field-label mb-1 text-rose-700">Ordenar por</span>
+                                    <select v-model="ordenControlEmpleados" class="field-input-soft focus:border-rose-400 focus:ring-rose-500/20">
+                                        <option value="num_asc">No. empleado menor</option>
+                                        <option value="num_desc">No. empleado mayor</option>
+                                        <option value="nombre_asc">Nombre A - Z</option>
+                                        <option value="nombre_desc">Nombre Z - A</option>
+                                    </select>
+                                </label>
+                                <label class="block w-full lg:w-96">
+                                    <span class="field-label mb-1 text-rose-700">Buscar</span>
+                                    <input v-model="busquedaGlobal" type="text" class="field-input-soft focus:border-rose-400 focus:ring-rose-500/20" placeholder="Buscar trabajador..." />
+                                </label>
+                            </div>
                         </div>
 
                         <div class="overflow-x-auto">
@@ -985,25 +1312,61 @@ const descartarRevision = () => {
                                         <th>Nombre del Trabajador</th>
                                         <th class="text-center">Estatus</th>
                                         <th class="text-right text-rose-700">Faltas Totales</th>
+                                        <th class="text-right">Detalle</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="empleado in empleadosFiltradosGlobal" :key="empleado.id" class="hover:bg-rose-50/30">
-                                        <td class="whitespace-nowrap font-bold text-slate-500">{{ empleado.numero_empleado || 'S/N' }}</td>
-                                        <td class="whitespace-nowrap font-semibold text-slate-900">{{ empleado.nombre_completo }}</td>
-                                        <td class="whitespace-nowrap text-center">
-                                            <span v-if="empleado.dias_faltas_totales === 0" class="status-pill status-success">Asistencia Perfecta</span>
-                                            <span v-else-if="empleado.dias_faltas_totales < 3" class="status-pill status-warning">Alerta Minima</span>
-                                            <span v-else class="status-pill border-rose-200 bg-rose-50 text-rose-700">Problema de Ausentismo</span>
-                                        </td>
-                                        <td class="whitespace-nowrap text-right">
-                                            <span class="inline-flex items-center justify-center text-lg font-black" :class="empleado.dias_faltas_totales > 0 ? 'text-rose-600' : 'text-slate-300'">
-                                                {{ empleado.dias_faltas_totales }}
-                                            </span>
-                                        </td>
-                                    </tr>
+                                    <template v-for="empleado in empleadosFiltradosGlobal" :key="empleado.id">
+                                        <tr class="hover:bg-rose-50/30">
+                                            <td class="whitespace-nowrap font-bold text-slate-500">{{ empleado.numero_empleado || 'S/N' }}</td>
+                                            <td class="whitespace-nowrap font-semibold text-slate-900">{{ empleado.nombre_completo }}</td>
+                                            <td class="whitespace-nowrap text-center">
+                                                <span v-if="empleado.dias_faltas_totales === 0" class="status-pill status-success">Asistencia Perfecta</span>
+                                                <span v-else-if="empleado.dias_faltas_totales < 3" class="status-pill status-warning">Alerta Minima</span>
+                                                <span v-else class="status-pill border-rose-200 bg-rose-50 text-rose-700">Problema de Ausentismo</span>
+                                            </td>
+                                            <td class="whitespace-nowrap text-right">
+                                                <span class="inline-flex items-center justify-center text-lg font-black" :class="empleado.dias_faltas_totales > 0 ? 'text-rose-600' : 'text-slate-300'">
+                                                    {{ empleado.dias_faltas_totales }}
+                                                </span>
+                                            </td>
+                                            <td class="whitespace-nowrap text-right">
+                                                <button
+                                                    type="button"
+                                                    :disabled="Number(empleado.dias_faltas_totales || 0) === 0"
+                                                    @click="toggleDetalleFaltas(empleado.id)"
+                                                    :class="Number(empleado.dias_faltas_totales || 0) > 0 ? 'btn-secondary text-xs' : 'inline-flex cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-300'"
+                                                >
+                                                    <i class="ti ti-calendar-search" aria-hidden="true"></i>
+                                                    {{ empleadoFaltasExpandido === empleado.id ? 'Ocultar' : 'Ver fechas' }}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        <tr v-if="empleadoFaltasExpandido === empleado.id" class="bg-rose-50/40">
+                                            <td colspan="5" class="px-6 py-4">
+                                                <div class="rounded-lg border border-rose-100 bg-white p-4">
+                                                    <div class="mb-3 flex items-center gap-2 text-sm font-black text-rose-800">
+                                                        <i class="ti ti-calendar-x" aria-hidden="true"></i>
+                                                        Fechas con falta de {{ empleado.nombre_completo }}
+                                                    </div>
+                                                    <div v-if="fechasFaltasEmpleado(empleado).length" class="flex flex-wrap gap-2">
+                                                        <span
+                                                            v-for="fecha in fechasFaltasEmpleado(empleado)"
+                                                            :key="fecha"
+                                                            class="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700"
+                                                        >
+                                                            {{ formatoFecha(fecha) }}
+                                                        </span>
+                                                    </div>
+                                                    <p v-else class="text-sm font-semibold text-slate-500">
+                                                        Sin fechas registradas.
+                                                    </p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
                                     <tr v-if="empleadosFiltradosGlobal.length === 0">
-                                        <td colspan="4" class="empty-state">No se encontraron trabajadores.</td>
+                                        <td colspan="5" class="empty-state">No se encontraron trabajadores.</td>
                                     </tr>
                                 </tbody>
                             </table>

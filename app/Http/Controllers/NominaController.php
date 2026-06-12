@@ -7,6 +7,7 @@ use App\Exports\ReporteSemanalExport;
 use App\Models\Asistencia;
 use App\Models\Empleado;
 use App\Models\Nomina;
+use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -21,8 +22,7 @@ class NominaController extends Controller
     private const DIAS_SUELDO_SEMANA = 7;
     private const HORAS_BASE_SEMANA = 56;
     private const HORAS_FALTA_COMPLETA = 9.5;
-    private const UMBRAL_RETARDO_MINUTOS = 30;
-
+    private const UMBRAL_RETARDO_SEMANAL_MINUTOS = 30;
     private ?bool $controlPrestamoAplicadoDisponible = null;
 
     public function index(Request $request)
@@ -247,20 +247,38 @@ class NominaController extends Controller
             ->sum(fn ($asistencia) => $this->horasExtraRedondeadas($asistencia));
         $horasExtraMiercolesAnterior = $this->horasExtraMiercolesAnterior($empleado, $inicioSemana);
         $horasExtra = $horasExtraPeriodo + $horasExtraMiercolesAnterior;
-        $diasFalta = $asistencias->where('tipo_asistencia', 'Falta')->count();
+
+        if (ReglasNominaEmpleado::sinHorasExtra($empleado)) {
+            $horasExtraPeriodo = 0;
+            $horasExtraMiercolesAnterior = 0;
+            $horasExtra = 0;
+        }
+
+        $diasFalta = $asistencias
+            ->where('tipo_asistencia', 'Falta')
+            ->filter(fn ($asistencia) => $this->esDiaFaltaDescontable($asistencia->fecha))
+            ->count();
         $diasIncapacidad = $asistencias->where('tipo_asistencia', 'Incapacidad')->count();
         $diasVacacionesDetectadas = $asistencias->where('tipo_asistencia', 'Vacaciones')->count();
         $diasVacacionesPagadas = $ajustes['dias_vacaciones_pagadas'] === null
             ? (float) $diasVacacionesDetectadas
             : max(0, (float) $ajustes['dias_vacaciones_pagadas']);
-        $minutosTarde = (int) $asistencias->sum('minutos_tarde');
-        $minutosTardeDescontables = (int) $asistencias
-            ->filter(fn ($asistencia) => (int) $asistencia->minutos_tarde >= self::UMBRAL_RETARDO_MINUTOS)
+        $minutosTarde = (int) $asistencias
+            ->where('tipo_asistencia', 'Normal')
+            ->filter(fn ($asistencia) => $this->esRetardoDescontable($asistencia))
             ->sum('minutos_tarde');
+        $minutosTardeDescontables = $minutosTarde >= self::UMBRAL_RETARDO_SEMANAL_MINUTOS
+            ? $minutosTarde
+            : 0;
 
         $sueldoPorHora = (float) ($empleado->sueldo_por_hora ?? 0);
         $esEstudiante = $this->empleadoEsEstudiante($empleado);
+        $pagoPorHoraTopado = ReglasNominaEmpleado::pagoPorHoraTopado($empleado);
         $sueldoSemanal = (float) ($empleado->sueldo_semanal ?? 0);
+
+        if ($esEstudiante || ReglasNominaEmpleado::sinRetardos($empleado)) {
+            $minutosTardeDescontables = 0;
+        }
 
         if (!$esEstudiante && $sueldoSemanal <= 0 && $sueldoPorHora > 0) {
             $sueldoSemanal = $sueldoPorHora * self::HORAS_BASE_SEMANA;
@@ -277,10 +295,22 @@ class NominaController extends Controller
         $horasAdeudoDescontadas = min((float) $ajustes['horas_adeudo_descontadas'], $horasExtra);
         $horasExtraPagadas = max(0, $horasExtra - $horasAdeudoDescontadas);
 
-        $pagoNormal = $esEstudiante
-            ? ($horasNormales * $sueldoPorHora) + ($faltasPagadas * self::HORAS_FALTA_COMPLETA * $sueldoPorHora)
-            : $sueldoSemanal;
-        $pagoExtra = $horasExtraPagadas * ($tarifaBaseHora * 2);
+        if ($pagoPorHoraTopado) {
+            $horasExtraParaTope = $horasExtraPagadas;
+            $horasParaPagoPorHora = $horasNormales + $horasExtraParaTope + ($faltasPagadas * self::HORAS_FALTA_COMPLETA);
+            $topeHorasPagables = max(
+                0,
+                ReglasNominaEmpleado::TOPE_HORAS_POR_HORA - ($faltasDescontables * self::HORAS_FALTA_COMPLETA)
+            );
+            $pagoNormal = min($horasParaPagoPorHora, $topeHorasPagables) * $sueldoPorHora;
+            $pagoExtra = 0;
+            $horasExtraPagadas = 0;
+        } else {
+            $pagoNormal = $esEstudiante
+                ? ($horasNormales * $sueldoPorHora) + ($faltasPagadas * self::HORAS_FALTA_COMPLETA * $sueldoPorHora)
+                : $sueldoSemanal;
+            $pagoExtra = $horasExtraPagadas * ($tarifaBaseHora * 2);
+        }
         $pagoIncapacidad = (!$esEstudiante && $diasIncapacidad > 0)
             ? $pagoDiaPlanta * 0.60 * $diasIncapacidad
             : 0;
@@ -289,7 +319,7 @@ class NominaController extends Controller
             : 0;
         $prestamoOtorgado = (float) $ajustes['prestamo_otorgado'];
 
-        $descuentoFaltas = (!$esEstudiante && $faltasDescontables > 0)
+        $descuentoFaltas = (!$esEstudiante && !$pagoPorHoraTopado && $faltasDescontables > 0)
             ? $tarifaBaseHora * self::HORAS_FALTA_COMPLETA * $faltasDescontables
             : 0;
         $descuentoRetardos = $tarifaBaseHora > 0 && $minutosTardeDescontables > 0
@@ -313,6 +343,7 @@ class NominaController extends Controller
 
         return [
             'es_estudiante' => $esEstudiante,
+            'pago_por_hora_topado' => $pagoPorHoraTopado,
             'sueldo_semanal' => round($sueldoSemanal, 2),
             'sueldo_por_hora' => round($sueldoPorHora, 2),
             'tarifa_base_hora' => round($tarifaBaseHora, 2),
@@ -508,7 +539,7 @@ class NominaController extends Controller
         if ($fecha->isSaturday()) {
             $inicioSabado = $entrada->lessThan($horaOficial) ? $horaOficial : $entrada;
 
-            return $this->redondearHoraExtra($inicioSabado->diffInMinutes($salida) / 60);
+            return $this->redondearHoraExtraSabado($inicioSabado->diffInMinutes($salida) / 60);
         }
 
         $limiteNormal = Carbon::parse($fecha->format('Y-m-d') . ' 17:30:00');
@@ -523,6 +554,33 @@ class NominaController extends Controller
     private function redondearHoraExtra(float $horas): float
     {
         return max(0, floor($horas));
+    }
+
+    private function redondearHoraExtraSabado(float $horas): float
+    {
+        return max(0, round($horas));
+    }
+
+    private function esDiaFaltaDescontable($fecha): bool
+    {
+        return !Carbon::parse($fecha)->isWeekend();
+    }
+
+    private function esRetardoDescontable(Asistencia $asistencia): bool
+    {
+        if (Carbon::parse($asistencia->fecha)->isWeekend() || !$asistencia->hora_entrada || !$asistencia->hora_salida) {
+            return false;
+        }
+
+        $fechaBase = Carbon::parse($asistencia->fecha)->format('Y-m-d');
+        $entrada = Carbon::parse($fechaBase . ' ' . $asistencia->hora_entrada);
+        $salida = Carbon::parse($fechaBase . ' ' . $asistencia->hora_salida);
+        $horaOficial = Carbon::parse($fechaBase . ' 08:00:00');
+        $limiteMarcaSalida = Carbon::parse($fechaBase . ' 16:00:00');
+
+        return $salida->greaterThan($entrada)
+            && $entrada->greaterThan($horaOficial)
+            && $entrada->lessThan($limiteMarcaSalida);
     }
 
     private function resolverAjustesParaPeriodo(Request $request, Empleado $empleado, Carbon $inicioSemana, Carbon $finSemana): array
@@ -643,6 +701,7 @@ class NominaController extends Controller
             'horas_adeudo_generadas' => $desglose['horas_adeudo_generadas'],
             'saldo_horas_adeudo_anterior' => round($saldoAnterior, 2),
             'saldo_horas_adeudo_final' => round($saldoFinal, 2),
+            'pago_por_hora_topado' => $desglose['pago_por_hora_topado'],
             'minutos_tarde' => $desglose['minutos_tarde_acumulados'],
             'minutos_tarde_descontables' => $desglose['minutos_tarde_descontables'],
             'total_percepciones' => $desglose['total_percepciones'],
