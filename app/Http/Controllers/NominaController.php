@@ -258,8 +258,17 @@ class NominaController extends Controller
             ->sum(fn ($asistencia) => $this->horasExtraRedondeadas($asistencia));
         $horasExtraMiercolesAnterior = $this->horasExtraMiercolesAnterior($empleado, $inicioSemana);
         $horasExtra = $horasExtraPeriodo + $horasExtraMiercolesAnterior;
+        $horasAdeudoMiercolesAnterior = $this->horasAdeudoMiercolesAnterior($empleado, $inicioSemana);
+        $esEstudiante = $this->empleadoEsEstudiante($empleado);
 
         if (ReglasNominaEmpleado::sinHorasExtra($empleado)) {
+            $horasExtraPeriodo = 0;
+            $horasExtraMiercolesAnterior = 0;
+            $horasExtra = 0;
+        }
+
+        if ($esEstudiante && $horasExtra > 0) {
+            $horasNormales += $horasExtra;
             $horasExtraPeriodo = 0;
             $horasExtraMiercolesAnterior = 0;
             $horasExtra = 0;
@@ -299,7 +308,6 @@ class NominaController extends Controller
             : 0;
 
         $sueldoPorHora = (float) ($empleado->sueldo_por_hora ?? 0);
-        $esEstudiante = $this->empleadoEsEstudiante($empleado);
         $pagoPorHoraTopado = ReglasNominaEmpleado::pagoPorHoraTopado($empleado);
         $sueldoSemanal = (float) ($empleado->sueldo_semanal ?? 0);
 
@@ -316,7 +324,7 @@ class NominaController extends Controller
             : ($sueldoSemanal > 0 ? $sueldoSemanal / self::HORAS_BASE_SEMANA : 0);
         $pagoDiaPlanta = $sueldoSemanal > 0 ? $sueldoSemanal / self::DIAS_SUELDO_SEMANA : 0;
 
-        $horasAdeudoGeneradas = $faltasPagadas * self::HORAS_FALTA_COMPLETA;
+        $horasAdeudoGeneradas = ($faltasPagadas * self::HORAS_FALTA_COMPLETA) + $horasAdeudoMiercolesAnterior;
         $horasAdeudoDescontadas = min((float) $ajustes['horas_adeudo_descontadas'], $horasExtra);
         $horasExtraPagadas = max(0, $horasExtra - $horasAdeudoDescontadas);
 
@@ -379,6 +387,7 @@ class NominaController extends Controller
             'horas_extra_miercoles_anterior' => round($horasExtraMiercolesAnterior, 2),
             'horas_extra_pagadas' => round($horasExtraPagadas, 2),
             'horas_adeudo_generadas' => round($horasAdeudoGeneradas, 2),
+            'horas_adeudo_miercoles_anterior' => round($horasAdeudoMiercolesAnterior, 2),
             'horas_adeudo_descontadas' => round($horasAdeudoDescontadas, 2),
             'dias_falta' => $diasFalta,
             'dias_falta_pagados' => $faltasPagadas,
@@ -546,6 +555,34 @@ class NominaController extends Controller
             ->first();
 
         return $asistencia ? $this->horasExtraRedondeadas($asistencia) : 0;
+    }
+
+    private function horasAdeudoMiercolesAnterior(Empleado $empleado, Carbon $inicioSemana): float
+    {
+        $miercolesAnterior = $inicioSemana->copy()->subDay();
+
+        if (!$miercolesAnterior->isWednesday()) {
+            return 0;
+        }
+
+        $asistencia = Asistencia::where('empleado_id', $empleado->id)
+            ->whereDate('fecha', $miercolesAnterior->format('Y-m-d'))
+            ->where('tipo_asistencia', 'Normal')
+            ->first();
+
+        if (!$asistencia || !$asistencia->hora_salida) {
+            return 0;
+        }
+
+        $fechaBase = $miercolesAnterior->format('Y-m-d');
+        $salida = Carbon::parse($fechaBase . ' ' . $asistencia->hora_salida);
+        $limiteNormal = Carbon::parse($fechaBase . ' 17:30:00');
+
+        if (!$salida->lessThan($limiteNormal)) {
+            return 0;
+        }
+
+        return round($salida->diffInMinutes($limiteNormal) / 60, 2);
     }
 
     private function esMiercolesDeCorte(Asistencia $asistencia, Carbon $finSemana): bool
@@ -757,6 +794,7 @@ class NominaController extends Controller
             'horas_extra_pagadas' => $desglose['horas_extra_pagadas'],
             'horas_adeudo_descontadas' => $desglose['horas_adeudo_descontadas'],
             'horas_adeudo_generadas' => $desglose['horas_adeudo_generadas'],
+            'horas_adeudo_miercoles_anterior' => $desglose['horas_adeudo_miercoles_anterior'],
             'saldo_horas_adeudo_anterior' => round($saldoAnterior, 2),
             'saldo_horas_adeudo_final' => round($saldoFinal, 2),
             'pago_por_hora_topado' => $desglose['pago_por_hora_topado'],

@@ -686,12 +686,18 @@ class AsistenciaController extends Controller
         }
 
         if ($empleado) {
-            if (ReglasNominaEmpleado::sinRetardos($empleado)) {
-                $minutos_tarde = 0;
-            }
-
-            if (ReglasNominaEmpleado::sinHorasExtra($empleado)) {
+            if ((bool) ($empleado->es_estudiante ?? false)) {
+                $horas_normales += $horas_extra_diarias;
                 $horas_extra_diarias = 0;
+                $minutos_tarde = 0;
+            } else {
+                if (ReglasNominaEmpleado::sinRetardos($empleado)) {
+                    $minutos_tarde = 0;
+                }
+
+                if (ReglasNominaEmpleado::sinHorasExtra($empleado)) {
+                    $horas_extra_diarias = 0;
+                }
             }
         }
 

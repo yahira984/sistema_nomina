@@ -188,7 +188,11 @@ const faltasConDescuentoPreview = (empleado) => {
     return Math.max(0, numero(resumenNomina(empleado).faltas_detectadas) - faltasPagadasPreview(empleado));
 };
 
-const horasAdeudoGeneradasPreview = (empleado) => faltasPagadasPreview(empleado) * 9.5;
+const horasAdeudoMiercolesAnterior = (empleado) => numero(resumenNomina(empleado).horas_adeudo_miercoles_anterior);
+
+const horasAdeudoGeneradasPreview = (empleado) => {
+    return (faltasPagadasPreview(empleado) * 9.5) + horasAdeudoMiercolesAnterior(empleado);
+};
 
 const horasAdeudoDescontadasPreview = (empleado) => {
     const ajuste = ajustesNomina.value[empleado.id] || {};
@@ -675,7 +679,7 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
                                                     <th>Empleado</th>
                                                     <th>Datos de depósito</th>
                                                     <th class="text-center">Estado de pago</th>
-                                                    <th class="min-w-[720px]">Ajustes de semana</th>
+                                                    <th class="min-w-[960px]">Ajustes de semana</th>
                                                     <th class="text-right">Acciones</th>
                                                 </tr>
                                             </thead>
@@ -752,7 +756,7 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
                                                         </div>
                                                     </td>
 
-                                                    <td class="min-w-[720px] px-4 py-3 align-top">
+                                                    <td class="min-w-[960px] px-4 py-3 align-top">
                                                         <div v-if="ajustesNomina[empleado.id]" class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                                                             <div class="grid grid-cols-2 gap-px bg-slate-200 text-xs lg:grid-cols-4">
                                                                 <div class="bg-emerald-50 px-3 py-2 text-emerald-800">
@@ -773,19 +777,19 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
                                                                 </div>
                                                             </div>
 
-                                                            <div class="grid gap-3 p-3 xl:grid-cols-[0.85fr_1.8fr_0.9fr]">
+                                                            <div class="grid gap-3 p-3 xl:grid-cols-[0.95fr_1.7fr_0.95fr]">
                                                                 <section class="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
                                                                     <div class="mb-3 flex items-center gap-2 text-sm font-black text-blue-900">
                                                                         <i class="ti ti-cash-banknote" aria-hidden="true"></i>
                                                                         Prestamo
                                                                     </div>
-                                                                    <div class="grid grid-cols-2 gap-2">
+                                                                    <div class="grid gap-2">
                                                                         <label class="block">
-                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-blue-700">Compensacion</span>
+                                                                            <span class="mb-1 block text-[10px] font-bold uppercase leading-tight text-blue-700">Compensacion</span>
                                                                             <input v-model="ajustesNomina[empleado.id].prestamo_otorgado" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
                                                                         </label>
                                                                         <label class="block">
-                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-blue-700">Adeudo</span>
+                                                                            <span class="mb-1 block text-[10px] font-bold uppercase leading-tight text-blue-700">Adeudo</span>
                                                                             <input v-model="ajustesNomina[empleado.id].prestamo_descuento" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
                                                                         </label>
                                                                     </div>
@@ -811,19 +815,19 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
 
                                                                     <div class="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
                                                                         <label class="block">
-                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-amber-700">Sin descuento / adeuda h</span>
+                                                                            <span class="mb-1 block min-h-8 text-[10px] font-bold uppercase leading-tight text-amber-700">Sin descuento / adeuda h</span>
                                                                             <input v-model="ajustesNomina[empleado.id].faltas_pagadas" type="number" step="1" min="0" :max="resumenNomina(empleado).faltas_detectadas || 0" class="field-input-soft px-2 py-1.5 text-xs" />
                                                                         </label>
                                                                         <label class="block">
-                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-emerald-700">Pagar con vacaciones</span>
+                                                                            <span class="mb-1 block min-h-8 text-[10px] font-bold uppercase leading-tight text-emerald-700">Pagar con vacaciones</span>
                                                                             <input v-model="ajustesNomina[empleado.id].faltas_cubiertas_vacaciones" type="number" step="1" min="0" :max="Math.max(0, Number(resumenNomina(empleado).faltas_detectadas || 0) - faltasPagadasPreview(empleado))" class="field-input-soft px-2 py-1.5 text-xs" />
                                                                         </label>
                                                                         <label class="block">
-                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-violet-700">Pagar con incapacidad</span>
+                                                                            <span class="mb-1 block min-h-8 text-[10px] font-bold uppercase leading-tight text-violet-700">Pagar con incapacidad</span>
                                                                             <input v-model="ajustesNomina[empleado.id].faltas_cubiertas_incapacidad" type="number" step="1" min="0" :max="Math.max(0, Number(resumenNomina(empleado).faltas_detectadas || 0) - faltasPagadasPreview(empleado) - faltasCubiertasVacacionesPreview(empleado))" class="field-input-soft px-2 py-1.5 text-xs" />
                                                                         </label>
                                                                         <label class="block">
-                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-amber-700">Hrs extra a tomar</span>
+                                                                            <span class="mb-1 block min-h-8 text-[10px] font-bold uppercase leading-tight text-amber-700">Hrs extra a tomar</span>
                                                                             <input v-model="ajustesNomina[empleado.id].horas_adeudo_descontadas" type="number" step="0.5" min="0" :max="resumenNomina(empleado).horas_extra_detectadas || 0" class="field-input-soft px-2 py-1.5 text-xs" />
                                                                         </label>
                                                                     </div>
@@ -835,6 +839,9 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
                                                                     </div>
                                                                     <div v-if="Number(resumenNomina(empleado).horas_extra_miercoles_anterior || 0) > 0" class="mt-2 text-[11px] font-semibold text-amber-800">
                                                                         Incluye {{ horas(resumenNomina(empleado).horas_extra_miercoles_anterior) }} h del miercoles anterior.
+                                                                    </div>
+                                                                    <div v-if="horasAdeudoMiercolesAnterior(empleado) > 0" class="mt-2 text-[11px] font-semibold text-rose-700">
+                                                                        Adeuda {{ horas(horasAdeudoMiercolesAnterior(empleado)) }} h del miercoles anterior.
                                                                     </div>
                                                                 </section>
 

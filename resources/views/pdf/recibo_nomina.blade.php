@@ -79,7 +79,7 @@
 
         <tr>
             <td colspan="2" style="{{ $cell }} height: 58px;">
-                <span style="font-size: 10px; font-weight: bold;">Nombre del empleado.</span>
+                <span style="font-size: 10px; font-weight: bold;">Nombre del empleado.&nbsp;</span>
                 <span style="color: #008060; font-weight: bold;">{{ $numeroEmpleado }}</span><br><br>
                 <div style="text-align: center; font-weight: bold;">{{ strtoupper($empleadoRecibo->nombre_completo ?? 'N/A') }}</div>
             </td>
@@ -103,21 +103,24 @@
             <td style="{{ $top }} height: 140px;">
                 @if($esEstudiante)
                     <b>SUELDO POR HORA</b><br>
-                    HORAS NORMALES <span style="color: #0000FF; font-weight: bold;">{{ $horasNormales }}</span><br>
+                    HORAS NORMALES&nbsp;<span style="color: #0000FF; font-weight: bold;">{{ $horasNormales }}</span><br>
                 @else
                     <b>SUELDO DIARIO</b><br>
                     <b>SUELDO SEMANAL</b><br>
                 @endif
-                HRS EXTRA <span style="color: #0000FF; font-weight: bold;">{{ $horasExtraPagadas }}</span><br>
+                HRS EXTRA&nbsp;<span style="color: #0000FF; font-weight: bold;">{{ $horasExtraPagadas }}</span><br>
                 @if($horasExtraMiercolesAnterior > 0)
-                    MIE. ANT. <span style="color: #0000FF; font-weight: bold;">{{ $horasExtraMiercolesAnterior }}</span><br>
+                    MIE. ANT.&nbsp;<span style="color: #0000FF; font-weight: bold;">{{ $horasExtraMiercolesAnterior }}</span><br>
                 @endif
                 @if($horasAdeudoDescontadas > 0)
-                    HRS DESC. <span style="color: #FF0000; font-weight: bold;">{{ $horasAdeudoDescontadas }}</span><br>
+                    HRS DESC.&nbsp;<span style="color: #FF0000; font-weight: bold;">{{ $horasAdeudoDescontadas }}</span><br>
+                @endif
+                @if($diasFaltaPagados > 0)
+                    FALTAS PAGADAS&nbsp;<span style="color: #0000FF; font-weight: bold;">{{ $diasFaltaPagados }}</span><br>
                 @endif
                 COMPENSACION<br>
-                INCAP - 60% <span style="color: #0000FF; font-weight: bold;">{{ $diasIncapacidad }}</span><br>
-                D.P. VACACION + 25% P.V. <span style="color: #0000FF; font-weight: bold;">{{ $diasVacaciones }}</span>
+                INCAP - 60%&nbsp;<span style="color: #0000FF; font-weight: bold;">{{ $diasIncapacidad }}</span><br>
+                D.P. VACACION + 25% P.V.&nbsp;<span style="color: #0000FF; font-weight: bold;">{{ $diasVacaciones }}</span>
             </td>
             <td style="{{ $topRight }}">
                 @if($esEstudiante)
@@ -134,23 +137,24 @@
                 @if($horasAdeudoDescontadas > 0)
                     -<br>
                 @endif
+                @if($diasFaltaPagados > 0)
+                    -<br>
+                @endif
                 $ {{ number_format($prestamoOtorgado, 2) }}<br>
                 $ {{ number_format($pagoIncapacidad, 2) }}<br>
                 $ {{ number_format($pagoVacaciones, 2) }}
             </td>
             <td style="{{ $top }}">
-                Falta(s) <span style="color: #FF0000; font-weight: bold;">{{ $diasFaltaDescontables }}</span><br>
-                Faltas pagadas <span style="color: #0000FF; font-weight: bold;">{{ $diasFaltaPagados }}</span><br>
+                Falta(s)&nbsp;<span style="color: #FF0000; font-weight: bold;">{{ $diasFaltaDescontables }}</span><br>
                 Adeudo<br>
                 IMSS<br>
                 ISR<br>
                 INFONAVIT<br>
-                Retardo <span style="color: #0000FF; font-weight: bold;">{{ $minutosTardeDescontables }}</span><br>
+                Retardo&nbsp;<span style="color: #0000FF; font-weight: bold;">{{ $minutosTardeDescontables }}</span><br>
                 Descuento
             </td>
             <td style="{{ $topRight }}">
                 $ {{ number_format($descuentoFaltas, 2) }}<br>
-                -<br>
                 $ {{ number_format($prestamoDescuento, 2) }}<br>
                 $ {{ number_format($descuentoImss, 2) }}<br>
                 $ {{ number_format($descuentoIsr, 2) }}<br>
@@ -174,7 +178,7 @@
         </tr>
 
         <tr>
-            <td colspan="2" style="{{ $cell }} height: 50px; font-size: 8px; text-align: justify; vertical-align: top;">
+            <td colspan="2" style="{{ $cell }} height: 62px; font-size: 8px; text-align: justify; vertical-align: top;">
                 Recibi de: PROMATEC, LUGARTH la cantidad anotada en este Recibo de pago de mi sueldo; ademas certifico que no se me adeuda a la fecha cantidad alguna por tiempo extra.
             </td>
             <td colspan="2" style="{{ $center }} vertical-align: bottom;">
