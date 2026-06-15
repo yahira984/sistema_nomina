@@ -102,6 +102,9 @@ class NominaController extends Controller
 
     public function generarRecibosMasivos(Request $request)
     {
+        @ini_set('memory_limit', '1024M');
+        @set_time_limit(120);
+
         [$inicioSemana, $finSemana, $numeroSemana] = $this->resolverSemanaNomina($request);
         $empleadoIds = $this->empleadoIdsDesdeRequest($request);
 

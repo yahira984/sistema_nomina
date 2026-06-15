@@ -45,7 +45,7 @@
         <div class="recibo-page">
             @foreach($paginaRecibos as $recibo)
                 <div class="recibo-slot">
-                    @include('excel.recibo_individual', $recibo)
+                    @include('excel.recibo_individual', array_merge($recibo, ['imagenes_pdf_base64' => true]))
                 </div>
             @endforeach
         </div>

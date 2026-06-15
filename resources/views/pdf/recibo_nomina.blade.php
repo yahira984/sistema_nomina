@@ -58,13 +58,35 @@
         $right = $cell . ' text-align: right;';
         $top = $cell . ' vertical-align: top;';
         $topRight = $top . ' text-align: right;';
+        $logoSrc = function (string $archivo) {
+            $archivoPdf = [
+                'promatec.png' => 'promatec-pdf.jpg',
+                'lugarth.png' => 'lugarth-pdf.jpg',
+            ][$archivo] ?? $archivo;
+            $path = public_path('img/' . $archivoPdf);
+
+            if (!is_file($path)) {
+                return $path;
+            }
+
+            $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+            $mime = match ($extension) {
+                'jpg', 'jpeg' => 'image/jpeg',
+                'gif' => 'image/gif',
+                default => 'image/png',
+            };
+
+            return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+        };
+        $logoPromatec = $logoSrc('promatec.png');
+        $logoLugarth = $logoSrc('lugarth.png');
     @endphp
 
     <table style="border-collapse: collapse; width: 100%;">
         <tr>
             <td colspan="2" style="border: none;">
-                <img src="{{ public_path('img/promatec.png') }}" alt="Promatec" height="48">
-                <img src="{{ public_path('img/lugarth.png') }}" alt="Lugarth" height="48">
+                <img src="{{ $logoPromatec }}" alt="Promatec" height="48">
+                <img src="{{ $logoLugarth }}" alt="Lugarth" height="48">
             </td>
             <td colspan="2" style="border: none; text-align: right; font-family: Arial; font-size: 10px; font-weight: bold;">
                 BARRIO DE SANTO TOMAS C.P. 43860<br>PACHUCA DE SOTO, HGO
