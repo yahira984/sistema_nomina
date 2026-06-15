@@ -50,15 +50,38 @@
     $green = 'color: #00A651; font-weight: bold;';
     $blue = 'color: #0000FF; font-weight: bold;';
     $red = 'color: #FF0000; font-weight: bold;';
+    $imagenesPdfBase64 = $imagenes_pdf_base64 ?? false;
+    $logoSrc = function (string $archivo) use ($imagenesPdfBase64) {
+        $archivoPdf = [
+            'promatec.png' => 'promatec-pdf.jpg',
+            'lugarth.png' => 'lugarth-pdf.jpg',
+        ][$archivo] ?? $archivo;
+        $path = public_path('img/' . ($imagenesPdfBase64 ? $archivoPdf : $archivo));
+
+        if (!$imagenesPdfBase64 || !is_file($path)) {
+            return $path;
+        }
+
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $mime = match ($extension) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            default => 'image/png',
+        };
+
+        return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+    };
+    $logoPromatec = $logoSrc('promatec.png');
+    $logoLugarth = $logoSrc('lugarth.png');
 @endphp
 
 <table style="border-collapse: collapse; border: 2px solid #111827;">
     <tr style="height: 48px;">
         <td style="border: none; padding: 8px; vertical-align: middle;">
-            <img src="{{ public_path('img/promatec.png') }}" alt="Promatec" height="42">
+            <img src="{{ $logoPromatec }}" alt="Promatec" height="42">
         </td>
         <td style="border: none; padding: 8px; vertical-align: middle;">
-            <img src="{{ public_path('img/lugarth.png') }}" alt="Lugarth" height="42">
+            <img src="{{ $logoLugarth }}" alt="Lugarth" height="42">
         </td>
         <td colspan="2" style="border: none; padding: 8px; font-family: Arial; font-size: 10px; text-align: right; vertical-align: top; font-weight: bold;">
             BARRIO DE SANTO TOMAS C.P. 43860<br>
