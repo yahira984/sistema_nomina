@@ -33,7 +33,8 @@ class DashboardController extends Controller
             ->whereDate('fecha_fin', $finSemana->format('Y-m-d'))
             ->where('pagado', false)
             ->count();
-        $faltasMes = Asistencia::where('tipo_asistencia', 'Falta')
+        $faltasMes = $this->asistenciasDashboard()
+            ->where('tipo_asistencia', 'Falta')
             ->whereMonth('fecha', $mesActual)
             ->whereYear('fecha', $anioActual)
             ->get(['fecha'])
@@ -66,17 +67,17 @@ class DashboardController extends Controller
 
         // 4. DATOS GRÁFICA DE PASTEL (Estatus)
         $graficaAsistencia = [
-            Asistencia::whereMonth('fecha', $mesActual)->whereYear('fecha', $anioActual)->where('tipo_asistencia', 'Normal')->count(),
+            $this->asistenciasDashboard()->whereMonth('fecha', $mesActual)->whereYear('fecha', $anioActual)->where('tipo_asistencia', 'Normal')->count(),
             $faltasMes,
-            Asistencia::whereMonth('fecha', $mesActual)->whereYear('fecha', $anioActual)->where('tipo_asistencia', 'Vacaciones')->count(),
-            Asistencia::whereMonth('fecha', $mesActual)->whereYear('fecha', $anioActual)->where('tipo_asistencia', 'Incapacidad')->count(),
+            $this->asistenciasDashboard()->whereMonth('fecha', $mesActual)->whereYear('fecha', $anioActual)->where('tipo_asistencia', 'Vacaciones')->count(),
+            $this->asistenciasDashboard()->whereMonth('fecha', $mesActual)->whereYear('fecha', $anioActual)->where('tipo_asistencia', 'Incapacidad')->count(),
         ];
 
         // 5. DATOS GRÁFICA DE BARRAS (Horas Extra últimos 7 días)
         $ultimos7Dias = collect();
         for ($i = 6; $i >= 0; $i--) {
             $fecha = $hoy->copy()->subDays($i)->format('Y-m-d');
-            $horas = Asistencia::where('fecha', $fecha)->sum('horas_extra');
+            $horas = $this->asistenciasDashboard()->where('fecha', $fecha)->sum('horas_extra');
             $ultimos7Dias->push([
                 'fecha' => Carbon::parse($fecha)->format('d M'),
                 'horas' => round($horas, 2)
@@ -109,6 +110,16 @@ class DashboardController extends Controller
                 'anio' => $this->liderLlegadasTempranas($hoy->copy()->startOfYear(), $hoy->copy()->endOfYear(), (string) $anioActual),
             ],
         ]);
+    }
+
+    private function asistenciasDashboard()
+    {
+        return Asistencia::whereHas('empleado', function ($query) {
+            $query->where(function ($empleado) {
+                $empleado->where('es_estudiante', false)
+                    ->orWhereNull('es_estudiante');
+            });
+        });
     }
 
     private function liderRetardos(Carbon $inicio, Carbon $fin, string $periodo): array

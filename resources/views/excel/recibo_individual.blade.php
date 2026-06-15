@@ -74,7 +74,7 @@
 
     <tr style="height: 66px;">
         <td colspan="2" style="{{ $cell }} vertical-align: middle;">
-            <span style="{{ $muted }}">Nombre del empleado.</span>
+            <span style="{{ $muted }}">Nombre del empleado.&nbsp;</span>
             <span style="{{ $green }}">{{ $numeroEmpleado }}</span><br><br>
             <span style="display: block; text-align: center; font-weight: bold;">{{ $nombreEmpleado }}</span>
         </td>
@@ -98,21 +98,24 @@
         <td style="{{ $top }}">
             @if($esEstudiante)
                 <b>SUELDO POR HORA</b><br>
-                HORAS NORMALES <span style="{{ $blue }}">{{ $horasNormales }}</span><br>
+                HORAS NORMALES&nbsp;<span style="{{ $blue }}">{{ $horasNormales }}</span><br>
             @else
                 <b>SUELDO DIARIO</b><br>
                 <b>SUELDO SEMANAL</b><br>
             @endif
-            HRS EXTRA <span style="{{ $blue }}">{{ $horasExtraPagadas }}</span><br>
+            HRS EXTRA&nbsp;<span style="{{ $blue }}">{{ $horasExtraPagadas }}</span><br>
             @if($horasExtraMiercolesAnterior > 0)
-                MIE. ANT. <span style="{{ $blue }}">{{ $horasExtraMiercolesAnterior }}</span><br>
+                MIE. ANT.&nbsp;<span style="{{ $blue }}">{{ $horasExtraMiercolesAnterior }}</span><br>
             @endif
             @if($horasAdeudoDescontadas > 0)
-                HRS DESC. <span style="{{ $red }}">{{ $horasAdeudoDescontadas }}</span><br>
+                HRS DESC.&nbsp;<span style="{{ $red }}">{{ $horasAdeudoDescontadas }}</span><br>
+            @endif
+            @if($diasFaltaPagados > 0)
+                FALTAS PAGADAS&nbsp;<span style="{{ $blue }}">{{ $diasFaltaPagados }}</span><br>
             @endif
             COMPENSACION<br>
-            INCAP - 60% <span style="{{ $blue }}">{{ $diasIncapacidad }}</span><br>
-            D.P. VACACION + 25% P.V. <span style="{{ $blue }}">{{ $diasVacaciones }}</span>
+            INCAP - 60%&nbsp;<span style="{{ $blue }}">{{ $diasIncapacidad }}</span><br>
+            D.P. VACACION + 25% P.V.&nbsp;<span style="{{ $blue }}">{{ $diasVacaciones }}</span>
         </td>
 
         <td style="{{ $topRight }}">
@@ -130,24 +133,25 @@
             @if($horasAdeudoDescontadas > 0)
                 -<br>
             @endif
+            @if($diasFaltaPagados > 0)
+                -<br>
+            @endif
             $ {{ number_format($prestamoOtorgado, 2) }}<br>
             $ {{ number_format($pagoIncapacidad, 2) }}<br>
             $ {{ number_format($pagoVacaciones, 2) }}
         </td>
 
         <td style="{{ $top }}">
-            Falta(s) <span style="{{ $red }}">{{ $diasFaltaDescontables }}</span><br>
-            Faltas pagadas <span style="{{ $blue }}">{{ $diasFaltaPagados }}</span><br>
+            Falta(s)&nbsp;<span style="{{ $red }}">{{ $diasFaltaDescontables }}</span><br>
             Adeudo<br>
             IMSS<br>
             ISR<br>
             INFONAVIT<br>
-            Retardo <span style="{{ $blue }}">{{ $minutosTardeDescontables }}</span><br>
+            Retardo&nbsp;<span style="{{ $blue }}">{{ $minutosTardeDescontables }}</span><br>
             Descuento
         </td>
         <td style="{{ $topRight }}">
             $ {{ number_format($descuentoFaltas, 2) }}<br>
-            -<br>
             $ {{ number_format($prestamoDescuento, 2) }}<br>
             $ {{ number_format($descuentoImss, 2) }}<br>
             $ {{ number_format($descuentoIsr, 2) }}<br>
@@ -169,7 +173,7 @@
         <td colspan="2" style="{{ $right }} font-weight: bold; font-size: 13px;">$ {{ number_format($pagoNeto, 2) }}</td>
     </tr>
 
-    <tr style="height: 58px;">
+    <tr style="height: 72px;">
         <td colspan="2" style="{{ $cell }} font-size: 8px; text-align: justify; vertical-align: top;">
             Recibi de: PROMATEC, LUGARTH la cantidad anotada en este Recibo de pago de mi sueldo; ademas certifico que no se me adeuda a la fecha cantidad alguna por tiempo extra.
         </td>
