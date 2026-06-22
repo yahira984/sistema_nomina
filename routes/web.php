@@ -46,6 +46,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/asistencias', [AsistenciaController::class, 'store'])->name('asistencias.store');
     Route::put('/asistencias/{asistencia}', [AsistenciaController::class, 'update'])->name('asistencias.update');
     Route::delete('/asistencias/{asistencia}', [AsistenciaController::class, 'destroy'])->name('asistencias.destroy');
+    Route::get('/asistencias/exportar-semana', [AsistenciaController::class, 'exportarSemana'])->name('asistencias.exportar-semana');
+    Route::get('/asistencias/horas-alumnos', [AsistenciaController::class, 'horasAlumnos'])->name('asistencias.alumnos-horas');
+    Route::get('/asistencias/horas-alumnos/pdf', [AsistenciaController::class, 'imprimirHorasAlumnos'])->name('asistencias.alumnos-horas.pdf');
     Route::post('/asistencias/importar', [AsistenciaController::class, 'importarReloj'])->name('asistencias.importar');
     Route::post('/asistencias/importar/aprobar', [AsistenciaController::class, 'aprobarImportacion'])->name('asistencias.importar.aprobar');
     Route::delete('/asistencias/importar/revision', [AsistenciaController::class, 'descartarImportacion'])->name('asistencias.importar.descartar');

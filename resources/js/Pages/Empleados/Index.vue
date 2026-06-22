@@ -212,7 +212,7 @@ const restaurarEmpleado = (id, nombre) => {
         </template>
 
         <div class="page-shell">
-            <div class="content-wrap space-y-8">
+            <div class="content-wrap space-y-6">
                 <section class="app-panel" :class="editando ? 'ring-2 ring-amber-400/70' : ''">
                     <div class="panel-header">
                         <div class="flex items-start gap-3">
@@ -233,14 +233,14 @@ const restaurarEmpleado = (id, nombre) => {
                         </button>
                     </div>
 
-                    <div class="p-5 sm:p-6">
-                        <form @submit.prevent="submitForm" class="grid grid-cols-1 gap-5 md:grid-cols-4">
-                            <div>
+                    <div class="p-4 sm:p-5">
+                        <form @submit.prevent="submitForm" class="grid grid-cols-1 gap-3 md:grid-cols-4 lg:grid-cols-12">
+                            <div class="lg:col-span-2">
                                 <label class="field-label">No. empleado</label>
                             <input v-model="form.numero_empleado" type="text" maxlength="4" class="field-input-soft" placeholder="Ej. 84" @input="form.numero_empleado = form.numero_empleado.replace(/\D/g, '')" />
                             </div>
 
-                            <div class="md:col-span-2">
+                            <div class="md:col-span-2 lg:col-span-4">
                                 <label class="field-label">Nombre completo <span class="text-rose-500">*</span></label>
                                 <input 
                                     v-model="form.nombre_completo" 
@@ -251,34 +251,34 @@ const restaurarEmpleado = (id, nombre) => {
                                 />
                             </div>
 
-                            <div>
+                            <div class="lg:col-span-3">
                                 <label class="field-label">Puesto</label>
                                 <input v-model="form.puesto" type="text" class="field-input-soft" @input="form.puesto = form.puesto.replace(/[0-9]/g, '')" />
                             </div>
 
-                            <div>
+                            <div class="lg:col-span-3">
                                 <label class="field-label">Fecha de Ingreso</label>
                                 <input v-model="form.fecha_ingreso" type="date" class="field-input-soft" />
                             </div>
 
-                            <div class="section-divider">
+                            <div class="section-divider lg:col-span-12 !pt-3">
                                 <p class="section-divider-title">
                                     <i class="ti ti-id" aria-hidden="true"></i>
                                     Datos personales del expediente
                                 </p>
                             </div>
 
-                            <div class="md:col-span-2">
+                            <div class="md:col-span-2 lg:col-span-4">
                                 <label class="field-label">CURP</label>
                                 <input v-model="form.curp" type="text" maxlength="18" class="field-input-soft" placeholder="18 caracteres" @input="form.curp = form.curp.toUpperCase().replace(/[^A-Z0-9]/g, '')" />
                             </div>
 
-                            <div>
+                            <div class="lg:col-span-3">
                                 <label class="field-label">Fecha de nacimiento</label>
                                 <input v-model="form.fecha_nacimiento" type="date" class="field-input-soft" />
                             </div>
 
-                            <div>
+                            <div class="lg:col-span-2">
                                 <label class="field-label">Género</label>
                                 <select v-model="form.genero" class="field-input-soft">
                                     <option value="">Sin registrar</option>
@@ -288,7 +288,7 @@ const restaurarEmpleado = (id, nombre) => {
                                 </select>
                             </div>
 
-                            <div>
+                            <div class="lg:col-span-3">
                                 <label class="field-label">Estado civil</label>
                                 <select v-model="form.estado_civil" class="field-input-soft">
                                     <option value="">Sin registrar</option>
@@ -300,45 +300,45 @@ const restaurarEmpleado = (id, nombre) => {
                                 </select>
                             </div>
 
-                            <div class="section-divider">
+                            <div class="section-divider lg:col-span-12 !pt-3">
                                 <p class="section-divider-title">
                                     <i class="ti ti-phone-call" aria-hidden="true"></i>
                                     Contacto y emergencia
                                 </p>
                             </div>
 
-                            <div>
+                            <div class="lg:col-span-3">
                                 <label class="field-label">Teléfono</label>
                                 <input v-model="form.telefono" type="text" maxlength="20" class="field-input-soft" placeholder="10 dígitos" @input="form.telefono = form.telefono.replace(/[^\d+\s()-]/g, '')" />
                             </div>
 
-                            <div>
+                            <div class="lg:col-span-3">
                                 <label class="field-label">Correo electrónico</label>
                                 <input v-model="form.correo" type="email" class="field-input-soft" placeholder="correo@empresa.com" />
                             </div>
 
-                            <div class="md:col-span-2">
+                            <div class="md:col-span-2 lg:col-span-6">
                                 <label class="field-label">Dirección</label>
                                 <input v-model="form.direccion" type="text" class="field-input-soft" placeholder="Calle, número, colonia" />
                             </div>
 
-                            <div class="md:col-span-2">
+                            <div class="md:col-span-2 lg:col-span-6">
                                 <label class="field-label text-rose-700">Contacto de emergencia</label>
                                 <input v-model="form.contacto_emergencia_nombre" type="text" class="field-input-soft border-rose-100" placeholder="Nombre completo" />
                             </div>
 
-                            <div class="md:col-span-2">
+                            <div class="md:col-span-2 lg:col-span-6">
                                 <label class="field-label text-rose-700">Teléfono de emergencia</label>
                                 <input v-model="form.contacto_emergencia_telefono" type="text" maxlength="20" class="field-input-soft border-rose-100" placeholder="Teléfono" @input="form.contacto_emergencia_telefono = form.contacto_emergencia_telefono.replace(/[^\d+\s()-]/g, '')" />
                             </div>
 
-                            <div>
+                            <div class="lg:col-span-2">
                                 <label class="field-label text-teal-700">Ajuste Vacaciones (Días)</label>
                                 <input v-model="form.ajuste_vacaciones" type="number" class="field-input-soft border-teal-200 focus:border-teal-400 focus:ring-teal-400/20" placeholder="Ej. -2" />
                                 <p class="text-[10px] text-slate-500 mt-1 leading-tight">Usa negativos (-) para descontar días que deban de años pasados.</p>
                             </div>
 
-                            <div>
+                            <div class="lg:col-span-3">
                                 <label class="field-label">Forma de pago <span class="text-rose-500">*</span></label>
                                 <select v-model="form.forma_pago" required class="field-input-soft">
                                     <option value="Efectivo">Efectivo</option>
@@ -346,7 +346,7 @@ const restaurarEmpleado = (id, nombre) => {
                                 </select>
                             </div>
 
-                            <div class="flex items-center pt-2 md:col-span-1 md:pl-2 md:pt-6">
+                            <div class="flex items-center pt-2 md:col-span-1 md:pl-2 md:pt-6 lg:col-span-2 lg:pt-2">
                                 <label class="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" v-model="form.es_estudiante" class="w-5 h-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
                                     <span class="text-sm font-semibold text-slate-700">Mod. Estudiante</span>
@@ -354,68 +354,68 @@ const restaurarEmpleado = (id, nombre) => {
                             </div>
 
                             <template v-if="form.es_estudiante">
-                                <div class="md:col-span-2">
+                                <div class="md:col-span-2 lg:col-span-3">
                                     <label class="field-label text-teal-700">Tarifa por Hora Estudiante ($) <span class="text-rose-500">*</span></label>
                                     <input v-model="form.sueldo_por_hora" type="number" step="0.01" class="field-input-soft border-teal-200 focus:border-teal-400 focus:ring-teal-400/20" placeholder="Ej. 27.00" />
                                 </div>
-                                <div class="md:col-span-2"></div>
+                                <div class="hidden lg:block lg:col-span-2"></div>
                             </template>
                             <template v-else>
-                                <div class="md:col-span-2">
+                                <div class="md:col-span-2 lg:col-span-3">
                                     <label class="field-label text-teal-700">Sueldo Semanal Base ($) <span class="text-rose-500">*</span></label>
                                     <input v-model="form.sueldo_semanal" type="number" step="0.01" class="field-input-soft border-teal-200 focus:border-teal-400 focus:ring-teal-400/20" placeholder="Ej. 1000.00" />
                                 </div>
-                                <div class="md:col-span-2"></div>
+                                <div class="hidden lg:block lg:col-span-2"></div>
                             </template>
 
-                            <div>
+                            <div class="lg:col-span-2">
                                 <label class="field-label text-amber-700">Deuda Total Préstamo ($)</label>
                                 <input v-model="form.saldo_prestamo" type="number" step="0.01" class="field-input-soft border-amber-200" />
                             </div>
 
-                            <div>
+                            <div class="lg:col-span-2">
                                 <label class="field-label">Desc. Préstamo x Sem ($)</label>
                                 <input v-model="form.cuota_prestamo" type="number" step="0.01" class="field-input-soft" />
                             </div>
 
-                            <div>
+                            <div class="lg:col-span-2">
                                 <label class="field-label">Desc. IMSS ($)</label>
                                 <input v-model="form.descuento_imss" type="number" step="0.01" class="field-input-soft" />
                             </div>
                             
-                            <div>
+                            <div class="lg:col-span-2">
                                 <label class="field-label">Desc. ISR ($)</label>
                                 <input v-model="form.descuento_isr" type="number" step="0.01" class="field-input-soft" />
                             </div>
 
-                            <div class="md:col-span-4">
+                            <div class="md:col-span-4 lg:col-span-4">
                                 <label class="field-label">Desc. INFONAVIT ($)</label>
                                 <input v-model="form.descuento_infonavit" type="number" step="0.01" class="field-input-soft" />
                             </div>
 
                             <template v-if="form.forma_pago === 'Deposito'">
-                                <div class="col-span-1 md:col-span-2">
+                                <div class="col-span-1 md:col-span-2 lg:col-span-3">
                                     <label class="field-label">Banco <span class="text-rose-500">*</span></label>
                                     <input v-model="form.banco" type="text" :required="form.forma_pago === 'Deposito'" class="field-input-soft" placeholder="BBVA, Banamex..." />
                                 </div>
 
-                                <div class="col-span-1 md:col-span-2">
+                                <div class="col-span-1 md:col-span-2 lg:col-span-3">
                                     <label class="field-label">Cuenta bancaria o CLABE <span class="text-rose-500">*</span></label>
                                     <input v-model="form.numero_cuenta" type="text" :required="form.forma_pago === 'Deposito'" class="field-input-soft" placeholder="18 dígitos o tarjeta" />
                                 </div>
                             </template>
 
-                            <div class="md:col-span-2">
+                            <div class="md:col-span-2 lg:col-span-3">
                                 <label class="field-label">NSS</label>
                                 <input v-model="form.nss" type="text" maxlength="11" class="field-input-soft" placeholder="11 dígitos" @input="form.nss = form.nss.replace(/\D/g, '')"  />
                             </div>
 
-                            <div class="md:col-span-2">
+                            <div class="md:col-span-2 lg:col-span-3">
                                 <label class="field-label">RFC</label>
                                 <input v-model="form.rfc" type="text" maxlength="13"  class="field-input-soft" placeholder="12 o 13 caracteres" @input="form.rfc = form.rfc.toUpperCase().replace(/[^A-Z0-9&]/g, '')" />
                             </div>
 
-                            <div class="mt-2 flex justify-stretch md:col-span-4 sm:justify-end">
+                            <div class="mt-2 flex justify-stretch md:col-span-4 sm:justify-end lg:col-span-12">
                                 <button type="submit" :disabled="form.processing" :class="editando ? 'btn-warning w-full sm:w-auto' : 'btn-accent w-full sm:w-auto'">
                                     <i :class="['ti', editando ? 'ti-device-floppy' : 'ti-user-plus']" aria-hidden="true"></i>
                                     {{ form.processing ? 'Guardando...' : (editando ? 'Actualizar expediente' : 'Registrar empleado') }}

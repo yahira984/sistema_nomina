@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
@@ -31,6 +31,137 @@ const nombreBancoEmpleado = (empleado) => {
     const banco = String(empleado.banco || '').trim();
     return banco ? banco.toUpperCase() : 'EFECTIVO / SIN BANCO';
 };
+
+const claveTemaBanco = (nombreBanco) => {
+    const banco = String(nombreBanco || '').toUpperCase();
+
+    if (banco.includes('AZTECA')) return 'AZTECA';
+    if (banco.includes('BANAMEX') || banco.includes('CITIBANAMEX')) return 'BANAMEX';
+    if (banco.includes('BANORTE')) return 'BANORTE';
+    if (banco.includes('BBVA')) return 'BBVA';
+    if (banco.includes('COPPEL')) return 'COPPEL';
+    if (banco.includes('HSBC')) return 'HSBC';
+    if (banco.includes('MERCADO')) return 'MERCADO PAGO';
+    if (banco === 'NU' || banco.includes('NU ')) return 'NU';
+    if (banco.includes('SANTANDER')) return 'SANTANDER';
+    if (banco.includes('SPIN') || banco.includes('OXXO')) return 'SPIN BY OXXO';
+    if (banco.includes('EFECTIVO') || banco.includes('SIN BANCO')) return 'EFECTIVO / SIN BANCO';
+
+    return 'DEFAULT';
+};
+
+const temasBanco = {
+    AZTECA: {
+        header: 'border-emerald-600 bg-emerald-50/95',
+        icon: 'border-emerald-200 bg-white text-emerald-700',
+        title: 'text-emerald-950',
+        badge: 'bg-white text-emerald-800 ring-1 ring-emerald-200',
+        stripe: 'bg-emerald-600',
+        button: 'border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-100',
+        pdf: 'bg-emerald-700 hover:bg-emerald-800 text-white',
+    },
+    BANAMEX: {
+        header: 'border-red-600 bg-blue-50/95',
+        icon: 'border-blue-200 bg-white text-blue-700',
+        title: 'text-blue-950',
+        badge: 'bg-white text-red-700 ring-1 ring-red-200',
+        stripe: 'bg-gradient-to-r from-red-600 via-white to-blue-700',
+        button: 'border-blue-200 bg-white text-blue-800 hover:bg-blue-100',
+        pdf: 'bg-red-600 hover:bg-red-700 text-white',
+    },
+    BANORTE: {
+        header: 'border-red-700 bg-red-50/95',
+        icon: 'border-red-200 bg-white text-red-700',
+        title: 'text-red-950',
+        badge: 'bg-white text-red-700 ring-1 ring-red-200',
+        stripe: 'bg-red-700',
+        button: 'border-red-200 bg-white text-red-800 hover:bg-red-100',
+        pdf: 'bg-red-700 hover:bg-red-800 text-white',
+    },
+    BBVA: {
+        header: 'border-blue-700 bg-blue-50/95',
+        icon: 'border-blue-200 bg-white text-blue-700',
+        title: 'text-blue-950',
+        badge: 'bg-white text-blue-700 ring-1 ring-blue-200',
+        stripe: 'bg-blue-700',
+        button: 'border-blue-200 bg-white text-blue-800 hover:bg-blue-100',
+        pdf: 'bg-blue-700 hover:bg-blue-800 text-white',
+    },
+    COPPEL: {
+        header: 'border-yellow-400 bg-blue-50/95',
+        icon: 'border-yellow-200 bg-yellow-100 text-blue-800',
+        title: 'text-blue-950',
+        badge: 'bg-yellow-100 text-blue-800 ring-1 ring-yellow-300',
+        stripe: 'bg-gradient-to-r from-blue-700 to-yellow-400',
+        button: 'border-yellow-200 bg-white text-blue-800 hover:bg-yellow-50',
+        pdf: 'bg-blue-700 hover:bg-blue-800 text-white',
+    },
+    'EFECTIVO / SIN BANCO': {
+        header: 'border-slate-500 bg-slate-100/95',
+        icon: 'border-slate-300 bg-white text-slate-700',
+        title: 'text-slate-950',
+        badge: 'bg-white text-slate-700 ring-1 ring-slate-300',
+        stripe: 'bg-slate-500',
+        button: 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100',
+        pdf: 'bg-slate-900 hover:bg-slate-800 text-white',
+    },
+    HSBC: {
+        header: 'border-red-700 bg-slate-50/95',
+        icon: 'border-slate-300 bg-white text-red-700',
+        title: 'text-slate-950',
+        badge: 'bg-white text-red-700 ring-1 ring-slate-300',
+        stripe: 'bg-gradient-to-r from-red-700 via-white to-slate-950',
+        button: 'border-slate-300 bg-white text-slate-900 hover:bg-red-50',
+        pdf: 'bg-slate-950 hover:bg-slate-800 text-white',
+    },
+    'MERCADO PAGO': {
+        header: 'border-yellow-400 bg-sky-50/95',
+        icon: 'border-sky-200 bg-yellow-100 text-sky-800',
+        title: 'text-sky-950',
+        badge: 'bg-white text-sky-800 ring-1 ring-sky-200',
+        stripe: 'bg-gradient-to-r from-yellow-300 to-sky-500',
+        button: 'border-sky-200 bg-white text-sky-800 hover:bg-sky-100',
+        pdf: 'bg-sky-600 hover:bg-sky-700 text-white',
+    },
+    NU: {
+        header: 'border-purple-700 bg-purple-50/95',
+        icon: 'border-purple-200 bg-white text-purple-700',
+        title: 'text-purple-950',
+        badge: 'bg-white text-purple-700 ring-1 ring-purple-200',
+        stripe: 'bg-purple-700',
+        button: 'border-purple-200 bg-white text-purple-800 hover:bg-purple-100',
+        pdf: 'bg-purple-700 hover:bg-purple-800 text-white',
+    },
+    SANTANDER: {
+        header: 'border-red-600 bg-red-50/95',
+        icon: 'border-red-200 bg-white text-red-700',
+        title: 'text-red-950',
+        badge: 'bg-white text-red-700 ring-1 ring-red-200',
+        stripe: 'bg-red-600',
+        button: 'border-red-200 bg-white text-red-800 hover:bg-red-100',
+        pdf: 'bg-red-600 hover:bg-red-700 text-white',
+    },
+    'SPIN BY OXXO': {
+        header: 'border-purple-700 bg-orange-50/95',
+        icon: 'border-orange-200 bg-white text-purple-700',
+        title: 'text-purple-950',
+        badge: 'bg-white text-orange-700 ring-1 ring-orange-200',
+        stripe: 'bg-gradient-to-r from-purple-700 via-orange-500 to-white',
+        button: 'border-orange-200 bg-white text-purple-800 hover:bg-orange-100',
+        pdf: 'bg-purple-700 hover:bg-purple-800 text-white',
+    },
+    DEFAULT: {
+        header: 'border-teal-600 bg-teal-50/95',
+        icon: 'border-teal-200 bg-white text-teal-700',
+        title: 'text-teal-950',
+        badge: 'bg-white text-teal-700 ring-1 ring-teal-200',
+        stripe: 'bg-teal-600',
+        button: 'border-teal-200 bg-white text-teal-800 hover:bg-teal-100',
+        pdf: 'bg-teal-700 hover:bg-teal-800 text-white',
+    },
+};
+
+const temaBanco = (nombreBanco) => temasBanco[claveTemaBanco(nombreBanco)] || temasBanco.DEFAULT;
 
 const bancosDisponibles = computed(() => {
     const bancos = new Set(props.empleados.map((empleado) => nombreBancoEmpleado(empleado)));
@@ -630,23 +761,27 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
                         </div>
 
                         <div v-else>
-                            <div v-for="(empleadosBanco, nombreBanco) in empleadosAgrupados" :key="nombreBanco" class="mb-10 last:mb-0">
+                            <div v-for="(empleadosBanco, nombreBanco) in empleadosAgrupados" :key="nombreBanco" class="mb-10 scroll-mt-6 last:mb-0">
                                 
-                                <div class="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-100/80 px-4 py-3">
-                                    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-sm">
-                                        <svg class="h-4 w-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <div :class="['sticky top-3 z-20 mb-4 overflow-hidden rounded-xl border border-l-8 px-4 py-3 shadow-sm backdrop-blur', temaBanco(nombreBanco).header]">
+                                    <div class="flex flex-wrap items-center gap-3">
+                                    <div :class="['flex h-9 w-9 items-center justify-center rounded-lg border shadow-sm', temaBanco(nombreBanco).icon]">
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3Z" />
                                         </svg>
                                     </div>
-                                    <h4 class="text-lg font-bold text-slate-800">{{ nombreBanco }}</h4>
-                                    <span class="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                                    <div class="min-w-0">
+                                        <h4 :class="['truncate text-lg font-black uppercase tracking-wide', temaBanco(nombreBanco).title]">{{ nombreBanco }}</h4>
+                                        <div :class="['mt-1 h-1 w-32 rounded-full', temaBanco(nombreBanco).stripe]" aria-hidden="true"></div>
+                                    </div>
+                                    <span :class="['rounded-full px-2.5 py-1 text-xs font-bold', temaBanco(nombreBanco).badge]">
                                         {{ empleadosBanco.length }} empleado(s)
                                     </span>
                                     <div class="ml-auto flex w-full flex-wrap gap-2 sm:w-auto">
                                         <button
                                             type="button"
                                             @click="seleccionarBanco(empleadosBanco)"
-                                            class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 sm:flex-none"
+                                            :class="['inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold shadow-sm transition sm:flex-none', temaBanco(nombreBanco).button]"
                                         >
                                             <i class="ti ti-checks" aria-hidden="true"></i>
                                             Seleccionar banco
@@ -654,260 +789,232 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
                                         <a
                                             :href="urlRecibosGrupo(empleadosBanco)"
                                             target="_blank"
-                                            class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800 sm:flex-none"
+                                            :class="['inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold shadow-sm transition sm:flex-none', temaBanco(nombreBanco).pdf]"
                                         >
                                             <i class="ti ti-printer" aria-hidden="true"></i>
                                             PDF banco
                                         </a>
                                     </div>
-                                </div>
-
-                                <div class="overflow-hidden rounded-xl border border-slate-200 shadow-sm">
-                                    <div class="overflow-x-auto">
-                                        <table class="table-premium w-full !border-0">
-                                            <thead class="bg-slate-50">
-                                                <tr>
-                                                    <th class="w-12 text-center">
-                                                        <input
-                                                            type="checkbox"
-                                                            :checked="empleadosGrupoSeleccionados(empleadosBanco)"
-                                                            @change="toggleEmpleadosGrupo(empleadosBanco, $event.target.checked)"
-                                                            class="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                                                            title="Seleccionar banco"
-                                                        />
-                                                    </th>
-                                                    <th>Empleado</th>
-                                                    <th>Datos de depósito</th>
-                                                    <th class="text-center">Estado de pago</th>
-                                                    <th class="min-w-[960px]">Ajustes de semana</th>
-                                                    <th class="text-right">Acciones</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr v-for="empleado in empleadosBanco" :key="empleado.id" :class="claseFilaNomina(empleado)">
-                                                    <td class="px-4 py-3 text-center">
-                                                        <input
-                                                            type="checkbox"
-                                                            :checked="empleadoSeleccionado(empleado.id)"
-                                                            @change="toggleEmpleado(empleado.id, $event.target.checked)"
-                                                            class="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                                                            :title="`Seleccionar ${empleado.nombre_completo}`"
-                                                        />
-                                                    </td>
-                                                    <td class="whitespace-nowrap px-4 py-3">
-                                                        <div class="flex items-center gap-3">
-                                                            <div :class="['flex h-10 min-w-10 max-w-16 items-center justify-center rounded-lg border px-2 text-xs font-bold', claseNumeroNomina(empleado)]">
-                                                                {{ empleado.numero_empleado || 'S/N' }}
-                                                            </div>
-                                                            <div class="min-w-0">
-                                                                <div class="truncate font-semibold text-slate-950">{{ empleado.nombre_completo }}</div>
-                                                                <div class="text-xs text-slate-500">{{ empleado.puesto || 'Sin puesto asignado' }}</div>
-                                                                <div v-if="tieneReglaEspecial(empleado)" class="mt-1 flex flex-wrap gap-1">
-                                                                    <span
-                                                                        v-for="regla in reglasEspecialesEmpleado(empleado)"
-                                                                        :key="regla.texto"
-                                                                        :class="['rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide', regla.clase]"
-                                                                    >
-                                                                        {{ regla.texto }}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-
-                                                    <td class="whitespace-nowrap px-4 py-3">
-                                                        <div v-if="empleado.numero_cuenta" class="flex flex-col items-start">
-                                                            <span class="text-xs font-semibold uppercase text-slate-500">{{ empleado.banco || 'Banco no especificado' }}</span>
-                                                            <button
-                                                                @click="copiarCuenta(empleado.banco, empleado.numero_cuenta)"
-                                                                class="mt-1 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700 shadow-sm"
-                                                                title="Copiar cuenta"
-                                                                type="button"
-                                                            >
-                                                                <span class="font-mono">{{ empleado.numero_cuenta }}</span>
-                                                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2m-6 12h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2Z" />
-                                                                </svg>
-                                                            </button>
-                                                        </div>
-                                                        <div v-else class="inline-flex items-center gap-1.5 text-sm font-semibold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-100">
-                                                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3Z" />
-                                                            </svg>
-                                                            Sin cuenta
-                                                        </div>
-                                                    </td>
-
-                                                    <td class="whitespace-nowrap px-4 py-3 text-center">
-                                                        <div v-if="!empleado.nomina_generada" class="text-xs font-medium text-slate-400">
-                                                            Genera el recibo primero
-                                                        </div>
-                                                        <div v-else class="flex flex-col items-center justify-center gap-1.5">
-                                                            <span :class="empleado.pagado ? 'status-success' : 'status-warning'" class="status-pill">
-                                                                {{ empleado.pagado ? 'Liquidado' : 'Pendiente' }}
-                                                            </span>
-                                                            <button
-                                                                @click="cambiarEstadoPago(empleado.nomina_id, empleado.pagado, empleado)"
-                                                                class="text-xs font-semibold text-slate-500 underline decoration-slate-300 transition hover:text-teal-700 hover:decoration-teal-500"
-                                                                type="button"
-                                                            >
-                                                                {{ empleado.pagado ? 'Revertir pago' : 'Marcar pagado y aplicar saldos' }}
-                                                            </button>
-                                                        </div>
-                                                    </td>
-
-                                                    <td class="min-w-[960px] px-4 py-3 align-top">
-                                                        <div v-if="ajustesNomina[empleado.id]" class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                                                            <div class="grid grid-cols-2 gap-px bg-slate-200 text-xs lg:grid-cols-4">
-                                                                <div class="bg-emerald-50 px-3 py-2 text-emerald-800">
-                                                                    <span class="block font-bold uppercase tracking-wide">Neto</span>
-                                                                    <span class="text-sm font-black">${{ moneda(resumenNomina(empleado).pago_neto) }}</span>
-                                                                </div>
-                                                                <div class="bg-slate-50 px-3 py-2 text-slate-700">
-                                                                    <span class="block font-bold uppercase tracking-wide">Deuda actual</span>
-                                                                    <span class="text-sm font-black">${{ moneda(resumenNomina(empleado).saldo_prestamo_actual ?? empleado.saldo_prestamo) }}</span>
-                                                                </div>
-                                                                <div class="bg-blue-50 px-3 py-2 text-blue-800">
-                                                                    <span class="block font-bold uppercase tracking-wide">Despues ajuste</span>
-                                                                    <span class="text-sm font-black">${{ moneda(deudaDespues(empleado)) }}</span>
-                                                                </div>
-                                                                <div class="bg-amber-50 px-3 py-2 text-amber-800">
-                                                                    <span class="block font-bold uppercase tracking-wide">Horas adeudo</span>
-                                                                    <span class="text-sm font-black">{{ horas(saldoHorasPreview(empleado)) }} h</span>
-                                                                </div>
-                                                            </div>
-
-                                                            <div class="grid gap-3 p-3 xl:grid-cols-[0.95fr_1.7fr_0.95fr]">
-                                                                <section class="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
-                                                                    <div class="mb-3 flex items-center gap-2 text-sm font-black text-blue-900">
-                                                                        <i class="ti ti-cash-banknote" aria-hidden="true"></i>
-                                                                        Prestamo
-                                                                    </div>
-                                                                    <div class="grid gap-2">
-                                                                        <label class="block">
-                                                                            <span class="mb-1 block text-[10px] font-bold uppercase leading-tight text-blue-700">Compensacion</span>
-                                                                            <input v-model="ajustesNomina[empleado.id].prestamo_otorgado" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
-                                                                        </label>
-                                                                        <label class="block">
-                                                                            <span class="mb-1 block text-[10px] font-bold uppercase leading-tight text-blue-700">Adeudo</span>
-                                                                            <input v-model="ajustesNomina[empleado.id].prestamo_descuento" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
-                                                                        </label>
-                                                                    </div>
-                                                                </section>
-
-                                                                <section class="rounded-lg border border-amber-100 bg-amber-50/70 p-3">
-                                                                    <div class="mb-3 flex items-center justify-between gap-3">
-                                                                        <div class="flex items-center gap-2 text-sm font-black text-amber-900">
-                                                                            <i class="ti ti-calendar-exclamation" aria-hidden="true"></i>
-                                                                            Faltas y coberturas
-                                                                        </div>
-                                                                        <span class="rounded-full border border-rose-200 bg-white px-2 py-1 text-[11px] font-bold text-rose-700">
-                                                                            {{ resumenNomina(empleado).faltas_detectadas || 0 }} falta(s) reales
-                                                                        </span>
-                                                                    </div>
-
-                                                                    <div class="grid grid-cols-2 gap-2 text-[11px] font-bold md:grid-cols-4">
-                                                                        <span class="rounded-md bg-white px-2 py-1 text-rose-700">{{ faltasConDescuentoPreview(empleado) }} desc.</span>
-                                                                        <span class="rounded-md bg-white px-2 py-1 text-blue-700">{{ faltasPagadasPreview(empleado) }} con horas</span>
-                                                                        <span class="rounded-md bg-white px-2 py-1 text-emerald-700">{{ faltasCubiertasVacacionesPreview(empleado) }} vac.</span>
-                                                                        <span class="rounded-md bg-white px-2 py-1 text-violet-700">{{ faltasCubiertasIncapacidadPreview(empleado) }} incap.</span>
-                                                                    </div>
-
-                                                                    <div class="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
-                                                                        <label class="block">
-                                                                            <span class="mb-1 block min-h-8 text-[10px] font-bold uppercase leading-tight text-amber-700">Sin descuento / adeuda h</span>
-                                                                            <input v-model="ajustesNomina[empleado.id].faltas_pagadas" type="number" step="1" min="0" :max="resumenNomina(empleado).faltas_detectadas || 0" class="field-input-soft px-2 py-1.5 text-xs" />
-                                                                        </label>
-                                                                        <label class="block">
-                                                                            <span class="mb-1 block min-h-8 text-[10px] font-bold uppercase leading-tight text-emerald-700">Pagar con vacaciones</span>
-                                                                            <input v-model="ajustesNomina[empleado.id].faltas_cubiertas_vacaciones" type="number" step="1" min="0" :max="Math.max(0, Number(resumenNomina(empleado).faltas_detectadas || 0) - faltasPagadasPreview(empleado))" class="field-input-soft px-2 py-1.5 text-xs" />
-                                                                        </label>
-                                                                        <label class="block">
-                                                                            <span class="mb-1 block min-h-8 text-[10px] font-bold uppercase leading-tight text-violet-700">Pagar con incapacidad</span>
-                                                                            <input v-model="ajustesNomina[empleado.id].faltas_cubiertas_incapacidad" type="number" step="1" min="0" :max="Math.max(0, Number(resumenNomina(empleado).faltas_detectadas || 0) - faltasPagadasPreview(empleado) - faltasCubiertasVacacionesPreview(empleado))" class="field-input-soft px-2 py-1.5 text-xs" />
-                                                                        </label>
-                                                                        <label class="block">
-                                                                            <span class="mb-1 block min-h-8 text-[10px] font-bold uppercase leading-tight text-amber-700">Hrs extra a tomar</span>
-                                                                            <input v-model="ajustesNomina[empleado.id].horas_adeudo_descontadas" type="number" step="0.5" min="0" :max="resumenNomina(empleado).horas_extra_detectadas || 0" class="field-input-soft px-2 py-1.5 text-xs" />
-                                                                        </label>
-                                                                    </div>
-                                                                    <div class="mt-3 grid grid-cols-2 gap-2 text-[11px] font-bold xl:grid-cols-4">
-                                                                        <span class="rounded-md bg-white px-2 py-1 text-slate-600">Genera {{ horas(horasAdeudoGeneradasPreview(empleado)) }} h</span>
-                                                                        <span class="rounded-md bg-white px-2 py-1 text-slate-600">Extra {{ horas(resumenNomina(empleado).horas_extra_detectadas) }} h</span>
-                                                                        <span class="rounded-md bg-white px-2 py-1 text-emerald-700">Paga {{ horas(horasExtraPagadasPreview(empleado)) }} h</span>
-                                                                        <span class="rounded-md bg-white px-2 py-1 text-amber-700">Saldo {{ horas(saldoHorasPreview(empleado)) }} h</span>
-                                                                    </div>
-                                                                    <div v-if="Number(resumenNomina(empleado).horas_extra_miercoles_anterior || 0) > 0" class="mt-2 text-[11px] font-semibold text-amber-800">
-                                                                        Incluye {{ horas(resumenNomina(empleado).horas_extra_miercoles_anterior) }} h del miercoles anterior.
-                                                                    </div>
-                                                                    <div v-if="horasAdeudoMiercolesAnterior(empleado) > 0" class="mt-2 text-[11px] font-semibold text-rose-700">
-                                                                        Adeuda {{ horas(horasAdeudoMiercolesAnterior(empleado)) }} h del miercoles anterior.
-                                                                    </div>
-                                                                </section>
-
-                                                                <section class="flex flex-col justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                                                    <div>
-                                                                        <div class="mb-3 flex items-center gap-2 text-sm font-black text-slate-800">
-                                                                            <i class="ti ti-adjustments-dollar" aria-hidden="true"></i>
-                                                                            Otros
-                                                                        </div>
-                                                                        <label class="block">
-                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-slate-500">Desc. extra</span>
-                                                                            <input v-model="ajustesNomina[empleado.id].deduccion_manual" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
-                                                                        </label>
-                                                                        <label class="mt-2 block">
-                                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-slate-500">Vac. adicionales</span>
-                                                                            <input v-model="ajustesNomina[empleado.id].dias_vacaciones_adicionales" type="number" step="0.5" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
-                                                                        </label>
-                                                                        <div class="mt-3 grid grid-cols-2 gap-2 text-[11px] font-bold">
-                                                                            <span class="rounded-md bg-white px-2 py-1 text-rose-700">{{ faltasConDescuentoPreview(empleado) }} falta(s) desc.</span>
-                                                                            <span class="rounded-md bg-white px-2 py-1 text-amber-700">{{ resumenNomina(empleado).minutos_tarde_descontables || 0 }} min ret.</span>
-                                                                            <span class="rounded-md bg-white px-2 py-1 text-violet-700">{{ horas(diasIncapacidadPreview(empleado)) }} incap.</span>
-                                                                            <span class="rounded-md bg-white px-2 py-1 text-violet-700">${{ moneda(pagoIncapacidadPreview(empleado)) }}</span>
-                                                                            <span class="rounded-md bg-white px-2 py-1 text-blue-700">{{ horas(diasVacacionesPreview(empleado)) }} dia(s) vac.</span>
-                                                                            <span class="rounded-md bg-white px-2 py-1 text-emerald-700">${{ moneda(pagoVacacionesPreview(empleado)) }}</span>
-                                                                        </div>
-                                                                    </div>
-                                                                    <button type="button" @click="guardarAjustes(empleado)" class="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800">
-                                                                        <i class="ti ti-device-floppy" aria-hidden="true"></i>
-                                                                        {{ guardandoAjuste === empleado.id ? 'Guardando...' : 'Guardar ajustes' }}
-                                                                    </button>
-                                                                </section>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-
-                                                    <td class="whitespace-nowrap px-4 py-3 text-right">
-                                                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                                                            <a
-                                                                :href="route('nominas.excel-individual', parametrosNomina(empleado))"
-                                                                class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-green-700 active:scale-95 sm:w-auto"
-                                                                title="Descargar Recibo en Excel"
-                                                            >
-                                                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                                                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8.5 19l-1.5-2.5L5.5 19H4l2-3.5L4 12h1.5l1.5 2.5L8.5 12H10l-2 3.5 2 3.5H8.5zm4.5 0h-1.3l-2-7h1.3l1.4 5.2 1.4-5.2H15l-2 7z"/>
-                                                                </svg>
-                                                                <span class="hidden sm:inline">Excel</span>
-                                                            </a>
-
-                                                            <a
-                                                                :href="route('nominas.generar', parametrosNomina(empleado))"
-                                                                target="_blank"
-                                                                @click="marcarComoGenerado(empleado)"
-                                                                :class="empleado.nomina_generada ? 'btn-warning w-full sm:w-auto' : 'btn-accent w-full sm:w-auto'"
-                                                            >
-                                                                <svg class="h-4 w-4 mr-1.5 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2m2 4h6a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2Zm8-12V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4h10Z" />
-                                                                </svg>
-                                                                {{ empleado.nomina_generada ? 'Regenerar' : 'Crear recibo' }}
-                                                            </a>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
                                     </div>
                                 </div>
+
+                                <div class="space-y-3">
+                                    <article
+                                        v-for="empleado in empleadosBanco"
+                                        :key="`compacto-${empleado.id}`"
+                                        :class="[
+                                            'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:border-teal-200',
+                                            tieneReglaEspecial(empleado) ? 'border-l-4 border-l-amber-400 bg-amber-50/20' : ''
+                                        ]"
+                                    >
+                                        <div class="grid gap-3 border-b border-slate-100 bg-white p-3 lg:grid-cols-[minmax(260px,1.2fr)_minmax(210px,0.9fr)_minmax(170px,0.7fr)_auto] lg:items-center">
+                                            <div class="flex min-w-0 items-center gap-3">
+                                                <input
+                                                    type="checkbox"
+                                                    :checked="empleadoSeleccionado(empleado.id)"
+                                                    @change="toggleEmpleado(empleado.id, $event.target.checked)"
+                                                    class="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                                    :title="`Seleccionar ${empleado.nombre_completo}`"
+                                                />
+                                                <div :class="['flex h-10 min-w-10 max-w-16 items-center justify-center rounded-lg border px-2 text-xs font-bold', claseNumeroNomina(empleado)]">
+                                                    {{ empleado.numero_empleado || 'S/N' }}
+                                                </div>
+                                                <div class="min-w-0">
+                                                    <div class="truncate text-sm font-black uppercase text-slate-950">{{ empleado.nombre_completo }}</div>
+                                                    <div class="text-xs font-semibold text-slate-500">{{ empleado.puesto || 'Sin puesto asignado' }}</div>
+                                                    <div v-if="tieneReglaEspecial(empleado)" class="mt-1 flex flex-wrap gap-1">
+                                                        <span
+                                                            v-for="regla in reglasEspecialesEmpleado(empleado)"
+                                                            :key="regla.texto"
+                                                            :class="['rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide', regla.clase]"
+                                                        >
+                                                            {{ regla.texto }}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <div v-if="empleado.numero_cuenta" class="flex flex-col items-start">
+                                                    <span class="text-[10px] font-black uppercase tracking-wide text-slate-500">{{ empleado.banco || 'Banco no especificado' }}</span>
+                                                    <button
+                                                        @click="copiarCuenta(empleado.banco, empleado.numero_cuenta)"
+                                                        class="mt-1 inline-flex max-w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700"
+                                                        title="Copiar cuenta"
+                                                        type="button"
+                                                    >
+                                                        <span class="truncate font-mono">{{ empleado.numero_cuenta }}</span>
+                                                        <i class="ti ti-copy shrink-0" aria-hidden="true"></i>
+                                                    </button>
+                                                </div>
+                                                <div v-else class="inline-flex items-center gap-1.5 rounded-md border border-rose-100 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600">
+                                                    <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+                                                    Sin cuenta
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <div v-if="!empleado.nomina_generada" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500">
+                                                    Genera el recibo primero
+                                                </div>
+                                                <div v-else class="flex flex-wrap items-center gap-2">
+                                                    <span :class="empleado.pagado ? 'status-success' : 'status-warning'" class="status-pill">
+                                                        {{ empleado.pagado ? 'Liquidado' : 'Pendiente' }}
+                                                    </span>
+                                                    <button
+                                                        @click="cambiarEstadoPago(empleado.nomina_id, empleado.pagado, empleado)"
+                                                        class="text-xs font-semibold text-slate-500 underline decoration-slate-300 transition hover:text-teal-700 hover:decoration-teal-500"
+                                                        type="button"
+                                                    >
+                                                        {{ empleado.pagado ? 'Revertir pago' : 'Marcar pagado y aplicar saldos' }}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div class="flex flex-col gap-2 sm:flex-row lg:justify-end">
+                                                <a
+                                                    :href="route('nominas.excel-individual', parametrosNomina(empleado))"
+                                                    class="inline-flex items-center justify-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-green-700 active:scale-95"
+                                                    title="Descargar Recibo en Excel"
+                                                >
+                                                    <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
+                                                    Excel
+                                                </a>
+
+                                                <a
+                                                    :href="route('nominas.generar', parametrosNomina(empleado))"
+                                                    target="_blank"
+                                                    @click="marcarComoGenerado(empleado)"
+                                                    :class="empleado.nomina_generada ? 'btn-warning text-xs' : 'btn-accent text-xs'"
+                                                >
+                                                    <i class="ti ti-printer" aria-hidden="true"></i>
+                                                    {{ empleado.nomina_generada ? 'Regenerar' : 'Crear recibo' }}
+                                                </a>
+                                            </div>
+                                        </div>
+
+                                        <div v-if="ajustesNomina[empleado.id]" class="p-3">
+                                            <div class="grid grid-cols-2 gap-2 text-xs lg:grid-cols-4">
+                                                <div class="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-800">
+                                                    <span class="block text-[10px] font-black uppercase tracking-wide">Neto</span>
+                                                    <span class="text-base font-black">${{ moneda(resumenNomina(empleado).pago_neto) }}</span>
+                                                </div>
+                                                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
+                                                    <span class="block text-[10px] font-black uppercase tracking-wide">Deuda actual</span>
+                                                    <span class="text-base font-black">${{ moneda(resumenNomina(empleado).saldo_prestamo_actual ?? empleado.saldo_prestamo) }}</span>
+                                                </div>
+                                                <div class="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-blue-800">
+                                                    <span class="block text-[10px] font-black uppercase tracking-wide">Despues ajuste</span>
+                                                    <span class="text-base font-black">${{ moneda(deudaDespues(empleado)) }}</span>
+                                                </div>
+                                                <div class="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-amber-800">
+                                                    <span class="block text-[10px] font-black uppercase tracking-wide">Horas adeudo</span>
+                                                    <span class="text-base font-black">{{ horas(saldoHorasPreview(empleado)) }} h</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="mt-3 grid gap-3 xl:grid-cols-[0.82fr_1.7fr_1fr]">
+                                                <section class="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+                                                    <div class="mb-2 flex items-center gap-2 text-sm font-black text-blue-900">
+                                                        <i class="ti ti-cash-banknote" aria-hidden="true"></i>
+                                                        Prestamo
+                                                    </div>
+                                                    <div class="grid grid-cols-2 gap-2 xl:grid-cols-1">
+                                                        <label class="block">
+                                                            <span class="mb-1 block text-[10px] font-bold uppercase leading-tight text-blue-700">Compensacion</span>
+                                                            <input v-model="ajustesNomina[empleado.id].prestamo_otorgado" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                        </label>
+                                                        <label class="block">
+                                                            <span class="mb-1 block text-[10px] font-bold uppercase leading-tight text-blue-700">Adeudo</span>
+                                                            <input v-model="ajustesNomina[empleado.id].prestamo_descuento" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                        </label>
+                                                    </div>
+                                                </section>
+
+                                                <section class="rounded-lg border border-amber-100 bg-amber-50/70 p-3">
+                                                    <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                                        <div class="flex items-center gap-2 text-sm font-black text-amber-900">
+                                                            <i class="ti ti-calendar-exclamation" aria-hidden="true"></i>
+                                                            Faltas y coberturas
+                                                        </div>
+                                                        <span class="rounded-full border border-rose-200 bg-white px-2 py-1 text-[11px] font-bold text-rose-700">
+                                                            {{ resumenNomina(empleado).faltas_detectadas || 0 }} falta(s) reales
+                                                        </span>
+                                                    </div>
+
+                                                    <div class="grid grid-cols-2 gap-2 text-[11px] font-bold md:grid-cols-4">
+                                                        <span class="rounded-md bg-white px-2 py-1 text-rose-700">{{ faltasConDescuentoPreview(empleado) }} desc.</span>
+                                                        <span class="rounded-md bg-white px-2 py-1 text-blue-700">{{ faltasPagadasPreview(empleado) }} con horas</span>
+                                                        <span class="rounded-md bg-white px-2 py-1 text-emerald-700">{{ faltasCubiertasVacacionesPreview(empleado) }} vac.</span>
+                                                        <span class="rounded-md bg-white px-2 py-1 text-violet-700">{{ faltasCubiertasIncapacidadPreview(empleado) }} incap.</span>
+                                                    </div>
+
+                                                    <div class="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                                                        <label class="block">
+                                                            <span class="mb-1 block min-h-6 text-[10px] font-bold uppercase leading-tight text-amber-700">Sin descuento / adeuda h</span>
+                                                            <input v-model="ajustesNomina[empleado.id].faltas_pagadas" type="number" step="1" min="0" :max="resumenNomina(empleado).faltas_detectadas || 0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                        </label>
+                                                        <label class="block">
+                                                            <span class="mb-1 block min-h-6 text-[10px] font-bold uppercase leading-tight text-emerald-700">Pagar con vacaciones</span>
+                                                            <input v-model="ajustesNomina[empleado.id].faltas_cubiertas_vacaciones" type="number" step="1" min="0" :max="Math.max(0, Number(resumenNomina(empleado).faltas_detectadas || 0) - faltasPagadasPreview(empleado))" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                        </label>
+                                                        <label class="block">
+                                                            <span class="mb-1 block min-h-6 text-[10px] font-bold uppercase leading-tight text-violet-700">Pagar con incapacidad</span>
+                                                            <input v-model="ajustesNomina[empleado.id].faltas_cubiertas_incapacidad" type="number" step="1" min="0" :max="Math.max(0, Number(resumenNomina(empleado).faltas_detectadas || 0) - faltasPagadasPreview(empleado) - faltasCubiertasVacacionesPreview(empleado))" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                        </label>
+                                                        <label class="block">
+                                                            <span class="mb-1 block min-h-6 text-[10px] font-bold uppercase leading-tight text-amber-700">Hrs extra a tomar</span>
+                                                            <input v-model="ajustesNomina[empleado.id].horas_adeudo_descontadas" type="number" step="0.5" min="0" :max="resumenNomina(empleado).horas_extra_detectadas || 0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                        </label>
+                                                    </div>
+
+                                                    <div class="mt-2 grid grid-cols-2 gap-2 text-[11px] font-bold lg:grid-cols-4">
+                                                        <span class="rounded-md bg-white px-2 py-1 text-slate-600">Genera {{ horas(horasAdeudoGeneradasPreview(empleado)) }} h</span>
+                                                        <span class="rounded-md bg-white px-2 py-1 text-slate-600">Extra {{ horas(resumenNomina(empleado).horas_extra_detectadas) }} h</span>
+                                                        <span class="rounded-md bg-white px-2 py-1 text-emerald-700">Paga {{ horas(horasExtraPagadasPreview(empleado)) }} h</span>
+                                                        <span class="rounded-md bg-white px-2 py-1 text-amber-700">Saldo {{ horas(saldoHorasPreview(empleado)) }} h</span>
+                                                    </div>
+                                                    <div v-if="Number(resumenNomina(empleado).horas_extra_miercoles_anterior || 0) > 0" class="mt-2 text-[11px] font-semibold text-amber-800">
+                                                        Incluye {{ horas(resumenNomina(empleado).horas_extra_miercoles_anterior) }} h del miercoles anterior.
+                                                    </div>
+                                                    <div v-if="horasAdeudoMiercolesAnterior(empleado) > 0" class="mt-2 text-[11px] font-semibold text-rose-700">
+                                                        Adeuda {{ horas(horasAdeudoMiercolesAnterior(empleado)) }} h del miercoles anterior.
+                                                    </div>
+                                                </section>
+
+                                                <section class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                                    <div class="mb-2 flex items-center gap-2 text-sm font-black text-slate-800">
+                                                        <i class="ti ti-adjustments-dollar" aria-hidden="true"></i>
+                                                        Otros
+                                                    </div>
+                                                    <div class="grid grid-cols-2 gap-2 xl:grid-cols-1">
+                                                        <label class="block">
+                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-slate-500">Desc. extra</span>
+                                                            <input v-model="ajustesNomina[empleado.id].deduccion_manual" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                        </label>
+                                                        <label class="block">
+                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-slate-500">Vac. adicionales</span>
+                                                            <input v-model="ajustesNomina[empleado.id].dias_vacaciones_adicionales" type="number" step="0.5" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                        </label>
+                                                    </div>
+                                                    <div class="mt-2 grid grid-cols-2 gap-2 text-[11px] font-bold">
+                                                        <span class="rounded-md bg-white px-2 py-1 text-rose-700">{{ faltasConDescuentoPreview(empleado) }} falta(s) desc.</span>
+                                                        <span class="rounded-md bg-white px-2 py-1 text-amber-700">{{ resumenNomina(empleado).minutos_tarde_descontables || 0 }} min ret.</span>
+                                                        <span class="rounded-md bg-white px-2 py-1 text-violet-700">{{ horas(diasIncapacidadPreview(empleado)) }} incap.</span>
+                                                        <span class="rounded-md bg-white px-2 py-1 text-violet-700">${{ moneda(pagoIncapacidadPreview(empleado)) }}</span>
+                                                        <span class="rounded-md bg-white px-2 py-1 text-blue-700">{{ horas(diasVacacionesPreview(empleado)) }} dia(s) vac.</span>
+                                                        <span class="rounded-md bg-white px-2 py-1 text-emerald-700">${{ moneda(pagoVacacionesPreview(empleado)) }}</span>
+                                                    </div>
+                                                    <button type="button" @click="guardarAjustes(empleado)" class="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800">
+                                                        <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                                                        {{ guardandoAjuste === empleado.id ? 'Guardando...' : 'Guardar ajustes' }}
+                                                    </button>
+                                                </section>
+                                            </div>
+                                        </div>
+                                    </article>
+                                </div>
+
                             </div>
                         </div>
                     </div>

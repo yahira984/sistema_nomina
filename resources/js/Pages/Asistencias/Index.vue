@@ -18,6 +18,15 @@ const props = defineProps({
     },
 });
 
+const fechaActualLocal = () => {
+    const hoy = new Date();
+    const anio = hoy.getFullYear();
+    const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+    const dia = String(hoy.getDate()).padStart(2, '0');
+
+    return `${anio}-${mes}-${dia}`;
+};
+
 const tiposAsistencia = ['Normal', 'Falta', 'Incapacidad', 'Vacaciones'];
 const tabActiva = ref(props.previewImportacion ? 'revision' : 'captura');
 const busquedaGlobal = ref('');
@@ -28,6 +37,12 @@ const empleadoRegistrosId = ref('');
 const ordenUltimosRegistros = ref('fecha_desc');
 const ordenControlEmpleados = ref('num_asc');
 const empleadoFaltasExpandido = ref(null);
+const fechaSemanaReferencia = ref(props.asistencias?.[0]?.fecha || fechaActualLocal());
+const fechaRevisionReferencia = ref(
+    props.previewImportacion?.resumen?.fecha_inicio
+    || props.previewImportacion?.filas?.[0]?.fecha
+    || fechaSemanaReferencia.value,
+);
 const paginaUltimosRegistros = ref(1);
 const paginaRevision = ref(1);
 const editando = ref(false);
@@ -35,6 +50,8 @@ const asistenciaId = ref(null);
 const archivoInput = ref(null);
 
 const REGISTROS_POR_PAGINA = 25;
+const DIAS_SEMANA_NOMINA = ['JUEVES', 'VIERNES', 'SABADO', 'DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES'];
+const DIAS_SEMANA_CORTOS = ['JUE', 'VIE', 'SAB', 'DOM', 'LUN', 'MAR', 'MIE'];
 const empleadosSinHorasExtra = new Set(['8', '9', '22']);
 const empleadosSinRetardos = new Set(['14', '76', '78']);
 
@@ -89,12 +106,69 @@ watch(
     () => props.previewImportacion,
     (preview) => {
         filasRevision.value = clonarFilasRevision(preview?.filas || []);
+        fechaRevisionReferencia.value = preview?.resumen?.fecha_inicio
+            || preview?.filas?.[0]?.fecha
+            || fechaSemanaReferencia.value;
         paginaRevision.value = 1;
         if (filasRevision.value.length > 0) {
             tabActiva.value = 'revision';
         }
     }
 );
+
+const crearFechaLocal = (fecha) => {
+    if (!fecha) {
+        const hoy = new Date();
+        return new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+    }
+
+    const [anio, mes, dia] = String(fecha).substring(0, 10).split('-').map(Number);
+
+    if (!anio || !mes || !dia) {
+        const respaldo = new Date(fecha);
+        return new Date(respaldo.getFullYear(), respaldo.getMonth(), respaldo.getDate());
+    }
+
+    return new Date(anio, mes - 1, dia);
+};
+
+const fechaIsoLocal = (fecha) => {
+    const anio = fecha.getFullYear();
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dia = String(fecha.getDate()).padStart(2, '0');
+
+    return `${anio}-${mes}-${dia}`;
+};
+
+const sumarDiasFecha = (fecha, dias) => {
+    const copia = crearFechaLocal(fecha);
+    copia.setDate(copia.getDate() + dias);
+
+    return fechaIsoLocal(copia);
+};
+
+const inicioSemanaNomina = (fecha) => {
+    const base = crearFechaLocal(fecha);
+    const diferencia = (base.getDay() - 4 + 7) % 7;
+    base.setDate(base.getDate() - diferencia);
+
+    return fechaIsoLocal(base);
+};
+
+const fechasSemanaNomina = (fechaReferencia) => {
+    const inicio = inicioSemanaNomina(fechaReferencia);
+
+    return DIAS_SEMANA_NOMINA.map((nombre, index) => {
+        const iso = sumarDiasFecha(inicio, index);
+
+        return {
+            iso,
+            nombre,
+            corto: DIAS_SEMANA_CORTOS[index],
+            diaMes: crearFechaLocal(iso).getDate(),
+        };
+    });
+};
 
 const empleadosPorId = computed(() => {
     return new Map(props.empleados.map((empleado) => [Number(empleado.id), empleado]));
@@ -120,6 +194,68 @@ const valorNumeroFilaRevision = (fila) => {
 
 const empleadoEnRegla = (empleado, reglas) => reglas.has(numeroEmpleado(empleado));
 
+const esEmpleadoEstudiante = (empleado) => Boolean(empleado?.es_estudiante);
+
+const minutosDesdeHora = (hora) => {
+    const [horas, minutos] = String(hora || '').substring(0, 5).split(':').map(Number);
+
+    if (!Number.isFinite(horas) || !Number.isFinite(minutos)) {
+        return null;
+    }
+
+    return (horas * 60) + minutos;
+};
+
+const esSabado = (fecha) => {
+    const [anio, mes, dia] = String(fecha || '').substring(0, 10).split('-').map(Number);
+
+    if (!anio || !mes || !dia) {
+        return false;
+    }
+
+    return new Date(anio, mes - 1, dia).getDay() === 6;
+};
+
+const normalizarHorasExtraSabado = (asistencia, empleado) => {
+    if (!asistencia || asistencia.tipo_asistencia !== 'Normal' || !esSabado(asistencia.fecha)) {
+        return asistencia;
+    }
+
+    if (!esEmpleadoEstudiante(empleado) && empleadoEnRegla(empleado, empleadosSinHorasExtra)) {
+        return { ...asistencia, horas_extra: 0 };
+    }
+
+    const entrada = minutosDesdeHora(asistencia.hora_entrada);
+    const salida = minutosDesdeHora(asistencia.hora_salida);
+
+    if (entrada === null || salida === null || salida <= entrada) {
+        return asistencia;
+    }
+
+    const inicio = Math.max(entrada, 8 * 60);
+    const horasExtra = Math.max(0, Math.round((salida - inicio) / 60));
+
+    return {
+        ...asistencia,
+        horas_extra: horasExtra,
+    };
+};
+
+const aplicarReglasVisualesAsistencia = (asistencia, empleado) => {
+    const asistenciaNormalizada = normalizarHorasExtraSabado(asistencia, empleado);
+
+    if (!asistenciaNormalizada || !esEmpleadoEstudiante(empleado)) {
+        return asistenciaNormalizada;
+    }
+
+    return {
+        ...asistenciaNormalizada,
+        minutos_tarde: 0,
+        horas_trabajadas: Number(asistenciaNormalizada.horas_trabajadas || 0) + Number(asistenciaNormalizada.horas_extra || 0),
+        horas_extra: 0,
+    };
+};
+
 const compararEmpleados = (a, b, criterio) => {
     if (criterio === 'nombre_desc') {
         return String(b.nombre_completo || '').localeCompare(String(a.nombre_completo || ''), 'es');
@@ -142,31 +278,6 @@ const ordenarEmpleados = (empleados, criterio) => {
         }
 
         return valorNumeroEmpleado(a) - valorNumeroEmpleado(b);
-    });
-};
-
-const ordenarAsistencias = (asistencias) => {
-    return [...asistencias].sort((a, b) => {
-        const empleadoA = a.empleado || {};
-        const empleadoB = b.empleado || {};
-
-        if (ordenUltimosRegistros.value === 'num_asc' || ordenUltimosRegistros.value === 'num_desc') {
-            const diferencia = valorNumeroEmpleado(empleadoA) - valorNumeroEmpleado(empleadoB);
-
-            if (diferencia !== 0) {
-                return ordenUltimosRegistros.value === 'num_asc' ? diferencia : -diferencia;
-            }
-        }
-
-        if (ordenUltimosRegistros.value === 'nombre_asc' || ordenUltimosRegistros.value === 'nombre_desc') {
-            const comparacion = compararEmpleados(empleadoA, empleadoB, ordenUltimosRegistros.value);
-
-            if (comparacion !== 0) {
-                return comparacion;
-            }
-        }
-
-        return String(b.fecha || '').localeCompare(String(a.fecha || ''));
     });
 };
 
@@ -194,36 +305,172 @@ const ordenarFilasRevision = (filas) => {
     });
 };
 
-const asistenciasFiltradas = computed(() => {
-    let resultado = [...props.asistencias];
+const fechasSemanaRegistros = computed(() => fechasSemanaNomina(fechaSemanaReferencia.value));
+const fechasSemanaRevision = computed(() => fechasSemanaNomina(fechaRevisionReferencia.value));
+
+const rangoSemanaRegistros = computed(() => {
+    const fechas = fechasSemanaRegistros.value;
+
+    return `${formatoFecha(fechas[0]?.iso)} - ${formatoFecha(fechas[6]?.iso)}`;
+});
+
+const rangoSemanaRevision = computed(() => {
+    const fechas = fechasSemanaRevision.value;
+
+    return `${formatoFecha(fechas[0]?.iso)} - ${formatoFecha(fechas[6]?.iso)}`;
+});
+
+const exportarSemanaUrl = computed(() => route('asistencias.exportar-semana', {
+    fecha: fechaSemanaReferencia.value,
+}));
+
+const coincideEmpleado = (empleado, termino) => {
+    if (!termino) return true;
+
+    return String(empleado?.nombre_completo || '').toLowerCase().includes(termino)
+        || String(empleado?.numero_empleado || '').toLowerCase().includes(termino)
+        || String(empleado?.numero_empleado_baja || '').toLowerCase().includes(termino);
+};
+
+const coincideFilaRevision = (fila, termino) => {
+    if (!termino) return true;
+
+    return String(fila.numero_empleado || '').toLowerCase().includes(termino)
+        || String(fila.csv_numero_empleado || '').toLowerCase().includes(termino)
+        || String(fila.nombre_completo || '').toLowerCase().includes(termino)
+        || String(fila.csv_nombre_completo || '').toLowerCase().includes(termino)
+        || String(fila.fecha || '').toLowerCase().includes(termino)
+        || String(fila.estado || '').toLowerCase().includes(termino)
+        || String(fila.tipo_asistencia || '').toLowerCase().includes(termino);
+};
+
+const asistenciasPorEmpleadoFecha = computed(() => {
+    const mapa = new Map();
+
+    props.asistencias.forEach((asistencia) => {
+        mapa.set(`${asistencia.empleado_id}|${asistencia.fecha}`, asistencia);
+    });
+
+    return mapa;
+});
+
+const empleadosMatrizRegistros = computed(() => {
+    let resultado = [...props.empleados];
 
     if (empleadoRegistrosId.value) {
-        resultado = resultado.filter((asistencia) => Number(asistencia.empleado_id) === Number(empleadoRegistrosId.value));
+        resultado = resultado.filter((empleado) => Number(empleado.id) === Number(empleadoRegistrosId.value));
     }
 
-    const term = busquedaUltimosRegistros.value.toLowerCase().trim();
+    const termino = busquedaUltimosRegistros.value.toLowerCase().trim();
+    resultado = resultado.filter((empleado) => coincideEmpleado(empleado, termino));
 
-    if (term) {
-        resultado = resultado.filter((asistencia) => {
-            const empleado = asistencia.empleado || {};
+    const criterio = ['num_asc', 'num_desc', 'nombre_asc', 'nombre_desc'].includes(ordenUltimosRegistros.value)
+        ? ordenUltimosRegistros.value
+        : 'num_asc';
 
-            return String(empleado.nombre_completo || '').toLowerCase().includes(term)
-                || String(empleado.numero_empleado || '').toLowerCase().includes(term)
-                || String(asistencia.fecha || '').toLowerCase().includes(term)
-                || String(asistencia.tipo_asistencia || '').toLowerCase().includes(term);
-        });
-    }
-
-    return ordenarAsistencias(resultado);
+    return ordenarEmpleados(resultado, criterio);
 });
 
-const totalPaginasUltimosRegistros = computed(() => Math.max(1, Math.ceil(asistenciasFiltradas.value.length / REGISTROS_POR_PAGINA)));
+const filasMatrizAsistencias = computed(() => {
+    const fechas = fechasSemanaRegistros.value;
 
-const asistenciasPaginadas = computed(() => {
+    return empleadosMatrizRegistros.value.map((empleado) => {
+        const dias = fechas.map((dia) => {
+            const asistencia = asistenciasPorEmpleadoFecha.value.get(`${empleado.id}|${dia.iso}`) || null;
+
+            return {
+                ...dia,
+                asistencia: aplicarReglasVisualesAsistencia(asistencia, empleado),
+            };
+        });
+
+        return {
+            empleado,
+            dias,
+            totalRegistros: dias.filter((dia) => Boolean(dia.asistencia)).length,
+            totalFaltas: dias.filter((dia) => dia.asistencia?.tipo_asistencia === 'Falta').length,
+            totalRetardos: dias.reduce((total, dia) => total + Number(dia.asistencia?.minutos_tarde || 0), 0),
+            totalNormales: dias.reduce((total, dia) => total + Number(dia.asistencia?.horas_trabajadas || 0), 0),
+            totalExtras: dias.reduce((total, dia) => total + Number(dia.asistencia?.horas_extra || 0), 0),
+        };
+    });
+});
+
+const totalRegistrosSemana = computed(() => filasMatrizAsistencias.value.reduce((total, fila) => total + fila.totalRegistros, 0));
+
+const filasMatrizAsistenciasPaginadas = computed(() => {
     const inicio = (paginaUltimosRegistros.value - 1) * REGISTROS_POR_PAGINA;
 
-    return asistenciasFiltradas.value.slice(inicio, inicio + REGISTROS_POR_PAGINA);
+    return filasMatrizAsistencias.value.slice(inicio, inicio + REGISTROS_POR_PAGINA);
 });
+
+const llaveGrupoRevision = (fila) => {
+    if (fila.empleado_id) return `empleado-${fila.empleado_id}`;
+
+    return `csv-${fila.csv_numero_empleado || fila.numero_empleado || fila.nombre_completo || fila._uid}`;
+};
+
+const crearGrupoRevision = (fila) => ({
+    key: llaveGrupoRevision(fila),
+    empleado_id: fila.empleado_id || null,
+    numero_empleado: fila.numero_empleado || fila.csv_numero_empleado || '',
+    nombre_completo: fila.nombre_completo || fila.csv_nombre_completo || 'Sin empleado',
+    csv_numero_empleado: fila.csv_numero_empleado || '',
+    csv_nombre_completo: fila.csv_nombre_completo || '',
+    filas: [],
+    dias: [],
+});
+
+const filasMatrizRevision = computed(() => {
+    const fechas = fechasSemanaRevision.value;
+    const fechasSet = new Set(fechas.map((dia) => dia.iso));
+    const termino = busquedaRevision.value.toLowerCase().trim();
+    const grupos = new Map();
+
+    ordenarFilasRevision(filasRevision.value)
+        .filter((fila) => fechasSet.has(fila.fecha))
+        .filter((fila) => coincideFilaRevision(fila, termino))
+        .forEach((fila) => {
+            const llave = llaveGrupoRevision(fila);
+
+            if (!grupos.has(llave)) {
+                grupos.set(llave, crearGrupoRevision(fila));
+            }
+
+            grupos.get(llave).filas.push(fila);
+        });
+
+    return [...grupos.values()].map((grupo) => {
+        const porFecha = new Map(grupo.filas.map((fila) => [fila.fecha, fila]));
+        const ids = [...new Set(grupo.filas.map((fila) => fila.empleado_id).filter(Boolean))];
+
+        return {
+            ...grupo,
+            empleado_id: ids.length === 1 ? ids[0] : null,
+            dias: fechas.map((dia) => ({
+                ...dia,
+                fila: porFecha.get(dia.iso) || null,
+            })),
+        };
+    }).sort((a, b) => {
+        const numeroA = parseInt(normalizarNumeroEmpleado(a.numero_empleado || a.csv_numero_empleado), 10);
+        const numeroB = parseInt(normalizarNumeroEmpleado(b.numero_empleado || b.csv_numero_empleado), 10);
+        const valorA = Number.isFinite(numeroA) ? numeroA : Number.MAX_SAFE_INTEGER;
+        const valorB = Number.isFinite(numeroB) ? numeroB : Number.MAX_SAFE_INTEGER;
+
+        if (valorA !== valorB) return valorA - valorB;
+
+        return String(a.nombre_completo || '').localeCompare(String(b.nombre_completo || ''), 'es');
+    });
+});
+
+const filasMatrizRevisionPaginadas = computed(() => {
+    const inicio = (paginaRevision.value - 1) * REGISTROS_POR_PAGINA;
+
+    return filasMatrizRevision.value.slice(inicio, inicio + REGISTROS_POR_PAGINA);
+});
+
+const totalPaginasUltimosRegistros = computed(() => Math.max(1, Math.ceil(filasMatrizAsistencias.value.length / REGISTROS_POR_PAGINA)));
 
 const empleadosFiltradosGlobal = computed(() => {
     let resultado = [...props.empleados];
@@ -261,7 +508,7 @@ const empleadosFiltradosManual = computed(() => {
         });
     }
 
-    const limitados = resultado.slice(0, 30);
+    const limitados = ordenarEmpleados(resultado, 'num_asc').slice(0, 30);
     const seleccionado = props.empleados.find((empleado) => Number(empleado.id) === Number(form.empleado_id));
 
     if (seleccionado && !limitados.some((empleado) => Number(empleado.id) === Number(seleccionado.id))) {
@@ -282,29 +529,7 @@ const sincronizarBusquedaManual = () => {
     }
 };
 
-const filasRevisionFiltradas = computed(() => {
-    let resultado = [...filasRevision.value];
-
-    if (busquedaRevision.value) {
-        const term = busquedaRevision.value.toLowerCase();
-        resultado = resultado.filter((fila) => {
-            return String(fila.numero_empleado || '').toLowerCase().includes(term)
-                || String(fila.nombre_completo || '').toLowerCase().includes(term)
-                || String(fila.fecha || '').toLowerCase().includes(term)
-                || String(fila.estado || '').toLowerCase().includes(term);
-        });
-    }
-
-    return ordenarFilasRevision(resultado);
-});
-
-const totalPaginasRevision = computed(() => Math.max(1, Math.ceil(filasRevisionFiltradas.value.length / REGISTROS_POR_PAGINA)));
-
-const filasRevisionPaginadas = computed(() => {
-    const inicio = (paginaRevision.value - 1) * REGISTROS_POR_PAGINA;
-
-    return filasRevisionFiltradas.value.slice(inicio, inicio + REGISTROS_POR_PAGINA);
-});
+const totalPaginasRevision = computed(() => Math.max(1, Math.ceil(filasMatrizRevision.value.length / REGISTROS_POR_PAGINA)));
 
 const resumenRevision = computed(() => {
     const filas = filasRevision.value;
@@ -318,13 +543,6 @@ const resumenRevision = computed(() => {
         actualiza: filas.filter((fila) => fila.estado === 'actualiza').length,
     };
 });
-
-const formatoReloj = (horasDecimales) => {
-    const valor = Number(horasDecimales || 0);
-    const horas = Math.floor(valor);
-    const minutos = Math.round((valor - horas) * 60);
-    return `${horas} h ${String(minutos).padStart(2, '0')} m`;
-};
 
 const formatoFecha = (fecha) => {
     if (!fecha) return '--';
@@ -387,21 +605,21 @@ const cambiarPaginaRevision = (delta) => {
     );
 };
 
-watch([busquedaUltimosRegistros, empleadoRegistrosId, ordenUltimosRegistros], () => {
+watch([busquedaUltimosRegistros, empleadoRegistrosId, ordenUltimosRegistros, fechaSemanaReferencia], () => {
     paginaUltimosRegistros.value = 1;
 });
 
-watch(asistenciasFiltradas, () => {
+watch(filasMatrizAsistencias, () => {
     if (paginaUltimosRegistros.value > totalPaginasUltimosRegistros.value) {
         paginaUltimosRegistros.value = totalPaginasUltimosRegistros.value;
     }
 });
 
-watch(busquedaRevision, () => {
+watch([busquedaRevision, fechaRevisionReferencia], () => {
     paginaRevision.value = 1;
 });
 
-watch(filasRevisionFiltradas, () => {
+watch(filasMatrizRevision, () => {
     if (paginaRevision.value > totalPaginasRevision.value) {
         paginaRevision.value = totalPaginasRevision.value;
     }
@@ -492,6 +710,75 @@ const limpiarFiltrosRegistros = () => {
     paginaUltimosRegistros.value = 1;
 };
 
+const cambiarSemana = (destino, delta) => {
+    const referencia = destino === 'revision' ? fechaRevisionReferencia.value : fechaSemanaReferencia.value;
+    const nuevaFecha = sumarDiasFecha(inicioSemanaNomina(referencia), delta * 7);
+
+    if (destino === 'revision') {
+        fechaRevisionReferencia.value = nuevaFecha;
+        return;
+    }
+
+    fechaSemanaReferencia.value = nuevaFecha;
+};
+
+const irSemanaActual = (destino) => {
+    const hoy = fechaIsoLocal(new Date());
+
+    if (destino === 'revision') {
+        fechaRevisionReferencia.value = hoy;
+        return;
+    }
+
+    fechaSemanaReferencia.value = hoy;
+};
+
+const formatoHoraMatriz = (hora) => hora ? hora.substring(0, 5) : '';
+
+const formatoHorasResumen = (valor) => {
+    const numero = Number(valor || 0);
+
+    if (numero === 0) return '0';
+    if (Number.isInteger(numero)) return String(numero);
+
+    return numero.toFixed(2).replace(/\.?0+$/, '');
+};
+
+const etiquetaTipoCorta = (tipo) => {
+    if (tipo === 'Falta') return 'FALTA';
+    if (tipo === 'Incapacidad') return 'INCAP.';
+    if (tipo === 'Vacaciones') return 'VAC.';
+    return 'NORMAL';
+};
+
+const claseCeldaAsistencia = (registro) => {
+    if (!registro) return 'asistencia-cell-empty';
+    if (registro.tipo_asistencia === 'Falta') return 'asistencia-cell-falta';
+    if (registro.tipo_asistencia === 'Incapacidad') return 'asistencia-cell-incapacidad';
+    if (registro.tipo_asistencia === 'Vacaciones') return 'asistencia-cell-vacaciones';
+    if (Number(registro.minutos_tarde || 0) >= 30) return 'asistencia-cell-retardo';
+
+    return 'asistencia-cell-normal';
+};
+
+const claseFilaRevision = (fila) => {
+    if (!fila) return 'asistencia-cell-empty';
+    if (!fila.aprobado) return 'asistencia-cell-omitida';
+    if (fila.tipo_asistencia === 'Falta') return 'asistencia-cell-falta';
+    if (fila.tipo_asistencia === 'Incapacidad') return 'asistencia-cell-incapacidad';
+    if (fila.tipo_asistencia === 'Vacaciones') return 'asistencia-cell-vacaciones';
+    if (fila.estado === 'incompleta') return 'asistencia-cell-incompleta';
+
+    return 'asistencia-cell-normal';
+};
+
+const sincronizarEmpleadoGrupoRevision = (grupo, empleadoId) => {
+    grupo.filas.forEach((fila) => {
+        fila.empleado_id = empleadoId ? Number(empleadoId) : null;
+        sincronizarEmpleadoFila(fila);
+    });
+};
+
 const eliminarAsistencia = (id) => {
     if (confirm('Estas seguro de eliminar este registro? Puede afectar calculos ya generados.')) {
         router.delete(route('asistencias.destroy', id));
@@ -518,6 +805,13 @@ const aplicarReglasFilaRevision = (fila) => {
     const empleado = empleadosPorId.value.get(Number(fila.empleado_id));
 
     if (!empleado) {
+        return;
+    }
+
+    if (esEmpleadoEstudiante(empleado)) {
+        fila.horas_trabajadas = Number(fila.horas_trabajadas || 0) + Number(fila.horas_extra || 0);
+        fila.horas_extra = 0;
+        fila.minutos_tarde = 0;
         return;
     }
 
@@ -683,7 +977,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
 
         <div class="page-shell">
             <div class="content-wrap space-y-6">
-                <div class="tab-strip sm:grid-cols-2 md:grid-cols-4">
+                <div class="tab-strip sm:grid-cols-2 md:grid-cols-5">
                     <button
                         @click="tabActiva = 'captura'"
                         :class="tabActiva === 'captura' ? 'bg-white text-teal-700 shadow font-bold' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'"
@@ -723,6 +1017,13 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                         <i class="ti ti-user-x" aria-hidden="true"></i>
                         Control Faltas
                     </button>
+                    <Link
+                        :href="route('asistencias.alumnos-horas')"
+                        class="tab-button text-slate-600 hover:bg-slate-200 hover:text-slate-800"
+                    >
+                        <i class="ti ti-school" aria-hidden="true"></i>
+                        Horas Alumnos
+                    </Link>
                 </div>
 
                 <div v-show="tabActiva === 'captura'" class="space-y-8 animate-fade-in">
@@ -903,21 +1204,53 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                     </section>
 
                     <section id="ultimos-registros" class="app-panel scroll-mt-6">
-                        <div class="panel-header">
-                            <div class="flex items-start gap-3">
-                                <div class="soft-icon-teal">
-                                    <i class="ti ti-list-check text-xl" aria-hidden="true"></i>
+                        <div class="border-b border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 px-5 py-5 sm:px-6">
+                            <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                                <div class="flex min-w-0 items-start gap-3">
+                                    <div class="soft-icon-teal">
+                                        <i class="ti ti-table-options text-xl" aria-hidden="true"></i>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <h3 class="panel-title">Asistencias por semana</h3>
+                                        <div class="mt-2 flex flex-wrap gap-2 text-xs font-bold">
+                                            <span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-teal-700">
+                                                {{ totalRegistrosSemana }} registros
+                                            </span>
+                                            <span class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-blue-700">
+                                                {{ filasMatrizAsistencias.length }} empleados
+                                            </span>
+                                            <span v-if="empleadoRegistrosSeleccionado" class="max-w-full truncate rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-700">
+                                                {{ etiquetaEmpleado(empleadoRegistrosSeleccionado) }}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div>
-                                <h3 class="panel-title">Ultimos registros</h3>
-                                <p class="panel-subtitle">
-                                    {{ asistenciasFiltradas.length }} asistencia(s) visibles
-                                    <span v-if="empleadoRegistrosSeleccionado">de {{ etiquetaEmpleado(empleadoRegistrosSeleccionado) }}</span>
-                                </p>
+
+                                <div class="flex w-full flex-col gap-2 sm:flex-row sm:items-end xl:w-auto xl:justify-end">
+                                    <div class="grid w-full grid-cols-[2.75rem_1fr_3.25rem_2.75rem] gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm sm:w-[34rem]">
+                                        <button type="button" class="btn-secondary h-11 px-0 text-xs" @click="cambiarSemana('registros', -1)">
+                                            <i class="ti ti-chevron-left" aria-hidden="true"></i>
+                                        </button>
+                                        <label class="block min-w-0">
+                                            <span class="field-label mb-1">Semana</span>
+                                            <input v-model="fechaSemanaReferencia" type="date" class="field-input-soft h-11" />
+                                        </label>
+                                        <button type="button" class="btn-secondary h-11 px-0 text-xs" @click="irSemanaActual('registros')">
+                                            Hoy
+                                        </button>
+                                        <button type="button" class="btn-secondary h-11 px-0 text-xs" @click="cambiarSemana('registros', 1)">
+                                            <i class="ti ti-chevron-right" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                    <a :href="exportarSemanaUrl" class="btn-accent h-11 w-full justify-center text-xs sm:w-auto">
+                                        <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
+                                        Exportar Excel
+                                    </a>
                                 </div>
                             </div>
-                            <div class="flex w-full flex-col gap-3 xl:w-auto xl:flex-row xl:items-end">
-                                <label class="block w-full xl:w-72">
+
+                            <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_14rem_minmax(16rem,1fr)_auto] lg:items-end">
+                                <label class="block">
                                     <span class="field-label mb-1">Empleado</span>
                                     <select v-model="empleadoRegistrosId" class="field-input-soft">
                                         <option value="">Todos los empleados</option>
@@ -926,7 +1259,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                         </option>
                                     </select>
                                 </label>
-                                <label class="block w-full sm:w-56">
+                                <label class="block">
                                     <span class="field-label mb-1">Ordenar por</span>
                                     <select v-model="ordenUltimosRegistros" class="field-input-soft">
                                         <option value="fecha_desc">Fecha reciente</option>
@@ -936,7 +1269,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                         <option value="nombre_desc">Nombre Z - A</option>
                                     </select>
                                 </label>
-                                <div class="w-full sm:w-80">
+                                <div>
                                     <span class="field-label mb-1 block">Buscar</span>
                                     <div class="relative">
                                         <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
@@ -953,7 +1286,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                 <button
                                     v-if="empleadoRegistrosId || busquedaUltimosRegistros || ordenUltimosRegistros !== 'fecha_desc'"
                                     type="button"
-                                    class="btn-secondary w-full justify-center text-xs xl:w-auto"
+                                    class="btn-secondary h-11 w-full justify-center text-xs lg:w-auto"
                                     @click="limpiarFiltrosRegistros"
                                 >
                                     <i class="ti ti-filter-x" aria-hidden="true"></i>
@@ -962,61 +1295,82 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                             </div>
                         </div>
 
+                        <div class="flex flex-col gap-1 border-b border-slate-100 bg-slate-50/70 px-5 py-3 text-sm font-bold text-slate-700 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                            <span>Semana del <span class="text-teal-700">{{ rangoSemanaRegistros }}</span></span>
+                            <span class="text-xs text-slate-500">Página {{ paginaUltimosRegistros }} de {{ totalPaginasUltimosRegistros }}</span>
+                        </div>
+
                         <div class="overflow-x-auto">
-                            <table class="table-premium">
+                            <table class="asistencia-week-table">
                                 <thead>
+                                    <tr class="asistencia-title-row">
+                                        <th colspan="13">LUGARTH - PROMATEC 2026 - NOMINA PACHUCA</th>
+                                    </tr>
                                     <tr>
-                                        <th>Num</th>
-                                        <th>Empleado</th>
-                                        <th>Fecha</th>
-                                        <th>Tipo</th>
-                                        <th>Entrada</th>
-                                        <th>Salida</th>
-                                        <th class="text-right">Tarde</th>
-                                        <th class="text-right">Normales</th>
-                                        <th class="text-right">Extra</th>
-                                        <th class="text-right">Acciones</th>
+                                        <th class="w-14">No.</th>
+                                        <th class="min-w-72">Nombre</th>
+                                        <th v-for="dia in fechasSemanaRegistros" :key="dia.iso" class="min-w-40 text-center">
+                                            {{ dia.nombre }} {{ dia.diaMes }}
+                                        </th>
+                                        <th class="text-center">Reg.</th>
+                                        <th class="text-center">Faltas</th>
+                                        <th class="text-center">H.E.</th>
+                                        <th class="text-center">Ret.</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="asistencia in asistenciasPaginadas" :key="asistencia.id">
-                                        <td class="whitespace-nowrap font-bold text-slate-500">{{ asistencia.empleado?.numero_empleado || 'S/N' }}</td>
-                                        <td class="min-w-56 whitespace-nowrap font-semibold text-slate-900">{{ asistencia.empleado?.nombre_completo || 'Sin empleado' }}</td>
-                                        <td class="whitespace-nowrap text-slate-600">{{ formatoFecha(asistencia.fecha) }}</td>
-                                        <td class="whitespace-nowrap">
-                                            <span class="status-pill" :class="claseTipo(asistencia.tipo_asistencia)">
-                                                {{ asistencia.tipo_asistencia }}
-                                            </span>
+                                    <tr v-for="fila in filasMatrizAsistenciasPaginadas" :key="fila.empleado.id">
+                                        <td class="text-center font-black text-slate-700">{{ numeroEmpleado(fila.empleado) || 'S/N' }}</td>
+                                        <td>
+                                            <div class="font-black uppercase text-slate-950">{{ fila.empleado.nombre_completo }}</div>
+                                            <div class="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Firma</div>
                                         </td>
-                                        <td class="whitespace-nowrap">{{ formatoHora(asistencia.hora_entrada) }}</td>
-                                        <td class="whitespace-nowrap">{{ formatoHora(asistencia.hora_salida) }}</td>
-                                        <td class="whitespace-nowrap text-right">{{ asistencia.minutos_tarde }} min</td>
-                                        <td class="whitespace-nowrap text-right">{{ formatoReloj(asistencia.horas_trabajadas) }}</td>
-                                        <td class="whitespace-nowrap text-right">{{ formatoReloj(asistencia.horas_extra) }}</td>
-                                        <td class="whitespace-nowrap text-right">
-                                            <div class="inline-flex items-center gap-2">
-                                                <button @click="editarAsistencia(asistencia)" class="icon-button" type="button" title="Editar">
-                                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" />
-                                                    </svg>
-                                                </button>
-                                                <button @click="eliminarAsistencia(asistencia.id)" class="icon-button-danger" type="button" title="Eliminar">
-                                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166M19.228 5.79 18.16 19.673A2.25 2.25 0 0 1 15.916 21H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                                                    </svg>
-                                                </button>
-                                            </div>
+                                        <td
+                                            v-for="dia in fila.dias"
+                                            :key="`${fila.empleado.id}-${dia.iso}`"
+                                            class="asistencia-day-cell"
+                                            :class="claseCeldaAsistencia(dia.asistencia)"
+                                        >
+                                            <template v-if="dia.asistencia">
+                                                <div class="cell-main">
+                                                    <template v-if="dia.asistencia.tipo_asistencia === 'Normal'">
+                                                        {{ formatoHoraMatriz(dia.asistencia.hora_entrada) || '--' }}
+                                                        <span class="text-slate-400">/</span>
+                                                        {{ formatoHoraMatriz(dia.asistencia.hora_salida) || '--' }}
+                                                    </template>
+                                                    <template v-else>
+                                                        {{ etiquetaTipoCorta(dia.asistencia.tipo_asistencia) }}
+                                                    </template>
+                                                </div>
+                                                <div class="cell-meta">
+                                                    <span>H.E. {{ formatoHorasResumen(dia.asistencia.horas_extra) }}</span>
+                                                    <span>Ret. {{ Number(dia.asistencia.minutos_tarde || 0) }}</span>
+                                                </div>
+                                                <div class="cell-actions">
+                                                    <button @click="editarAsistencia(dia.asistencia)" type="button" title="Editar">
+                                                        <i class="ti ti-pencil" aria-hidden="true"></i>
+                                                    </button>
+                                                    <button @click="eliminarAsistencia(dia.asistencia.id)" type="button" title="Eliminar">
+                                                        <i class="ti ti-trash" aria-hidden="true"></i>
+                                                    </button>
+                                                </div>
+                                            </template>
+                                            <span v-else class="cell-empty">--</span>
                                         </td>
+                                        <td class="text-center font-black">{{ fila.totalRegistros }}</td>
+                                        <td class="text-center font-black" :class="fila.totalFaltas > 0 ? 'text-rose-600' : 'text-slate-400'">{{ fila.totalFaltas }}</td>
+                                        <td class="text-center font-black text-blue-700">{{ formatoHorasResumen(fila.totalExtras) }}</td>
+                                        <td class="text-center font-black" :class="fila.totalRetardos >= 30 ? 'text-orange-600' : 'text-slate-400'">{{ fila.totalRetardos }}</td>
                                     </tr>
-                                    <tr v-if="asistenciasFiltradas.length === 0">
-                                        <td colspan="10" class="empty-state">No hay asistencias registradas.</td>
+                                    <tr v-if="filasMatrizAsistencias.length === 0">
+                                        <td colspan="13" class="empty-state">No se encontraron trabajadores para esta semana.</td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
 
-                        <div v-if="asistenciasFiltradas.length > 0" class="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 text-sm font-semibold text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-                            <span>Mostrando {{ rangoPagina(paginaUltimosRegistros, asistenciasFiltradas.length) }}</span>
+                        <div v-if="filasMatrizAsistencias.length > 0" class="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 text-sm font-semibold text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+                            <span>Mostrando {{ rangoPagina(paginaUltimosRegistros, filasMatrizAsistencias.length) }}</span>
                             <div class="flex items-center gap-2">
                                 <button
                                     type="button"
@@ -1110,104 +1464,138 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                         Ordenado por empleado
                                     </span>
                                 </div>
-                                <label class="block w-full lg:w-96">
-                                    <span class="field-label mb-1">Buscar en revision</span>
-                                    <input v-model="busquedaRevision" type="text" class="field-input-soft" placeholder="Numero, nombre, fecha o estado..." />
-                                </label>
+                                <div class="grid w-full gap-3 xl:w-auto xl:grid-cols-[auto_1fr_auto_auto_1.4fr] xl:items-end">
+                                    <button type="button" class="btn-secondary px-3 text-xs" @click="cambiarSemana('revision', -1)">
+                                        <i class="ti ti-chevron-left" aria-hidden="true"></i>
+                                    </button>
+                                    <label class="block">
+                                        <span class="field-label mb-1">Semana a revisar</span>
+                                        <input v-model="fechaRevisionReferencia" type="date" class="field-input-soft" />
+                                    </label>
+                                    <button type="button" class="btn-secondary px-3 text-xs" @click="irSemanaActual('revision')">
+                                        Hoy
+                                    </button>
+                                    <button type="button" class="btn-secondary px-3 text-xs" @click="cambiarSemana('revision', 1)">
+                                        <i class="ti ti-chevron-right" aria-hidden="true"></i>
+                                    </button>
+                                    <label class="block">
+                                        <span class="field-label mb-1">Buscar en revision</span>
+                                        <input v-model="busquedaRevision" type="text" class="field-input-soft" placeholder="Numero, nombre, fecha o estado..." />
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm font-bold text-blue-900">
+                                Vista semanal del CSV: <span class="text-blue-700">{{ rangoSemanaRevision }}</span>
                             </div>
 
                             <div class="overflow-x-auto rounded-lg border border-slate-200">
-                                <table class="table-premium">
+                                <table class="asistencia-week-table revision-week-table">
                                     <thead>
+                                        <tr class="asistencia-title-row">
+                                            <th colspan="13">REVISION CSV - ASISTENCIAS POR EMPLEADO</th>
+                                        </tr>
                                         <tr>
-                                            <th class="w-12 text-center">OK</th>
-                                            <th>Estado</th>
-                                            <th>Empleado</th>
-                                            <th>Fecha</th>
-                                            <th>Tipo</th>
-                                            <th>Entrada</th>
-                                            <th>Salida</th>
-                                            <th class="text-right">Marcas</th>
-                                            <th class="text-right">Normales</th>
-                                            <th class="text-right">Extra</th>
-                                            <th class="text-right">Acciones</th>
+                                            <th class="w-14">No.</th>
+                                            <th class="min-w-80">Empleado</th>
+                                            <th v-for="dia in fechasSemanaRevision" :key="dia.iso" class="min-w-52 text-center">
+                                                {{ dia.nombre }} {{ dia.diaMes }}
+                                            </th>
+                                            <th class="text-center">Sel.</th>
+                                            <th class="text-center">Faltas</th>
+                                            <th class="text-center">H.E.</th>
+                                            <th class="text-center">Ret.</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="fila in filasRevisionPaginadas" :key="fila._uid" :class="!fila.aprobado ? 'bg-slate-50/80 opacity-75' : ''">
-                                            <td class="text-center">
-                                                <input
-                                                    v-model="fila.aprobado"
-                                                    type="checkbox"
-                                                    :disabled="!fila.empleado_id"
-                                                    class="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                                                />
-                                            </td>
-                                            <td class="min-w-40">
-                                                <span class="status-pill" :class="claseEstadoRevision(fila.estado)">
-                                                    {{ textoEstadoRevision(fila.estado) }}
-                                                </span>
-                                                <p class="mt-1 max-w-48 text-xs text-slate-500">{{ fila.mensaje }}</p>
-                                            </td>
-                                            <td class="min-w-72">
-                                                <select v-model.number="fila.empleado_id" @change="sincronizarEmpleadoFila(fila)" class="field-input-soft min-w-64">
-                                                    <option :value="null">Sin empleado</option>
-                                                    <option v-for="empleado in empleados" :key="empleado.id" :value="empleado.id">
+                                        <tr v-for="grupo in filasMatrizRevisionPaginadas" :key="grupo.key">
+                                            <td class="text-center font-black text-slate-700">{{ grupo.numero_empleado || 'S/N' }}</td>
+                                            <td>
+                                                <select
+                                                    :value="grupo.empleado_id || ''"
+                                                    @change="sincronizarEmpleadoGrupoRevision(grupo, $event.target.value)"
+                                                    class="field-input-soft min-w-72 text-xs font-bold"
+                                                >
+                                                    <option value="">Sin empleado</option>
+                                                    <option v-for="empleado in empleadosOrdenadosFiltro" :key="empleado.id" :value="empleado.id">
                                                         {{ empleado.numero_empleado ? '#' + empleado.numero_empleado + ' - ' : '' }}{{ empleado.nombre_completo }}
                                                     </option>
                                                 </select>
                                                 <p class="mt-1 text-xs font-semibold text-slate-500">
-                                                    CSV: {{ fila.csv_numero_empleado || 'S/N' }} - {{ fila.csv_nombre_completo || 'Sin nombre' }}
+                                                    CSV: {{ grupo.csv_numero_empleado || grupo.numero_empleado || 'S/N' }} - {{ grupo.csv_nombre_completo || grupo.nombre_completo || 'Sin nombre' }}
                                                 </p>
                                             </td>
-                                            <td class="min-w-40">
-                                                <input v-model="fila.fecha" type="date" class="field-input-soft min-w-36" @change="calcularHorasFilaRevision(fila)" />
+                                            <td
+                                                v-for="dia in grupo.dias"
+                                                :key="`${grupo.key}-${dia.iso}`"
+                                                class="asistencia-day-cell revision-day-cell"
+                                                :class="claseFilaRevision(dia.fila)"
+                                            >
+                                                <template v-if="dia.fila">
+                                                    <div class="mb-2 flex items-center justify-between gap-2">
+                                                        <label class="inline-flex items-center gap-1 text-[10px] font-black uppercase text-slate-600">
+                                                            <input
+                                                                v-model="dia.fila.aprobado"
+                                                                type="checkbox"
+                                                                :disabled="!dia.fila.empleado_id"
+                                                                class="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                                            />
+                                                            OK
+                                                        </label>
+                                                        <button @click="descartarFilaRevision(dia.fila._uid)" class="text-rose-600 hover:text-rose-700" type="button" title="Quitar fila">
+                                                            <i class="ti ti-x" aria-hidden="true"></i>
+                                                        </button>
+                                                    </div>
+                                                    <span class="status-pill mb-2" :class="claseEstadoRevision(dia.fila.estado)">
+                                                        {{ textoEstadoRevision(dia.fila.estado) }}
+                                                    </span>
+                                                    <input v-model="dia.fila.fecha" type="date" class="mini-field mb-2" @change="calcularHorasFilaRevision(dia.fila)" />
+                                                    <select v-model="dia.fila.tipo_asistencia" @change="prepararCambioTipo(dia.fila)" class="mini-field mb-2">
+                                                        <option v-for="tipo in tiposAsistencia" :key="tipo" :value="tipo">{{ tipo }}</option>
+                                                    </select>
+                                                    <div class="grid grid-cols-2 gap-2">
+                                                        <input
+                                                            v-model="dia.fila.hora_entrada"
+                                                            type="time"
+                                                            :disabled="dia.fila.tipo_asistencia !== 'Normal'"
+                                                            @change="calcularHorasFilaRevision(dia.fila)"
+                                                            class="mini-field"
+                                                            :class="dia.fila.tipo_asistencia !== 'Normal' ? 'cursor-not-allowed opacity-50' : ''"
+                                                        />
+                                                        <input
+                                                            v-model="dia.fila.hora_salida"
+                                                            type="time"
+                                                            :disabled="dia.fila.tipo_asistencia !== 'Normal'"
+                                                            @change="calcularHorasFilaRevision(dia.fila)"
+                                                            class="mini-field"
+                                                            :class="dia.fila.tipo_asistencia !== 'Normal' ? 'cursor-not-allowed opacity-50' : ''"
+                                                        />
+                                                    </div>
+                                                    <div class="mt-2 grid grid-cols-3 gap-1 text-center text-[10px] font-black uppercase text-slate-500">
+                                                        <span>{{ dia.fila.marcas }} m.</span>
+                                                        <span>{{ formatoHorasResumen(dia.fila.horas_extra) }} H.E.</span>
+                                                        <span>{{ Number(dia.fila.minutos_tarde || 0) }} ret.</span>
+                                                    </div>
+                                                    <p v-if="dia.fila.mensaje" class="mt-2 line-clamp-2 text-[10px] font-semibold text-slate-500">
+                                                        {{ dia.fila.mensaje }}
+                                                    </p>
+                                                </template>
+                                                <span v-else class="cell-empty">--</span>
                                             </td>
-                                            <td class="min-w-44">
-                                                <select v-model="fila.tipo_asistencia" @change="prepararCambioTipo(fila)" class="field-input-soft min-w-40">
-                                                    <option v-for="tipo in tiposAsistencia" :key="tipo" :value="tipo">{{ tipo }}</option>
-                                                </select>
-                                            </td>
-                                            <td class="min-w-32">
-                                                <input
-                                                    v-model="fila.hora_entrada"
-                                                    type="time"
-                                                    :disabled="fila.tipo_asistencia !== 'Normal'"
-                                                    @change="calcularHorasFilaRevision(fila)"
-                                                    class="field-input-soft min-w-28"
-                                                    :class="fila.tipo_asistencia !== 'Normal' ? 'cursor-not-allowed opacity-50' : ''"
-                                                />
-                                            </td>
-                                            <td class="min-w-32">
-                                                <input
-                                                    v-model="fila.hora_salida"
-                                                    type="time"
-                                                    :disabled="fila.tipo_asistencia !== 'Normal'"
-                                                    @change="calcularHorasFilaRevision(fila)"
-                                                    class="field-input-soft min-w-28"
-                                                    :class="fila.tipo_asistencia !== 'Normal' ? 'cursor-not-allowed opacity-50' : ''"
-                                                />
-                                            </td>
-                                            <td class="whitespace-nowrap text-right font-semibold">{{ fila.marcas }}</td>
-                                            <td class="whitespace-nowrap text-right">{{ formatoReloj(fila.horas_trabajadas) }}</td>
-                                            <td class="whitespace-nowrap text-right">{{ formatoReloj(fila.horas_extra) }}</td>
-                                            <td class="whitespace-nowrap text-right">
-                                                <button @click="descartarFilaRevision(fila._uid)" class="icon-button-danger" type="button" title="Quitar fila">
-                                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18 18 6M6 6l12 12" />
-                                                    </svg>
-                                                </button>
-                                            </td>
+                                            <td class="text-center font-black text-emerald-700">{{ grupo.filas.filter((fila) => fila.aprobado && fila.empleado_id).length }}</td>
+                                            <td class="text-center font-black text-rose-600">{{ grupo.filas.filter((fila) => fila.tipo_asistencia === 'Falta').length }}</td>
+                                            <td class="text-center font-black text-blue-700">{{ formatoHorasResumen(grupo.filas.reduce((total, fila) => total + Number(fila.horas_extra || 0), 0)) }}</td>
+                                            <td class="text-center font-black text-orange-600">{{ grupo.filas.reduce((total, fila) => total + Number(fila.minutos_tarde || 0), 0) }}</td>
                                         </tr>
-                                        <tr v-if="filasRevisionFiltradas.length === 0">
-                                            <td colspan="11" class="empty-state">No se encontraron filas en la revision.</td>
+                                        <tr v-if="filasMatrizRevision.length === 0">
+                                            <td colspan="13" class="empty-state">No se encontraron filas en esta semana de revision.</td>
                                         </tr>
                                     </tbody>
                                 </table>
                             </div>
 
-                            <div v-if="filasRevisionFiltradas.length > 0" class="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-                                <span>Mostrando {{ rangoPagina(paginaRevision, filasRevisionFiltradas.length) }}</span>
+                            <div v-if="filasMatrizRevision.length > 0" class="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+                                <span>Mostrando {{ rangoPagina(paginaRevision, filasMatrizRevision.length) }}</span>
                                 <div class="flex items-center gap-2">
                                     <button
                                         type="button"
@@ -1444,6 +1832,144 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
 <style scoped>
 .animate-fade-in {
     animation: fadeIn 0.3s ease-in-out;
+}
+
+.asistencia-week-table {
+    min-width: 1420px;
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    font-size: 12px;
+}
+
+.asistencia-week-table th,
+.asistencia-week-table td {
+    border: 1px solid #cbd5e1;
+    padding: 8px;
+    vertical-align: middle;
+}
+
+.asistencia-week-table thead th {
+    background: #f8fafc;
+    color: #0f172a;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.asistencia-week-table tbody tr:hover td {
+    background-color: #f8fafc;
+}
+
+.asistencia-title-row th {
+    background: #ffffff !important;
+    color: #0f172a;
+    font-size: 14px;
+    letter-spacing: 0;
+    text-align: center;
+}
+
+.asistencia-day-cell {
+    min-width: 160px;
+    height: 96px;
+    vertical-align: top !important;
+}
+
+.revision-day-cell {
+    min-width: 208px;
+    height: 176px;
+}
+
+.asistencia-cell-empty {
+    background: #ffffff;
+    color: #94a3b8;
+}
+
+.asistencia-cell-normal {
+    background: #ffffff;
+}
+
+.asistencia-cell-retardo,
+.asistencia-cell-incompleta {
+    background: #fff7ed;
+}
+
+.asistencia-cell-falta {
+    background: #fff1f2;
+}
+
+.asistencia-cell-incapacidad {
+    background: #fffbeb;
+}
+
+.asistencia-cell-vacaciones {
+    background: #ecfdf5;
+}
+
+.asistencia-cell-omitida {
+    background: #f1f5f9;
+    opacity: 0.75;
+}
+
+.cell-main {
+    color: #0f172a;
+    font-size: 13px;
+    font-weight: 900;
+    text-align: center;
+}
+
+.cell-meta {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 6px;
+    color: #475569;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.cell-actions {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.cell-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    color: #475569;
+    background: #ffffff;
+    transition: 0.15s ease;
+}
+
+.cell-actions button:hover {
+    border-color: #0f766e;
+    color: #0f766e;
+}
+
+.cell-empty {
+    display: block;
+    text-align: center;
+    color: #cbd5e1;
+    font-weight: 900;
+}
+
+.mini-field {
+    width: 100%;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    padding: 6px 8px;
+    color: #0f172a;
+    font-size: 11px;
+    font-weight: 700;
 }
 
 @keyframes fadeIn {
