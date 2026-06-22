@@ -32,7 +32,6 @@ function isActive(routeName) {
   return route().current(routeName) || route().current(routeName + '.*')
 }
 
-// Función para el botón hamburguesa
 function toggleSidebar() {
   if (window.innerWidth < 1024) {
     isSidebarOpenMobile.value = !isSidebarOpenMobile.value
@@ -43,509 +42,95 @@ function toggleSidebar() {
 </script>
 
 <template>
-  <div class="layout-root">
+  <div class="flex min-h-screen bg-[#f4f7f9] font-['DM_Sans'] text-slate-800">
+    
+    <!-- Overlay Mobile -->
+    <div v-if="isSidebarOpenMobile" class="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm lg:hidden" @click="isSidebarOpenMobile = false"></div>
 
-    <div v-if="isSidebarOpenMobile" class="sidebar-overlay" @click="isSidebarOpenMobile = false"></div>
-
-    <aside :class="['sidebar', isSidebarCollapsedDesktop && !isSidebarOpenMobile ? 'sidebar--collapsed' : '', isSidebarOpenMobile ? 'sidebar--mobile-open' : '']">
-
-      <div class="sidebar-logo">
-        <div class="logo-badge">
-          <i class="ti ti-file-invoice" aria-hidden="true"></i>
+    <!-- Sidebar Premium -->
+    <aside :class="[
+      'fixed inset-y-0 left-0 z-50 flex flex-col bg-white border-r border-slate-200/60 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300 lg:sticky lg:top-0 lg:h-screen',
+      isSidebarCollapsedDesktop && !isSidebarOpenMobile ? 'w-20' : 'w-72',
+      isSidebarOpenMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+    ]">
+      <!-- Logo Area -->
+      <div class="flex h-20 shrink-0 items-center gap-3 border-b border-slate-100 px-5">
+        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white shadow-md shadow-blue-500/10 border border-slate-100 p-1.5">
+          <img :src="'/img/lugarth.png'" alt="LUGARTH" class="h-full w-full object-contain" />
         </div>
-        <div class="logo-text" v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile">
-          <p class="logo-name">PROMATEC</p>
-          <p class="logo-sub">LUGARTH</p>
+        <div v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="flex flex-col whitespace-nowrap transition-opacity">
+          <span class="font-['Sora'] text-sm font-extrabold tracking-wide text-slate-900 leading-tight">PROMATEC</span>
+          <span class="text-[10px] font-black tracking-[0.2em] text-blue-600">LUGARTH</span>
         </div>
       </div>
 
-      <nav class="sidebar-nav custom-scrollbar">
+      <!-- Navigation -->
+      <nav class="flex-1 overflow-y-auto overflow-x-hidden p-4 custom-scrollbar">
         <template v-for="group in navItems" :key="group.label">
-          <p v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="nav-section-label">{{ group.label }}</p>
-          <div v-show="isSidebarCollapsedDesktop && !isSidebarOpenMobile" class="nav-section-divider"></div>
+          <p v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="mb-2 mt-6 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">{{ group.label }}</p>
+          <div v-show="isSidebarCollapsedDesktop && !isSidebarOpenMobile" class="my-4 h-px w-full bg-slate-100"></div>
 
-          <Link
-            v-for="item in group.links"
-            :key="item.route"
-            :href="route(item.route)"
-            :class="['nav-item', { 'nav-item--active': isActive(item.route) }]"
-            :title="isSidebarCollapsedDesktop && !isSidebarOpenMobile ? item.name : ''"
-          >
-            <i :class="['ti', item.icon]" aria-hidden="true"></i>
-            <span v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="nav-item-text">{{ item.name }}</span>
+          <Link v-for="item in group.links" :key="item.route" :href="route(item.route)" :title="isSidebarCollapsedDesktop && !isSidebarOpenMobile ? item.name : ''"
+            :class="[
+              'group flex items-center gap-3 rounded-2xl px-3 py-3 mb-1.5 transition-all duration-300',
+              isActive(item.route) 
+                ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25 font-bold' 
+                : 'text-slate-500 hover:bg-blue-50/50 hover:text-blue-700 font-semibold'
+            ]">
+            <i :class="['ti text-xl transition-transform group-hover:scale-110 shrink-0', item.icon, isActive(item.route) ? 'text-white' : '']"></i>
+            <span v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="whitespace-nowrap text-sm">{{ item.name }}</span>
           </Link>
         </template>
       </nav>
-
     </aside>
 
-    <div class="main-wrapper">
-
-      <header class="topbar">
-        <div class="topbar-left">
-          <button class="hamburger-btn" @click="toggleSidebar" aria-label="Alternar menú">
-            <i class="ti ti-menu-2" aria-hidden="true"></i>
+    <!-- Main Wrapper -->
+    <div class="flex min-w-0 flex-1 flex-col">
+      <!-- Topbar Glassmorphism -->
+      <header class="sticky top-0 z-30 flex h-20 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/80 px-4 backdrop-blur-lg sm:px-8">
+        <div class="flex items-center gap-4">
+          <button @click="toggleSidebar" class="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:bg-slate-50 hover:text-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-500/10">
+            <i class="ti ti-menu-2 text-xl"></i>
           </button>
-          <p class="hidden sm:block topbar-system-name">Control de Nóminas</p>
-          <div class="hidden xl:flex topbar-health">
-            <span class="health-dot"></span>
-            Sistema activo
+          <div class="hidden items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 lg:flex">
+            <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></span> Sistema en línea
           </div>
         </div>
 
-        <div class="topbar-right">
-          <div class="user-profile">
-            <div class="user-info hidden sm:block">
-              <p class="user-name">{{ user?.name }}</p>
-              <p class="user-email">{{ user?.email }}</p>
+        <div class="flex items-center gap-4 sm:gap-6">
+          <div class="flex items-center gap-3">
+            <div class="hidden text-right sm:block">
+              <p class="text-sm font-bold text-slate-900">{{ user?.name }}</p>
+              <p class="text-[11px] font-semibold text-slate-400">{{ user?.email }}</p>
             </div>
-            <div class="user-avatar">{{ user?.name?.charAt(0)?.toUpperCase() ?? 'U' }}</div>
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 text-sm font-black text-white shadow-md shadow-indigo-500/20">
+              {{ user?.name?.charAt(0)?.toUpperCase() ?? 'U' }}
+            </div>
           </div>
-
-          <div class="topbar-divider"></div>
-
-          <Link :href="route('logout')" method="post" as="button" class="logout-btn" title="Cerrar sesión">
-            <i class="ti ti-logout" aria-hidden="true"></i>
+          <div class="h-8 w-px bg-slate-200"></div>
+          <Link :href="route('logout')" method="post" as="button" class="group flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-slate-500 transition-all hover:bg-rose-50 hover:text-rose-600">
+            <i class="ti ti-logout text-xl transition-transform group-hover:translate-x-1"></i>
             <span class="hidden sm:inline">Salir</span>
           </Link>
         </div>
       </header>
 
-      <main class="page-content">
-        <div class="page-container">
-          <section v-if="$slots.header" class="content-header">
+      <!-- Page Content -->
+      <main class="flex-1 overflow-x-hidden p-4 sm:p-8">
+        <div class="mx-auto max-w-7xl">
+          <section v-if="$slots.header" class="mb-6 rounded-3xl border border-slate-200/60 bg-white p-6 shadow-sm sm:mb-8 sm:p-8">
             <slot name="header" />
           </section>
           <slot />
         </div>
       </main>
-
     </div>
   </div>
 </template>
 
 <style scoped>
-/* ─── Fuentes & Reset ──────────────────────── */
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-.layout-root {
-  display: flex;
-  min-height: 100vh;
-  background:
-    linear-gradient(180deg, #f8fafc 0%, #eef4f8 100%);
-  font-family: 'DM Sans', sans-serif;
-  color: #334155;
-}
-
-/* ─── Sidebar ──────────────────────────────── */
-.sidebar {
-  width: 260px;
-  background: #0b1220;
-  border-right: 1px solid rgba(148, 163, 184, 0.18);
-  display: flex;
-  flex-direction: column;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  z-index: 40;
-  flex-shrink: 0;
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.sidebar--collapsed {
-  width: 80px;
-}
-
-.sidebar-overlay {
-  display: none;
-}
-
-/* ─── Logo ─────────────────────────────────── */
-.sidebar-logo {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 20px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
-  height: 72px; /* Alineado con el topbar */
-  overflow: hidden;
-}
-
-.logo-badge {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #14b8a6, #3b82f6);
-  box-shadow: 0 12px 26px rgba(20, 184, 166, 0.22);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.logo-badge i { font-size: 22px; color: #fff; }
-
-.logo-text {
-  display: flex;
-  flex-direction: column;
-  white-space: nowrap;
-}
-
-.logo-name {
-  font-family: 'Sora', sans-serif;
-  font-size: 14px;
-  font-weight: 700;
-  color: #f8fafc;
-  letter-spacing: 0.05em;
-  line-height: 1.2;
-}
-
-.logo-sub {
-  font-size: 10px;
-  color: #94a3b8;
-  letter-spacing: 0.1em;
-  font-weight: 600;
-}
-
-/* ─── Navegación ───────────────────────────── */
-.sidebar-nav {
-  flex: 1;
-  padding: 20px 12px;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.nav-section-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #64748b;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  padding: 0 12px;
-  margin: 16px 0 8px;
-  white-space: nowrap;
-}
-
-.nav-section-divider {
-  height: 1px;
-  background-color: rgba(148, 163, 184, 0.18);
-  margin: 16px 12px 8px;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #9aa7b8;
-  text-decoration: none;
-  transition: all 0.2s ease;
-  margin-bottom: 4px;
-  white-space: nowrap;
-}
-
-.nav-item i {
-  font-size: 20px;
-  flex-shrink: 0;
-  transition: color 0.2s ease;
-}
-
-.nav-item:hover {
-  background-color: rgba(148, 163, 184, 0.10);
-  color: #f8fafc;
-}
-
-.nav-item:hover i {
-  color: #0d9488;
-}
-
-.nav-item--active {
-  background: linear-gradient(135deg, rgba(20, 184, 166, 0.18), rgba(59, 130, 246, 0.15));
-  color: #ffffff;
-  box-shadow: inset 3px 0 0 #14b8a6;
-  font-weight: 600;
-}
-
-.nav-item--active i {
-  color: #5eead4;
-}
-
-/* Centrar iconos cuando está colapsado */
-.sidebar--collapsed .nav-item {
-  justify-content: center;
-  padding: 12px 0;
-}
-
-/* ─── Main Content & Topbar ────────────────── */
-.main-wrapper {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 72px;
-  padding: 0 24px;
-  background: rgba(255, 255, 255, 0.92);
-  border-bottom: 1px solid rgba(226, 232, 240, 0.86);
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.04);
-  backdrop-filter: blur(16px);
-}
-
-.topbar-left, .topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-width: 0;
-}
-
-.hamburger-btn {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  color: #64748b;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  font-size: 20px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.hamburger-btn:hover {
-  background: #e2e8f0;
-  color: #0f172a;
-}
-
-.topbar-system-name {
-  font-family: 'Sora', sans-serif;
-  font-weight: 600;
-  color: #0f172a;
-  font-size: 15px;
-}
-
-.topbar-health {
-  align-items: center;
-  gap: 8px;
-  border: 1px solid #d1fae5;
-  background: #ecfdf5;
-  color: #047857;
-  border-radius: 999px;
-  padding: 7px 12px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.health-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #10b981;
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14);
-}
-
-.user-profile {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.user-info {
-  text-align: right;
-}
-
-.user-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: #0f172a;
-  line-height: 1.2;
-}
-
-.user-email {
-  font-size: 11px;
-  color: #64748b;
-  font-weight: 500;
-}
-
-.user-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #0d9488, #2563eb);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  font-weight: 700;
-  color: #fff;
-  box-shadow: 0 2px 6px rgba(13, 148, 136, 0.2);
-}
-
-.topbar-divider {
-  width: 1px;
-  height: 32px;
-  background-color: #e2e8f0;
-  margin: 0 8px;
-}
-
-.logout-btn {
-  background: transparent;
-  border: 1px solid transparent;
-  color: #64748b;
-  font-size: 14px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: 10px;
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.logout-btn i { font-size: 20px; }
-
-.logout-btn:hover {
-  color: #e11d48;
-  background-color: #fff1f2;
-  border-color: #fecdd3;
-}
-
-/* ─── Contenedor de la Página ──────────────── */
-.page-content {
-  flex: 1;
-  padding: 28px;
-  overflow-y: auto;
-}
-
-.page-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.content-header {
-  margin-bottom: 24px;
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: 18px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94));
-  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.06);
-  padding: 20px 22px;
-}
-
-/* Custom Scrollbar */
-.custom-scrollbar::-webkit-scrollbar { width: 5px; }
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-/* ─── Responsive (Celulares y Tablets) ─────── */
-@media (max-width: 1023px) {
-  .layout-root {
-    display: block;
-  }
-
-  .sidebar {
-    position: fixed;
-    inset: 0 auto 0 0;
-    left: 0;
-    width: min(84vw, 300px);
-    max-width: 300px;
-    transform: translateX(-105%);
-    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-    z-index: 60;
-  }
-
-  .sidebar--collapsed {
-    width: min(84vw, 300px);
-  }
-
-  .sidebar--collapsed .nav-item {
-    justify-content: flex-start;
-    padding: 12px 14px;
-  }
-
-  .sidebar--mobile-open {
-    transform: translateX(0);
-    box-shadow: 18px 0 42px rgba(15, 23, 42, 0.22);
-  }
-
-  .sidebar-overlay {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(15, 23, 42, 0.48);
-    backdrop-filter: blur(2px);
-    z-index: 50;
-  }
-
-  .main-wrapper {
-    width: 100%;
-    min-height: 100vh;
-  }
-
-  .sidebar-logo {
-    padding: 16px 18px;
-  }
-
-  .topbar {
-    min-height: 64px;
-    height: auto;
-    padding: 10px 12px;
-    gap: 10px;
-  }
-
-  .topbar-left,
-  .topbar-right {
-    gap: 10px;
-  }
-
-  .page-content {
-    padding: 14px 12px 24px;
-  }
-
-  .content-header {
-    margin-bottom: 16px;
-    border-radius: 14px;
-    padding: 16px;
-  }
-
-  .topbar-divider {
-    display: none;
-  }
-
-  .logout-btn {
-    padding: 8px 10px;
-  }
-}
-
-@media (max-width: 640px) {
-  .hamburger-btn,
-  .user-avatar {
-    width: 38px;
-    height: 38px;
-    border-radius: 11px;
-  }
-
-  .page-content {
-    padding-inline: 10px;
-  }
-
-  .content-header {
-    padding: 14px;
-  }
-}
 </style>

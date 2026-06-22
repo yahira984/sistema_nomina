@@ -2,10 +2,9 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, useForm, router, Link } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+import { clavesFotoEmpleado, fotoEmpleadoSrc, mostrarFotoEmpleado, probarSiguienteFotoEmpleado } from '@/Utils/employeePhotos';
 
-const props = defineProps({
-    empleados: Array
-});
+const props = defineProps({ empleados: Array });
 
 const editando = ref(false);
 const empleadoId = ref(null);
@@ -15,8 +14,7 @@ const criterioOrdenDirectorio = ref('num_asc');
 
 const normalizarNumeroEmpleado = (numero) => {
     const texto = String(numero || '').trim();
-    const sinCeros = texto.replace(/^0+/, '');
-    return sinCeros || texto || '';
+    return texto.replace(/^0+/, '') || texto || '';
 };
 
 const valorNumeroEmpleado = (empleado) => {
@@ -28,51 +26,21 @@ const ordenarEmpleadosDirectorio = (empleados) => {
     return [...empleados].sort((a, b) => {
         if (criterioOrdenDirectorio.value === 'num_asc' || criterioOrdenDirectorio.value === 'num_desc') {
             const diferencia = valorNumeroEmpleado(a) - valorNumeroEmpleado(b);
-
-            if (diferencia !== 0) {
-                return criterioOrdenDirectorio.value === 'num_asc' ? diferencia : -diferencia;
-            }
+            if (diferencia !== 0) return criterioOrdenDirectorio.value === 'num_asc' ? diferencia : -diferencia;
         }
-
         const nombreA = String(a.nombre_completo || '');
         const nombreB = String(b.nombre_completo || '');
-
-        if (criterioOrdenDirectorio.value === 'nombre_desc') {
-            return nombreB.localeCompare(nombreA, 'es');
-        }
-
-        return nombreA.localeCompare(nombreB, 'es');
+        return criterioOrdenDirectorio.value === 'nombre_desc' ? nombreB.localeCompare(nombreA, 'es') : nombreA.localeCompare(nombreB, 'es');
     });
 };
 
 const form = useForm({
-    numero_empleado: '',
-    nombre_completo: '',
-    puesto: '',
-    fecha_ingreso: '', 
-    ajuste_vacaciones: 0, // <-- NUEVO: Para arrastrar las deudas del 2025
-    forma_pago: 'Efectivo',
-    es_estudiante: false, 
-    sueldo_semanal: '', 
-    sueldo_por_hora: '', 
-    saldo_prestamo: '', 
-    cuota_prestamo: '', 
-    descuento_imss: '', 
-    descuento_isr: '', 
-    descuento_infonavit: '', 
-    banco: '',
-    numero_cuenta: '',
-    nss: '',
-    rfc: '',
-    curp: '',
-    estado_civil: '',
-    genero: '',
-    fecha_nacimiento: '',
-    telefono: '',
-    correo: '',
-    direccion: '',
-    contacto_emergencia_nombre: '',
-    contacto_emergencia_telefono: ''
+    numero_empleado: '', nombre_completo: '', puesto: '', fecha_ingreso: '', ajuste_vacaciones: 0,
+    forma_pago: 'Efectivo', es_estudiante: false, sueldo_semanal: '', sueldo_por_hora: '',
+    saldo_prestamo: '', cuota_prestamo: '', descuento_imss: '', descuento_isr: '',
+    descuento_infonavit: '', banco: '', numero_cuenta: '', nss: '', rfc: '', curp: '',
+    estado_civil: '', genero: '', fecha_nacimiento: '', telefono: '', correo: '',
+    direccion: '', contacto_emergencia_nombre: '', contacto_emergencia_telefono: ''
 });
 
 const empleadosFiltrados = computed(() => {
@@ -84,15 +52,13 @@ const empleadosFiltrados = computed(() => {
     });
 
     if (searchQuery.value) {
-        resultado = resultado.filter(emp => {
-            const query = searchQuery.value.toLowerCase();
-            const nombreMatch = emp.nombre_completo.toLowerCase().includes(query);
-            const numeroMatch = (emp.numero_empleado && emp.numero_empleado.toLowerCase().includes(query))
-                || (emp.numero_empleado_baja && emp.numero_empleado_baja.toLowerCase().includes(query));
-            return nombreMatch || numeroMatch;
-        });
+        const query = searchQuery.value.toLowerCase();
+        resultado = resultado.filter(emp => 
+            emp.nombre_completo.toLowerCase().includes(query) || 
+            (emp.numero_empleado && emp.numero_empleado.toLowerCase().includes(query)) ||
+            (emp.numero_empleado_baja && emp.numero_empleado_baja.toLowerCase().includes(query))
+        );
     }
-
     return ordenarEmpleadosDirectorio(resultado);
 });
 
@@ -100,8 +66,7 @@ const empleadosActivos = computed(() => props.empleados.filter(emp => Boolean(Nu
 const empleadosBaja = computed(() => props.empleados.length - empleadosActivos.value);
 const tituloDirectorio = computed(() => {
     if (filtroEstado.value === 'papelera') return 'Papelera de bajas';
-    if (filtroEstado.value === 'prestamo') return 'Empleados con prestamo';
-
+    if (filtroEstado.value === 'prestamo') return 'Empleados con préstamo';
     return 'Directorio activo';
 });
 
@@ -110,87 +75,38 @@ const esEstudiante = (empleado) => Boolean(Number(empleado.es_estudiante ?? 0));
 const sueldoSemanalEmpleado = (empleado) => {
     const sueldoSemanal = Number(empleado.sueldo_semanal ?? 0);
     if (sueldoSemanal > 0) return sueldoSemanal.toFixed(2);
-
     const sueldoPorHora = Number(empleado.sueldo_por_hora ?? 0);
     return sueldoPorHora > 0 ? (sueldoPorHora * 56).toFixed(2) : '0.00';
 };
 
-const moneda = (valor) => Number(valor ?? 0).toLocaleString('es-MX', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-});
-
+const moneda = (valor) => Number(valor ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const saldoPrestamoEmpleado = (empleado) => Number(empleado.saldo_prestamo ?? 0);
 const tieneDeuda = (empleado) => saldoPrestamoEmpleado(empleado) > 0;
 const empleadosConDeuda = computed(() => props.empleados.filter(emp => Boolean(Number(emp.estatus ?? 0)) && tieneDeuda(emp)).length);
 
 const submitForm = () => {
-    if (Number(form.saldo_prestamo || 0) <= 0) {
-        form.cuota_prestamo = 0;
-    }
-
+    if (Number(form.saldo_prestamo || 0) <= 0) form.cuota_prestamo = 0;
     if (editando.value) {
-        form.put(route('empleados.update', empleadoId.value), {
-            onSuccess: () => cancelarEdicion()
-        });
+        form.put(route('empleados.update', empleadoId.value), { onSuccess: () => cancelarEdicion() });
     } else {
-        form.post(route('empleados.store'), {
-            onSuccess: () => form.reset()
-        });
+        form.post(route('empleados.store'), { onSuccess: () => form.reset() });
     }
 };
 
 const editarEmpleado = (empleado) => {
     editando.value = true;
     empleadoId.value = empleado.id;
-    form.numero_empleado = empleado.numero_empleado || '';
-    form.nombre_completo = empleado.nombre_completo;
-    form.puesto = empleado.puesto || '';
-    form.fecha_ingreso = empleado.fecha_ingreso || '';
-    form.ajuste_vacaciones = empleado.ajuste_vacaciones || 0; // <-- NUEVO: Para que cargue el dato al editar
+    Object.keys(form.data()).forEach(key => form[key] = empleado[key] ?? form[key]);
+    form.ajuste_vacaciones = empleado.ajuste_vacaciones || 0;
     form.forma_pago = empleado.forma_pago || 'Efectivo';
     form.es_estudiante = esEstudiante(empleado);
-    form.sueldo_semanal = empleado.sueldo_semanal || '';
-    form.sueldo_por_hora = empleado.sueldo_por_hora || '';
-    form.saldo_prestamo = empleado.saldo_prestamo || ''; 
     form.cuota_prestamo = saldoPrestamoEmpleado(empleado) > 0 ? (empleado.cuota_prestamo || '') : 0;
-    form.descuento_imss = empleado.descuento_imss || ''; 
-    form.descuento_isr = empleado.descuento_isr || ''; 
-    form.descuento_infonavit = empleado.descuento_infonavit || ''; 
-    form.banco = empleado.banco || '';
-    form.numero_cuenta = empleado.numero_cuenta || '';
-    form.nss = empleado.nss || '';
-    form.rfc = empleado.rfc || '';
-    form.curp = empleado.curp || '';
-    form.estado_civil = empleado.estado_civil || '';
-    form.genero = empleado.genero || '';
-    form.fecha_nacimiento = empleado.fecha_nacimiento || '';
-    form.telefono = empleado.telefono || '';
-    form.correo = empleado.correo || '';
-    form.direccion = empleado.direccion || '';
-    form.contacto_emergencia_nombre = empleado.contacto_emergencia_nombre || '';
-    form.contacto_emergencia_telefono = empleado.contacto_emergencia_telefono || '';
-
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-const cancelarEdicion = () => {
-    editando.value = false;
-    empleadoId.value = null;
-    form.reset();
-};
-
-const eliminarEmpleado = (id, nombre) => {
-    if (confirm(`¿Dar de baja a ${nombre}? Su número quedará libre para otro empleado.`)) {
-        router.delete(route('empleados.destroy', id));
-    }
-};
-
-const restaurarEmpleado = (id, nombre) => {
-    if (confirm(`¿Restaurar a ${nombre}? Recuerda asignarle un número disponible.`)) {
-        router.put(route('empleados.restaurar', id));
-    }
-};
+const cancelarEdicion = () => { editando.value = false; empleadoId.value = null; form.reset(); };
+const eliminarEmpleado = (id, nombre) => { if (confirm(`¿Dar de baja a ${nombre}?`)) router.delete(route('empleados.destroy', id)); };
+const restaurarEmpleado = (id, nombre) => { if (confirm(`¿Restaurar a ${nombre}?`)) router.put(route('empleados.restaurar', id)); };
 </script>
 
 <template>
@@ -198,383 +114,309 @@ const restaurarEmpleado = (id, nombre) => {
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex min-w-0 items-center gap-3 sm:gap-4">
-                <Link :href="route('dashboard')" class="icon-button" aria-label="Volver al panel">
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19 3 12m0 0 7-7m-7 7h18" />
-                    </svg>
+            <div class="flex min-w-0 items-center gap-4">
+                <Link :href="route('dashboard')" class="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-500 transition-all hover:bg-blue-50 hover:text-blue-600">
+                    <i class="ti ti-arrow-left text-2xl"></i>
                 </Link>
-                <div class="min-w-0">
-                    <p class="text-sm font-semibold text-teal-700">Gestión de personal</p>
-                    <h2 class="text-xl font-semibold text-slate-950 sm:text-2xl">Directorio de Personal</h2>
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-wider text-blue-600">Gestión de Personal</p>
+                    <h2 class="font-['Sora'] text-2xl font-extrabold text-slate-900">Directorio de Empleados</h2>
                 </div>
             </div>
         </template>
 
-        <div class="page-shell">
-            <div class="content-wrap space-y-6">
-                <section class="app-panel" :class="editando ? 'ring-2 ring-amber-400/70' : ''">
-                    <div class="panel-header">
-                        <div class="flex items-start gap-3">
-                            <div :class="editando ? 'soft-icon-amber' : 'soft-icon-blue'">
-                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM3 20a6 6 0 0 1 12 0v1H3v-1Z" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h3 class="panel-title">{{ editando ? 'Actualizar expediente' : 'Alta de trabajador' }}</h3>
-                                <p class="panel-subtitle">Captura los datos base para asistencia, pago y recibos.</p>
-                            </div>
+        <div class="space-y-8">
+            <!-- Formulario Bento Box -->
+            <section :class="['relative overflow-hidden rounded-3xl bg-white border shadow-sm transition-all duration-300', editando ? 'border-amber-300 shadow-amber-500/10 shadow-xl' : 'border-slate-200/60']">
+                <div :class="['absolute top-0 left-0 w-1.5 h-full', editando ? 'bg-amber-400' : 'bg-blue-600']"></div>
+                
+                <div class="border-b border-slate-100 px-6 py-5 sm:px-8 flex items-center justify-between bg-slate-50/50">
+                    <div class="flex items-center gap-4">
+                        <div :class="['flex h-12 w-12 items-center justify-center rounded-2xl shadow-inner text-2xl', editando ? 'bg-amber-100 text-amber-600 border border-amber-200' : 'bg-blue-100 text-blue-600 border border-blue-200']">
+                            <i :class="editando ? 'ti ti-user-edit' : 'ti ti-user-plus'"></i>
                         </div>
+                        <div>
+                            <h3 class="font-['Sora'] text-lg font-bold text-slate-900">{{ editando ? 'Actualizar expediente' : 'Alta de trabajador' }}</h3>
+                            <p class="text-xs font-medium text-slate-500">Completa el perfil para automatizar nóminas y asistencias.</p>
+                        </div>
+                    </div>
+                    <button v-if="editando" @click="cancelarEdicion" class="hidden sm:flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200">
+                        <i class="ti ti-x"></i> Cancelar
+                    </button>
+                </div>
 
-                        <button v-if="editando" @click="cancelarEdicion" class="btn-secondary w-full sm:w-auto" type="button">
-                            <i class="ti ti-x" aria-hidden="true"></i>
-                            Cancelar edición
-                        </button>
+                <form @submit.prevent="submitForm" class="p-6 sm:p-8">
+                    <!-- Fila 1: Datos Base -->
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-12 mb-8">
+                        <div class="md:col-span-2">
+                            <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">NO.EMPLEADO</label>
+                            <input v-model="form.numero_empleado" type="text" maxlength="4" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="Ej. 84" @input="form.numero_empleado = form.numero_empleado.replace(/\D/g, '')" />
+                        </div>
+                        <div class="md:col-span-4">
+                            <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Nombre completo <span class="text-rose-500">*</span></label>
+                            <input v-model="form.nombre_completo" type="text" required class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="Nombre y apellidos" @input="form.nombre_completo = form.nombre_completo.replace(/[0-9]/g, '')" />
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Puesto</label>
+                            <input v-model="form.puesto" type="text" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="Ej. Operador" @input="form.puesto = form.puesto.replace(/[0-9]/g, '')" />
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Ingreso</label>
+                            <input v-model="form.fecha_ingreso" type="date" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all" />
+                        </div>
                     </div>
 
-                    <div class="p-4 sm:p-5">
-                        <form @submit.prevent="submitForm" class="grid grid-cols-1 gap-3 md:grid-cols-4 lg:grid-cols-12">
-                            <div class="lg:col-span-2">
-                                <label class="field-label">No. empleado</label>
-                            <input v-model="form.numero_empleado" type="text" maxlength="4" class="field-input-soft" placeholder="Ej. 84" @input="form.numero_empleado = form.numero_empleado.replace(/\D/g, '')" />
-                            </div>
-
-                            <div class="md:col-span-2 lg:col-span-4">
-                                <label class="field-label">Nombre completo <span class="text-rose-500">*</span></label>
-                                <input 
-                                    v-model="form.nombre_completo" 
-                                    type="text" 
-                                    required 
-                                    class="field-input-soft" 
-                                    @input="form.nombre_completo = form.nombre_completo.replace(/[0-9]/g, '')"
-                                />
-                            </div>
-
-                            <div class="lg:col-span-3">
-                                <label class="field-label">Puesto</label>
-                                <input v-model="form.puesto" type="text" class="field-input-soft" @input="form.puesto = form.puesto.replace(/[0-9]/g, '')" />
-                            </div>
-
-                            <div class="lg:col-span-3">
-                                <label class="field-label">Fecha de Ingreso</label>
-                                <input v-model="form.fecha_ingreso" type="date" class="field-input-soft" />
-                            </div>
-
-                            <div class="section-divider lg:col-span-12 !pt-3">
-                                <p class="section-divider-title">
-                                    <i class="ti ti-id" aria-hidden="true"></i>
-                                    Datos personales del expediente
-                                </p>
-                            </div>
-
-                            <div class="md:col-span-2 lg:col-span-4">
-                                <label class="field-label">CURP</label>
-                                <input v-model="form.curp" type="text" maxlength="18" class="field-input-soft" placeholder="18 caracteres" @input="form.curp = form.curp.toUpperCase().replace(/[^A-Z0-9]/g, '')" />
-                            </div>
-
-                            <div class="lg:col-span-3">
-                                <label class="field-label">Fecha de nacimiento</label>
-                                <input v-model="form.fecha_nacimiento" type="date" class="field-input-soft" />
-                            </div>
-
-                            <div class="lg:col-span-2">
-                                <label class="field-label">Género</label>
-                                <select v-model="form.genero" class="field-input-soft">
-                                    <option value="">Sin registrar</option>
-                                    <option value="Femenino">Femenino</option>
-                                    <option value="Masculino">Masculino</option>
-                                    <option value="Otro">Otro</option>
-                                </select>
-                            </div>
-
-                            <div class="lg:col-span-3">
-                                <label class="field-label">Estado civil</label>
-                                <select v-model="form.estado_civil" class="field-input-soft">
-                                    <option value="">Sin registrar</option>
-                                    <option value="Soltero(a)">Soltero(a)</option>
-                                    <option value="Casado(a)">Casado(a)</option>
-                                    <option value="Union libre">Union libre</option>
-                                    <option value="Divorciado(a)">Divorciado(a)</option>
-                                    <option value="Viudo(a)">Viudo(a)</option>
-                                </select>
-                            </div>
-
-                            <div class="section-divider lg:col-span-12 !pt-3">
-                                <p class="section-divider-title">
-                                    <i class="ti ti-phone-call" aria-hidden="true"></i>
-                                    Contacto y emergencia
-                                </p>
-                            </div>
-
-                            <div class="lg:col-span-3">
-                                <label class="field-label">Teléfono</label>
-                                <input v-model="form.telefono" type="text" maxlength="20" class="field-input-soft" placeholder="10 dígitos" @input="form.telefono = form.telefono.replace(/[^\d+\s()-]/g, '')" />
-                            </div>
-
-                            <div class="lg:col-span-3">
-                                <label class="field-label">Correo electrónico</label>
-                                <input v-model="form.correo" type="email" class="field-input-soft" placeholder="correo@empresa.com" />
-                            </div>
-
-                            <div class="md:col-span-2 lg:col-span-6">
-                                <label class="field-label">Dirección</label>
-                                <input v-model="form.direccion" type="text" class="field-input-soft" placeholder="Calle, número, colonia" />
-                            </div>
-
-                            <div class="md:col-span-2 lg:col-span-6">
-                                <label class="field-label text-rose-700">Contacto de emergencia</label>
-                                <input v-model="form.contacto_emergencia_nombre" type="text" class="field-input-soft border-rose-100" placeholder="Nombre completo" />
-                            </div>
-
-                            <div class="md:col-span-2 lg:col-span-6">
-                                <label class="field-label text-rose-700">Teléfono de emergencia</label>
-                                <input v-model="form.contacto_emergencia_telefono" type="text" maxlength="20" class="field-input-soft border-rose-100" placeholder="Teléfono" @input="form.contacto_emergencia_telefono = form.contacto_emergencia_telefono.replace(/[^\d+\s()-]/g, '')" />
-                            </div>
-
-                            <div class="lg:col-span-2">
-                                <label class="field-label text-teal-700">Ajuste Vacaciones (Días)</label>
-                                <input v-model="form.ajuste_vacaciones" type="number" class="field-input-soft border-teal-200 focus:border-teal-400 focus:ring-teal-400/20" placeholder="Ej. -2" />
-                                <p class="text-[10px] text-slate-500 mt-1 leading-tight">Usa negativos (-) para descontar días que deban de años pasados.</p>
-                            </div>
-
-                            <div class="lg:col-span-3">
-                                <label class="field-label">Forma de pago <span class="text-rose-500">*</span></label>
-                                <select v-model="form.forma_pago" required class="field-input-soft">
+                    <!-- Fila 2: Salarios y Descuentos -->
+                    <div class="mb-8 rounded-2xl bg-slate-50 p-6 border border-slate-100">
+                        <div class="mb-4 flex items-center gap-2">
+                            <i class="ti ti-coin text-emerald-600 text-lg"></i>
+                            <h4 class="font-bold text-slate-800">Condiciones de Pago</h4>
+                        </div>
+                        <div class="grid grid-cols-1 gap-5 md:grid-cols-12">
+                            <div class="md:col-span-3">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Método <span class="text-rose-500">*</span></label>
+                                <select v-model="form.forma_pago" required class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-900 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all">
                                     <option value="Efectivo">Efectivo</option>
                                     <option value="Deposito">Depósito / Transferencia</option>
                                 </select>
                             </div>
-
-                            <div class="flex items-center pt-2 md:col-span-1 md:pl-2 md:pt-6 lg:col-span-2 lg:pt-2">
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" v-model="form.es_estudiante" class="w-5 h-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
-                                    <span class="text-sm font-semibold text-slate-700">Mod. Estudiante</span>
+                            
+                            <div class="md:col-span-2 flex items-center pt-6">
+                                <label class="flex items-center gap-2 cursor-pointer bg-white border border-slate-200 px-4 py-2.5 rounded-xl w-full hover:bg-slate-50">
+                                    <input type="checkbox" v-model="form.es_estudiante" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                                    <span class="text-xs font-bold text-slate-700">Estudiante</span>
                                 </label>
                             </div>
 
                             <template v-if="form.es_estudiante">
-                                <div class="md:col-span-2 lg:col-span-3">
-                                    <label class="field-label text-teal-700">Tarifa por Hora Estudiante ($) <span class="text-rose-500">*</span></label>
-                                    <input v-model="form.sueldo_por_hora" type="number" step="0.01" class="field-input-soft border-teal-200 focus:border-teal-400 focus:ring-teal-400/20" placeholder="Ej. 27.00" />
+                                <div class="md:col-span-3">
+                                    <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-teal-600">Tarifa x Hora ($) <span class="text-rose-500">*</span></label>
+                                    <input v-model="form.sueldo_por_hora" type="number" step="0.01" class="w-full rounded-xl border border-teal-200 bg-white px-4 py-2.5 text-sm font-black text-teal-900 focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 transition-all" placeholder="0.00" />
                                 </div>
-                                <div class="hidden lg:block lg:col-span-2"></div>
                             </template>
                             <template v-else>
-                                <div class="md:col-span-2 lg:col-span-3">
-                                    <label class="field-label text-teal-700">Sueldo Semanal Base ($) <span class="text-rose-500">*</span></label>
-                                    <input v-model="form.sueldo_semanal" type="number" step="0.01" class="field-input-soft border-teal-200 focus:border-teal-400 focus:ring-teal-400/20" placeholder="Ej. 1000.00" />
+                                <div class="md:col-span-3">
+                                    <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-emerald-600">Base Semanal ($) <span class="text-rose-500">*</span></label>
+                                    <input v-model="form.sueldo_semanal" type="number" step="0.01" class="w-full rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-black text-emerald-900 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all" placeholder="0.00" />
                                 </div>
-                                <div class="hidden lg:block lg:col-span-2"></div>
                             </template>
 
-                            <div class="lg:col-span-2">
-                                <label class="field-label text-amber-700">Deuda Total Préstamo ($)</label>
-                                <input v-model="form.saldo_prestamo" type="number" step="0.01" class="field-input-soft border-amber-200" />
+                            <div class="md:col-span-2">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-amber-600">Deuda Total ($)</label>
+                                <input v-model="form.saldo_prestamo" type="number" step="0.01" class="w-full rounded-xl border border-amber-200 bg-white px-4 py-2.5 text-sm font-black text-amber-900 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all" placeholder="0.00" />
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-rose-500">Desc. Préstamo ($)</label>
+                                <input v-model="form.cuota_prestamo" type="number" step="0.01" class="w-full rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-black text-rose-900 focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all" placeholder="0.00" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fila 3: Opcionales Agrupados -->
+                    <details class="group mb-8 [&_summary::-webkit-details-marker]:hidden">
+                        <summary class="flex cursor-pointer items-center justify-between rounded-xl bg-slate-50 px-6 py-4 font-bold text-slate-700 hover:bg-slate-100 transition-colors">
+                            <span class="flex items-center gap-2"><i class="ti ti-adjustments-horizontal text-lg"></i> Más datos (Bancos, Impuestos, Contacto)</span>
+                            <span class="transition group-open:rotate-180"><i class="ti ti-chevron-down"></i></span>
+                        </summary>
+                        <div class="pt-6 grid grid-cols-1 gap-5 md:grid-cols-12 px-2">
+                            <!-- Impuestos -->
+                            <div class="md:col-span-3">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Desc. IMSS</label>
+                                <input v-model="form.descuento_imss" type="number" step="0.01" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold" />
+                            </div>
+                            <div class="md:col-span-3">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Desc. ISR</label>
+                                <input v-model="form.descuento_isr" type="number" step="0.01" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold" />
+                            </div>
+                            <div class="md:col-span-3">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">INFONAVIT</label>
+                                <input v-model="form.descuento_infonavit" type="number" step="0.01" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold" />
+                            </div>
+                            <div class="md:col-span-3">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-blue-500">Ajuste Vacaciones</label>
+                                <input v-model="form.ajuste_vacaciones" type="number" class="w-full rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold" placeholder="-2" />
                             </div>
 
-                            <div class="lg:col-span-2">
-                                <label class="field-label">Desc. Préstamo x Sem ($)</label>
-                                <input v-model="form.cuota_prestamo" type="number" step="0.01" class="field-input-soft" />
-                            </div>
-
-                            <div class="lg:col-span-2">
-                                <label class="field-label">Desc. IMSS ($)</label>
-                                <input v-model="form.descuento_imss" type="number" step="0.01" class="field-input-soft" />
-                            </div>
-                            
-                            <div class="lg:col-span-2">
-                                <label class="field-label">Desc. ISR ($)</label>
-                                <input v-model="form.descuento_isr" type="number" step="0.01" class="field-input-soft" />
-                            </div>
-
-                            <div class="md:col-span-4 lg:col-span-4">
-                                <label class="field-label">Desc. INFONAVIT ($)</label>
-                                <input v-model="form.descuento_infonavit" type="number" step="0.01" class="field-input-soft" />
-                            </div>
-
+                            <!-- Banco -->
                             <template v-if="form.forma_pago === 'Deposito'">
-                                <div class="col-span-1 md:col-span-2 lg:col-span-3">
-                                    <label class="field-label">Banco <span class="text-rose-500">*</span></label>
-                                    <input v-model="form.banco" type="text" :required="form.forma_pago === 'Deposito'" class="field-input-soft" placeholder="BBVA, Banamex..." />
+                                <div class="md:col-span-6">
+                                    <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Banco <span class="text-rose-500">*</span></label>
+                                    <input v-model="form.banco" type="text" :required="form.forma_pago === 'Deposito'" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold" />
                                 </div>
-
-                                <div class="col-span-1 md:col-span-2 lg:col-span-3">
-                                    <label class="field-label">Cuenta bancaria o CLABE <span class="text-rose-500">*</span></label>
-                                    <input v-model="form.numero_cuenta" type="text" :required="form.forma_pago === 'Deposito'" class="field-input-soft" placeholder="18 dígitos o tarjeta" />
+                                <div class="md:col-span-6">
+                                    <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Cuenta o CLABE <span class="text-rose-500">*</span></label>
+                                    <input v-model="form.numero_cuenta" type="text" :required="form.forma_pago === 'Deposito'" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold" />
                                 </div>
                             </template>
 
-                            <div class="md:col-span-2 lg:col-span-3">
-                                <label class="field-label">NSS</label>
-                                <input v-model="form.nss" type="text" maxlength="11" class="field-input-soft" placeholder="11 dígitos" @input="form.nss = form.nss.replace(/\D/g, '')"  />
+                            <!-- Personales -->
+                            <div class="md:col-span-4"><label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">CURP</label><input v-model="form.curp" type="text" maxlength="18" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold uppercase" @input="form.curp = form.curp.toUpperCase().replace(/[^A-Z0-9]/g, '')" /></div>
+                            <div class="md:col-span-4"><label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">RFC</label><input v-model="form.rfc" type="text" maxlength="13" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold uppercase" @input="form.rfc = form.rfc.toUpperCase().replace(/[^A-Z0-9&]/g, '')" /></div>
+                            <div class="md:col-span-4"><label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">NSS</label><input v-model="form.nss" type="text" maxlength="11" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold" @input="form.nss = form.nss.replace(/\D/g, '')" /></div>
+                            
+                            <!-- Generales -->
+                            <div class="md:col-span-4"><label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Nacimiento</label><input v-model="form.fecha_nacimiento" type="date" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold" /></div>
+                            <div class="md:col-span-4"><label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Teléfono</label><input v-model="form.telefono" type="text" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold" @input="form.telefono = form.telefono.replace(/[^\d+\s()-]/g, '')" /></div>
+                            <div class="md:col-span-4">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-rose-500">Emergencia (Tel)</label>
+                                <input v-model="form.contacto_emergencia_telefono" type="text" class="w-full rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-bold" @input="form.contacto_emergencia_telefono = form.contacto_emergencia_telefono.replace(/[^\d+\s()-]/g, '')" />
                             </div>
-
-                            <div class="md:col-span-2 lg:col-span-3">
-                                <label class="field-label">RFC</label>
-                                <input v-model="form.rfc" type="text" maxlength="13"  class="field-input-soft" placeholder="12 o 13 caracteres" @input="form.rfc = form.rfc.toUpperCase().replace(/[^A-Z0-9&]/g, '')" />
-                            </div>
-
-                            <div class="mt-2 flex justify-stretch md:col-span-4 sm:justify-end lg:col-span-12">
-                                <button type="submit" :disabled="form.processing" :class="editando ? 'btn-warning w-full sm:w-auto' : 'btn-accent w-full sm:w-auto'">
-                                    <i :class="['ti', editando ? 'ti-device-floppy' : 'ti-user-plus']" aria-hidden="true"></i>
-                                    {{ form.processing ? 'Guardando...' : (editando ? 'Actualizar expediente' : 'Registrar empleado') }}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </section>
-
-                <section class="app-panel">
-                    <div class="panel-header">
-                        <div>
-                            <h3 class="panel-title">{{ tituloDirectorio }}</h3>
-                            <p class="panel-subtitle">{{ empleadosFiltrados.length }} trabajador(es) encontrados</p>
-                            <p class="mt-1 text-xs font-semibold text-amber-700">
-                                {{ empleadosConDeuda }} con prestamo activo
-                            </p>
                         </div>
-                        <div class="flex w-full flex-col gap-3 lg:w-auto lg:flex-row lg:items-center">
-                            <div class="flex rounded-lg border border-slate-200 bg-slate-100 p-1">
-                                <button
-                                    type="button"
-                                    @click="filtroEstado = 'activos'"
-                                    :class="filtroEstado === 'activos' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
-                                    class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all"
-                                >
-                                    <i class="ti ti-user-check" aria-hidden="true"></i>
-                                    Activos {{ empleadosActivos }}
-                                </button>
-                                <button
-                                    type="button"
-                                    @click="filtroEstado = 'papelera'"
-                                    :class="filtroEstado === 'papelera' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
-                                    class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all"
-                                >
-                                    <i class="ti ti-archive" aria-hidden="true"></i>
-                                    Papelera {{ empleadosBaja }}
-                                </button>
-                                <button
-                                    type="button"
-                                    @click="filtroEstado = 'prestamo'"
-                                    :class="filtroEstado === 'prestamo' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
-                                    class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all"
-                                >
-                                    <i class="ti ti-cash-banknote" aria-hidden="true"></i>
-                                    Prestamo {{ empleadosConDeuda }}
-                                </button>
-                            </div>
-                            <div class="relative w-full lg:w-96">
-                                <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-slate-400" aria-hidden="true"></i>
-                                <input v-model="searchQuery" type="text" class="field-input-soft pl-10" placeholder="Buscar por nombre o número..." />
-                            </div>
-                            <label class="block w-full lg:w-56">
-                                <span class="field-label mb-1">Ordenar por</span>
-                                <select v-model="criterioOrdenDirectorio" class="field-input-soft">
-                                    <option value="num_asc">No. empleado menor</option>
-                                    <option value="num_desc">No. empleado mayor</option>
-                                    <option value="nombre_asc">Nombre A - Z</option>
-                                    <option value="nombre_desc">Nombre Z - A</option>
-                                </select>
-                            </label>
+                    </details>
+
+                    <!-- Botón Flotante -->
+                    <div class="flex justify-end">
+                        <button type="submit" :disabled="form.processing" :class="[
+                            'flex w-full items-center justify-center gap-2 rounded-2xl px-8 py-3.5 text-sm font-extrabold text-white shadow-lg transition-all duration-300 hover:-translate-y-1 sm:w-auto',
+                            editando ? 'bg-gradient-to-r from-amber-500 to-amber-400 shadow-amber-500/30 hover:shadow-amber-500/50' : 'bg-gradient-to-r from-blue-600 to-blue-500 shadow-blue-500/30 hover:shadow-blue-500/50'
+                        ]">
+                            <i :class="['ti text-xl', editando ? 'ti-device-floppy' : 'ti-user-plus']"></i>
+                            {{ form.processing ? 'Procesando...' : (editando ? 'Guardar Cambios' : 'Registrar Empleado') }}
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Directorio (Tabla Bento) -->
+            <section class="rounded-3xl border border-slate-200/60 bg-white shadow-sm overflow-hidden">
+                <div class="border-b border-slate-100 bg-slate-50/50 p-6 flex flex-col lg:flex-row justify-between gap-4">
+                    <div>
+                        <h3 class="font-['Sora'] text-lg font-bold text-slate-900">{{ tituloDirectorio }}</h3>
+                        <p class="text-xs font-medium text-slate-500">{{ empleadosFiltrados.length }} colaborador(es) • {{ empleadosConDeuda }} con deuda</p>
+                    </div>
+                    
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <!-- Filtros (Pills) -->
+                        <div class="flex rounded-xl bg-slate-100/80 p-1">
+                            <button @click="filtroEstado = 'activos'" :class="filtroEstado === 'activos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 sm:flex-none rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all">
+                                Activos ({{ empleadosActivos }})
+                            </button>
+                            <button @click="filtroEstado = 'papelera'" :class="filtroEstado === 'papelera' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 sm:flex-none rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all">
+                                Bajas ({{ empleadosBaja }})
+                            </button>
+                            <button @click="filtroEstado = 'prestamo'" :class="filtroEstado === 'prestamo' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 sm:flex-none rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all">
+                                Préstamos ({{ empleadosConDeuda }})
+                            </button>
+                        </div>
+                        
+                        <!-- Buscador -->
+                        <div class="relative w-full sm:w-64">
+                            <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input v-model="searchQuery" type="text" class="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-4 text-sm font-semibold text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="Buscar empleado..." />
                         </div>
                     </div>
+                </div>
 
-                    <div class="overflow-x-auto">
-                        <table class="table-premium">
-                            <thead>
-                                <tr>
-                                    <th>Empleado</th>
-                                    <th>Puesto / Antigüedad</th>
-                                    <th>Tarifa de Pago</th>
-                                    <th>Prestamo</th>
-                                    <th>Control Vacaciones</th>
-                                    <th class="text-right">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="empleado in empleadosFiltrados" :key="empleado.id">
-                                    <td class="whitespace-nowrap">
-                                        <div class="flex items-center gap-3">
-                                            <div class="flex h-10 min-w-10 max-w-16 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-2 text-xs font-bold text-blue-700">
-                                                {{ empleado.numero_empleado || empleado.numero_empleado_baja || 'S/N' }}
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left text-sm text-slate-600">
+                        <thead class="bg-slate-50/80 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            <tr>
+                                <th class="px-6 py-4">Colaborador</th>
+                                <th class="px-6 py-4">Puesto / Antigüedad</th>
+                                <th class="px-6 py-4">Tarifa de Pago</th>
+                                <th class="px-6 py-4">Préstamo</th>
+                                <th class="px-6 py-4">Vacaciones</th>
+                                <th class="px-6 py-4 text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <tr v-for="empleado in empleadosFiltrados" :key="empleado.id" class="transition-colors hover:bg-slate-50/50">
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-blue-100 bg-blue-50 text-xs font-black text-blue-600 shadow-sm">
+                                            <span>{{ empleado.numero_empleado || empleado.numero_empleado_baja || 'S/N' }}</span>
+                                            <img
+                                                v-if="clavesFotoEmpleado(empleado).length"
+                                                :key="`foto-${empleado.id}-${empleado.numero_empleado || empleado.numero_empleado_baja || empleado.id}`"
+                                                :src="fotoEmpleadoSrc(empleado)"
+                                                :alt="`Foto de ${empleado.nombre_completo}`"
+                                                loading="lazy"
+                                                decoding="async"
+                                                class="absolute inset-0 h-full w-full object-cover"
+                                                @load="mostrarFotoEmpleado"
+                                                @error="probarSiguienteFotoEmpleado(empleado, $event)"
+                                            />
+                                        </div>
+                                        <div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-bold text-slate-900">{{ empleado.nombre_completo }}</span>
+                                                <span v-if="!Boolean(Number(empleado.estatus ?? 0))" class="rounded-md bg-rose-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-600 border border-rose-200">Inactivo</span>
                                             </div>
-                                            <div class="min-w-0">
-                                                <div class="flex items-center gap-2">
-                                                    <div class="truncate font-semibold text-slate-950">{{ empleado.nombre_completo }}</div>
-                                                    <span v-if="!Boolean(Number(empleado.estatus ?? 0))" class="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">Baja</span>
-                                                </div>
-                                                <div class="text-xs text-slate-500">
-                                                    ID sistema: #{{ empleado.id }}
-                                                    <span v-if="empleado.numero_empleado_baja"> · No. anterior {{ empleado.numero_empleado_baja }}</span>
-                                                </div>
-                                            </div>
+                                            <span class="text-xs font-semibold text-slate-400">
+                                                No. empleado: {{ empleado.numero_empleado || empleado.numero_empleado_baja || 'S/N' }}
+                                            </span>
                                         </div>
-                                    </td>
-                                    <td class="whitespace-nowrap">
-                                        <div class="font-medium text-slate-900">{{ empleado.puesto || 'No asignado' }}</div>
-                                        <div v-if="Boolean(Number(empleado.estatus ?? 0))" class="mt-1 text-xs font-semibold text-teal-600">
-                                            {{ empleado.antiguedad_anios }} año(s) en la empresa
-                                        </div>
-                                        <div v-else class="mt-1 text-xs font-semibold text-rose-600">
-                                            Baja: {{ empleado.fecha_baja || 'Sin fecha' }} · {{ empleado.dias_laborados || 0 }} dias laborados
-                                        </div>
-                                    </td>
-                                    <td class="whitespace-nowrap">
-                                        <span class="status-pill status-success w-max">
-                                            <span v-if="esEstudiante(empleado)">Estudiante: ${{ empleado.sueldo_por_hora }} / hr</span>
-                                            <span v-else>${{ sueldoSemanalEmpleado(empleado) }} / sem</span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="font-bold text-slate-700">{{ empleado.puesto || 'No asignado' }}</div>
+                                    <div v-if="Boolean(Number(empleado.estatus ?? 0))" class="text-xs font-semibold text-emerald-600">{{ empleado.antiguedad_anios }} año(s) activos</div>
+                                    <div v-else class="text-xs font-semibold text-rose-500">Baja: {{ empleado.fecha_baja || 'S/F' }}</div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span class="inline-flex rounded-lg bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 border border-emerald-100">
+                                        <span v-if="esEstudiante(empleado)">Estudiante: ${{ empleado.sueldo_por_hora }}/hr</span>
+                                        <span v-else>${{ sueldoSemanalEmpleado(empleado) }}/sem</span>
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div v-if="tieneDeuda(empleado)" class="flex flex-col items-start gap-1">
+                                        <span class="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700 border border-amber-200">
+                                            <i class="ti ti-cash-banknote"></i> Debe ${{ moneda(empleado.saldo_prestamo) }}
                                         </span>
-                                    </td>
-                                    <td class="whitespace-nowrap">
-                                        <div v-if="tieneDeuda(empleado)" class="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
-                                            <i class="ti ti-cash-banknote" aria-hidden="true"></i>
-                                            Debe ${{ moneda(empleado.saldo_prestamo) }}
+                                        <span v-if="Number(empleado.cuota_prestamo || 0) > 0" class="text-[10px] font-bold text-slate-400 uppercase">Desc: ${{ moneda(empleado.cuota_prestamo) }}</span>
+                                    </div>
+                                    <span v-else class="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-500 border border-slate-200">
+                                        <i class="ti ti-check"></i> Sin deuda
+                                    </span>
+                                </td>
+                                <!-- Columna de Vacaciones Corregida y Hermosa -->
+                                <td class="px-6 py-4">
+                                    <div v-if="empleado.fecha_ingreso" class="w-36 flex flex-col gap-1.5 rounded-xl border border-slate-100 bg-slate-50/50 p-2.5">
+                                        <div class="flex items-center justify-between text-[10px] uppercase tracking-wide font-bold text-slate-500">
+                                            <span><i class="ti ti-palm"></i> Totales</span>
+                                            <span class="text-slate-700">{{ empleado.dias_vacaciones_totales }} d</span>
                                         </div>
-                                        <div v-else class="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
-                                            <i class="ti ti-circle-check" aria-hidden="true"></i>
-                                            Sin deuda
+                                        <div class="flex items-center justify-between text-[10px] uppercase tracking-wide font-bold text-slate-500">
+                                            <span><i class="ti ti-calendar-minus"></i> Tomados</span>
+                                            <span class="text-rose-600">{{ empleado.dias_vacaciones_tomados }} d</span>
                                         </div>
-                                        <div v-if="tieneDeuda(empleado) && Number(empleado.cuota_prestamo || 0) > 0" class="mt-1 text-[11px] font-semibold text-slate-500">
-                                            Desc. sem. ${{ moneda(empleado.cuota_prestamo) }}
+                                        <div class="mt-0.5 border-t border-slate-200 pt-1.5 flex items-center justify-between text-[10px] uppercase tracking-wide font-black text-slate-700">
+                                            <span>Restan</span>
+                                            <span class="rounded-md bg-emerald-100 px-1.5 py-0.5 text-emerald-700">{{ empleado.dias_vacaciones_restantes }}</span>
                                         </div>
-                                    </td>
-                                    <td class="whitespace-nowrap">
-                                        <div v-if="empleado.fecha_ingreso" class="flex flex-col gap-1 text-xs">
-                                            <span class="font-bold text-slate-700">🌴 Totales: {{ empleado.dias_vacaciones_totales }} días</span>
-                                            <span class="text-rose-600">Tomados: {{ empleado.dias_vacaciones_tomados }}</span>
-                                            <span class="text-emerald-600 font-bold">Restan: {{ empleado.dias_vacaciones_restantes }}</span>
-                                        </div>
-                                        <div v-else class="text-xs text-slate-400 italic">
-                                            Falta fecha de ingreso
-                                        </div>
-                                    </td>
-                                    <td class="whitespace-nowrap text-right">
-                                        <div class="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                                        <Link :href="route('empleados.show', empleado.id)" class="btn-accent text-xs">
-                                            <i class="ti ti-user-screen" aria-hidden="true"></i>
-                                            Ver perfil
+                                    </div>
+                                    <span v-else class="text-xs font-semibold italic text-slate-400">Sin ingreso</span>
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <div class="flex justify-end gap-2">
+                                        <Link :href="route('empleados.show', empleado.id)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-blue-600 border border-slate-200 transition-all" title="Ver perfil">
+                                            <i class="ti ti-eye"></i>
                                         </Link>
-                                        <button @click="editarEmpleado(empleado)" class="btn-secondary text-xs">
-                                            <i class="ti ti-pencil" aria-hidden="true"></i>
-                                            Editar
+                                        <button @click="editarEmpleado(empleado)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600 border border-slate-200 transition-all" title="Editar">
+                                            <i class="ti ti-pencil"></i>
                                         </button>
-                                        <button v-if="Boolean(Number(empleado.estatus ?? 0))" @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="btn-danger text-xs">
-                                            <i class="ti ti-trash" aria-hidden="true"></i>
-                                            Dar de baja
+                                        <button v-if="Boolean(Number(empleado.estatus ?? 0))" @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 transition-all" title="Dar baja">
+                                            <i class="ti ti-trash"></i>
                                         </button>
-                                        <button v-else @click="restaurarEmpleado(empleado.id, empleado.nombre_completo)" class="btn-accent text-xs">
-                                            <i class="ti ti-restore" aria-hidden="true"></i>
+                                        <button v-else @click="restaurarEmpleado(empleado.id, empleado.nombre_completo)" class="flex h-8 items-center justify-center rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-700 transition-all">
                                             Restaurar
                                         </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-            </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr v-if="empleadosFiltrados.length === 0">
+                                <td colspan="6" class="px-6 py-12 text-center">
+                                    <div class="flex flex-col items-center justify-center text-slate-400">
+                                        <i class="ti ti-users-x text-4xl mb-2"></i>
+                                        <p class="font-bold">No se encontraron colaboradores</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </div>
     </AuthenticatedLayout>
 </template>

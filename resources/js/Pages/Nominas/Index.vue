@@ -16,6 +16,7 @@ const historialSearch = ref('');
 const showToast = ref(false);
 const toastTitle = ref('');
 const toastMessage = ref('');
+
 const ajustesNomina = ref({});
 const guardandoAjuste = ref(null);
 const selectedEmpleadoIds = ref([]);
@@ -168,7 +169,6 @@ const bancosDisponibles = computed(() => {
     return Array.from(bancos).sort();
 });
 
-// Extrae el número de semana correspondiente a la fecha de corte seleccionada actualmente
 const numeroSemanaSeleccionada = computed(() => {
     const encontrada = props.semanasDisponibles.find(sem => sem.fecha_corte === selectedCorte.value);
     return encontrada ? encontrada.numero_semana : props.semanaActual;
@@ -180,10 +180,12 @@ watch(selectedCorte, (newDate) => {
 
 const numero = (valor) => Number(valor ?? 0) || 0;
 const valorDecimal = (valor) => Number(valor ?? 0).toFixed(2);
+
 const moneda = (valor) => numero(valor).toLocaleString('es-MX', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
 });
+
 const horas = (valor) => numero(valor).toFixed(1);
 
 const empleadosSinHorasExtra = new Set(['8', '9', '22']);
@@ -193,7 +195,6 @@ const empleadosPagoPorHoraTopado = new Set(['76', '78']);
 const numeroEmpleadoNomina = (empleado) => {
     const texto = String(empleado?.numero_empleado || empleado?.numero_empleado_baja || '').trim();
     const sinCeros = texto.replace(/^0+/, '');
-
     return sinCeros || texto || '';
 };
 
@@ -237,15 +238,12 @@ const claseNumeroNomina = (empleado) => {
     if (empleadosPagoPorHoraTopado.has(numeroEmpleadoNomina(empleado))) {
         return 'border-violet-200 bg-violet-50 text-violet-700';
     }
-
     if (empleadosSinHorasExtra.has(numeroEmpleadoNomina(empleado))) {
         return 'border-sky-200 bg-sky-50 text-sky-700';
     }
-
     if (empleadosSinRetardos.has(numeroEmpleadoNomina(empleado))) {
         return 'border-amber-200 bg-amber-50 text-amber-800';
     }
-
     return 'border-teal-200 bg-teal-50 text-teal-700';
 };
 
@@ -294,24 +292,18 @@ const deudaDespues = (empleado) => {
 const faltasPagadasPreview = (empleado) => {
     const ajuste = ajustesNomina.value[empleado.id] || {};
     const detectadas = numero(resumenNomina(empleado).faltas_detectadas);
-
     return Math.min(numero(ajuste.faltas_pagadas), detectadas);
 };
 
 const faltasCubiertasVacacionesPreview = (empleado) => {
     const ajuste = ajustesNomina.value[empleado.id] || {};
     const disponibles = Math.max(0, numero(resumenNomina(empleado).faltas_detectadas) - faltasPagadasPreview(empleado));
-
     return Math.min(numero(ajuste.faltas_cubiertas_vacaciones), disponibles);
 };
 
 const faltasCubiertasIncapacidadPreview = (empleado) => {
     const ajuste = ajustesNomina.value[empleado.id] || {};
-    const restantes = Math.max(
-        0,
-        numero(resumenNomina(empleado).faltas_detectadas) - faltasPagadasPreview(empleado) - faltasCubiertasVacacionesPreview(empleado),
-    );
-
+    const restantes = Math.max(0, numero(resumenNomina(empleado).faltas_detectadas) - faltasPagadasPreview(empleado) - faltasCubiertasVacacionesPreview(empleado));
     return Math.min(numero(ajuste.faltas_cubiertas_incapacidad), restantes);
 };
 
@@ -328,29 +320,24 @@ const horasAdeudoGeneradasPreview = (empleado) => {
 const horasAdeudoDescontadasPreview = (empleado) => {
     const ajuste = ajustesNomina.value[empleado.id] || {};
     const extraDetectada = numero(resumenNomina(empleado).horas_extra_detectadas);
-
     return Math.min(numero(ajuste.horas_adeudo_descontadas), extraDetectada);
 };
 
 const saldoHorasPreview = (empleado) => {
     const resumen = resumenNomina(empleado);
-
     return Math.max(0, numero(resumen.saldo_horas_adeudo_anterior) + horasAdeudoGeneradasPreview(empleado) - horasAdeudoDescontadasPreview(empleado));
 };
 
 const horasExtraPagadasPreview = (empleado) => {
     const resumen = resumenNomina(empleado);
-
     if (resumen.pago_por_hora_topado) {
         return 0;
     }
-
     return Math.max(0, numero(resumen.horas_extra_detectadas) - horasAdeudoDescontadasPreview(empleado));
 };
 
 const diasVacacionesAdicionalesPreview = (empleado) => {
     const ajuste = ajustesNomina.value[empleado.id] || {};
-
     return numero(ajuste.dias_vacaciones_adicionales);
 };
 
@@ -367,13 +354,11 @@ const diasIncapacidadPreview = (empleado) => {
 
 const pagoVacacionesPreview = (empleado) => {
     const resumen = resumenNomina(empleado);
-
     return diasVacacionesPreview(empleado) * numero(resumen.pago_dia_planta) * 1.25;
 };
 
 const pagoIncapacidadPreview = (empleado) => {
     const resumen = resumenNomina(empleado);
-
     return diasIncapacidadPreview(empleado) * numero(resumen.pago_dia_planta) * 0.60;
 };
 
@@ -392,11 +377,9 @@ const guardarAjustes = (empleado) => {
     });
 };
 
-// 1. Primer filtro: Búsqueda + Filtros Estado + Ordenamientos (Alfabético y Numérico)
 const empleadosFiltrados = computed(() => {
     let resultado = [...props.empleados];
 
-    // Filtro A: Buscador de texto
     if (searchQuery.value) {
         const query = searchQuery.value.toLowerCase();
         resultado = resultado.filter(emp => {
@@ -405,33 +388,27 @@ const empleadosFiltrados = computed(() => {
         });
     }
 
-    // Filtro B: Estado de pago (Pendiente / Liquidado)
     if (filtroEstado.value === 'pendiente') {
         resultado = resultado.filter(emp => !emp.pagado);
     } else if (filtroEstado.value === 'liquidado') {
         resultado = resultado.filter(emp => emp.pagado);
     }
 
-    // Filtro C: Lógica de Ordenamiento
     if (filtroBanco.value !== 'todos') {
         resultado = resultado.filter(emp => nombreBancoEmpleado(emp) === filtroBanco.value);
     }
 
     resultado.sort((a, b) => {
-        // --- ORDEN NUMÉRICO ---
         if (criterioOrden.value === 'num_asc' || criterioOrden.value === 'num_desc') {
             const numA = parseInt(a.numero_empleado, 10);
             const numB = parseInt(b.numero_empleado, 10);
 
-            // Manejo de empleados sin número (los mandamos al fondo)
             if (isNaN(numA) && isNaN(numB)) return 0;
             if (isNaN(numA)) return 1;
             if (isNaN(numB)) return -1;
 
             return criterioOrden.value === 'num_asc' ? numA - numB : numB - numA;
         } 
-        
-        // --- ORDEN ALFABÉTICO (Por defecto si es 'asc' o 'desc') ---
         else {
             const nombreA = a.nombre_completo.toLowerCase();
             const nombreB = b.nombre_completo.toLowerCase();
@@ -448,18 +425,15 @@ const empleadosFiltrados = computed(() => {
 });
 
 const seleccionadosCount = computed(() => selectedEmpleadoIds.value.length);
-
 const empleadoSeleccionado = (empleadoId) => selectedEmpleadoIds.value.includes(empleadoId);
 
 const toggleEmpleado = (empleadoId, checked) => {
     const actuales = new Set(selectedEmpleadoIds.value);
-
     if (checked) {
         actuales.add(empleadoId);
     } else {
         actuales.delete(empleadoId);
     }
-
     selectedEmpleadoIds.value = Array.from(actuales);
 };
 
@@ -470,7 +444,6 @@ const todosFiltradosSeleccionados = computed(() => {
 
 const toggleTodosFiltrados = (checked) => {
     const actuales = new Set(selectedEmpleadoIds.value);
-
     empleadosFiltrados.value.forEach((empleado) => {
         if (checked) {
             actuales.add(empleado.id);
@@ -478,7 +451,6 @@ const toggleTodosFiltrados = (checked) => {
             actuales.delete(empleado.id);
         }
     });
-
     selectedEmpleadoIds.value = Array.from(actuales);
 };
 
@@ -489,7 +461,6 @@ const empleadosGrupoSeleccionados = (empleadosGrupo) => {
 
 const toggleEmpleadosGrupo = (empleadosGrupo, checked) => {
     const actuales = new Set(selectedEmpleadoIds.value);
-
     empleadosGrupo.forEach((empleado) => {
         if (checked) {
             actuales.add(empleado.id);
@@ -497,7 +468,6 @@ const toggleEmpleadosGrupo = (empleadosGrupo, checked) => {
             actuales.delete(empleado.id);
         }
     });
-
     selectedEmpleadoIds.value = Array.from(actuales);
 };
 
@@ -509,11 +479,9 @@ const urlRecibosMasivos = (todos = false) => {
     const parametros = {
         fecha_corte: selectedCorte.value,
     };
-
     if (!todos) {
         parametros.empleado_ids = selectedEmpleadoIds.value;
     }
-
     return route('nominas.recibos-masivos', parametros);
 };
 
@@ -529,13 +497,10 @@ watch(() => props.empleados, (empleados) => {
     selectedEmpleadoIds.value = selectedEmpleadoIds.value.filter((id) => idsActuales.has(id));
 }, { deep: true });
 
-// 2. Agrupamos los filtrados por su Banco
 const empleadosAgrupados = computed(() => {
     const grupos = {};
-    
     empleadosFiltrados.value.forEach(empleado => {
         const nombreBanco = nombreBancoEmpleado(empleado);
-        
         if (!grupos[nombreBanco]) {
             grupos[nombreBanco] = [];
         }
@@ -557,7 +522,6 @@ const historialFiltrado = computed(() => {
 
     return props.historial.filter((registro) => {
         const empleado = registro.empleado || {};
-
         return String(empleado.nombre_completo || '').toLowerCase().includes(term)
             || String(empleado.numero_empleado || '').toLowerCase().includes(term)
             || String(registro.numero_semana || '').toLowerCase().includes(term)
@@ -588,8 +552,8 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
     if(!nominaId) return;
 
     const mensaje = pagadoActual
-        ? 'Marcar esta nomina como pendiente? Se revertiran el prestamo y las vacaciones aplicadas.'
-        : 'Marcar esta nomina como pagada? Se aplicaran prestamo y vacaciones al saldo del empleado.';
+        ? '¿Marcar esta nómina como pendiente?\n\nSe revertirán el préstamo y las vacaciones aplicadas.'
+        : '¿Marcar esta nómina como pagada?\n\nSe aplicarán préstamo y vacaciones al saldo del empleado.';
 
     if (!confirm(mensaje)) {
         return;
@@ -608,521 +572,426 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex min-w-0 items-center gap-3 sm:gap-4">
-                <Link :href="route('dashboard')" class="icon-button" aria-label="Volver al panel">
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19 3 12m0 0 7-7m-7 7h18" />
-                    </svg>
+            <div class="flex min-w-0 items-center gap-4">
+                <Link :href="route('dashboard')" class="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-500 transition-all hover:bg-blue-50 hover:text-blue-600 border border-slate-200">
+                    <i class="ti ti-arrow-left text-2xl"></i>
                 </Link>
-                <div class="min-w-0">
-                    <p class="text-sm font-semibold text-teal-700">Pagos y recibos</p>
-                    <h2 class="text-xl font-semibold text-slate-950 sm:text-2xl">Control y Pago de Nóminas</h2>
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-wider text-blue-600">Pagos y Recibos</p>
+                    <h2 class="font-['Sora'] text-2xl font-extrabold text-slate-900">Control de Nóminas</h2>
                 </div>
             </div>
         </template>
 
-        <div class="page-shell relative">
-            <div class="content-wrap space-y-8">
-                <section class="app-panel">
-                    <div class="panel-header">
-                        <div class="flex items-start gap-3">
-                            <div class="soft-icon-teal">
-                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h3 class="panel-title">Periodo a procesar</h3>
-                                <p class="panel-subtitle">Selecciona la semana y localiza empleados para emitir recibos.</p>
-                            </div>
+        <div class="space-y-8">
+            <section class="rounded-3xl border border-slate-200/60 bg-white shadow-sm overflow-hidden">
+                
+                <div class="border-b border-slate-100 bg-slate-50/50 px-6 py-5 sm:px-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="flex h-12 w-12 items-center justify-center rounded-2xl shadow-inner text-2xl bg-teal-100 text-teal-600 border border-teal-200">
+                            <i class="ti ti-calendar-stats"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-['Sora'] text-lg font-bold text-slate-900">Periodo a procesar</h3>
+                            <p class="text-xs font-medium text-slate-500">Selecciona la semana y localiza empleados para emitir recibos.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-6 sm:p-8 space-y-6 bg-white">
+                    <div class="flex flex-col lg:flex-row gap-4">
+                        
+                        <div class="relative flex-1 min-w-[200px]">
+                            <select v-model="selectedCorte" class="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-4 pr-10 text-sm font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 appearance-none transition-all cursor-pointer">
+                                <option v-for="sem in semanasDisponibles" :key="sem.fecha_corte" :value="sem.fecha_corte">
+                                    {{ sem.etiqueta }}
+                                </option>
+                            </select>
+                            <i class="ti ti-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
                         </div>
 
-                        <div class="flex w-full flex-wrap items-center gap-3 lg:w-auto">
-                            <div class="relative w-full sm:w-auto">
-                                <select v-model="selectedCorte" class="field-input-soft appearance-none pr-10 font-semibold text-slate-800">
-                                    <option v-for="sem in semanasDisponibles" :key="sem.fecha_corte" :value="sem.fecha_corte">
-                                        {{ sem.etiqueta }}
-                                    </option>
-                                </select>
-                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500">
-                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
-                                    </svg>
-                                </div>
-                            </div>
-
-                            <div class="flex rounded-lg bg-slate-100 p-1 w-full sm:w-auto border border-slate-200">
-                                <button 
-                                    type="button"
-                                    @click="filtroEstado = 'todos'" 
-                                    :class="filtroEstado === 'todos' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
-                                    class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all sm:flex-none"
-                                >
-                                    <i class="ti ti-layout-grid" aria-hidden="true"></i>
-                                    Todos
-                                </button>
-                                <button 
-                                    type="button"
-                                    @click="filtroEstado = 'pendiente'" 
-                                    :class="filtroEstado === 'pendiente' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'"
-                                    class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all sm:flex-none"
-                                >
-                                    <i class="ti ti-clock-dollar" aria-hidden="true"></i>
-                                    Pendientes
-                                </button>
-                                <button 
-                                    type="button"
-                                    @click="filtroEstado = 'liquidado'" 
-                                    :class="filtroEstado === 'liquidado' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'"
-                                    class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-all sm:flex-none"
-                                >
-                                    <i class="ti ti-circle-check" aria-hidden="true"></i>
-                                    Liquidados
-                                </button>
-                            </div>
-
-                            <div class="relative w-full sm:w-auto">
-                                <select v-model="criterioOrden" class="field-input-soft appearance-none pr-10 text-slate-700 text-sm font-medium">
-                                    <option value="asc">Nombre (A - Z)</option>
-                                    <option value="desc">Nombre (Z - A)</option>
-                                    <option value="num_asc">No. Empleado (Menor a Mayor)</option>
-                                    <option value="num_desc">No. Empleado (Mayor a Menor)</option>
-                                </select>
-                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
-                                    </svg>
-                                </div>
-                            </div>
-
-                            <div class="relative w-full sm:w-auto">
-                                <select v-model="filtroBanco" class="field-input-soft appearance-none pr-10 text-slate-700 text-sm font-medium">
-                                    <option value="todos">Todos los bancos</option>
-                                    <option v-for="banco in bancosDisponibles" :key="banco" :value="banco">
-                                        {{ banco }}
-                                    </option>
-                                </select>
-                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
-                                    </svg>
-                                </div>
-                            </div>
-
-                            <div class="relative w-full sm:w-auto">
-                                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                    <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
-                                    </svg>
-                                </div>
-                                <input v-model="searchQuery" type="text" class="field-input-soft pl-10" placeholder="Buscar empleado..." />
-                            </div>
-
-                            <a :href="route('nominas.reporte', { semana: numeroSemanaSeleccionada, fecha_corte: selectedCorte })" target="_blank" class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 w-full sm:w-auto justify-center">
-                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                Excel Global
-                            </a>
-
-                            <a
-                                v-if="seleccionadosCount > 0"
-                                :href="urlRecibosMasivos(false)"
-                                target="_blank"
-                                class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-sky-700 sm:w-auto"
-                            >
-                                <i class="ti ti-printer" aria-hidden="true"></i>
-                                PDF seleccionados ({{ seleccionadosCount }})
-                            </a>
-                            <button
-                                v-else
-                                type="button"
-                                disabled
-                                class="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-slate-200 px-4 py-2.5 text-sm font-bold text-slate-500 sm:w-auto"
-                            >
-                                <i class="ti ti-printer" aria-hidden="true"></i>
-                                PDF seleccionados
+                        <div class="flex rounded-xl bg-slate-100/80 p-1">
+                            <button @click="filtroEstado = 'todos'" :class="filtroEstado === 'todos' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2">
+                                <i class="ti ti-layout-grid"></i> Todos
                             </button>
+                            <button @click="filtroEstado = 'pendiente'" :class="filtroEstado === 'pendiente' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2">
+                                <i class="ti ti-clock-dollar"></i> Pendientes
+                            </button>
+                            <button @click="filtroEstado = 'liquidado'" :class="filtroEstado === 'liquidado' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2">
+                                <i class="ti ti-circle-check"></i> Liquidados
+                            </button>
+                        </div>
 
-                            <a
-                                :href="urlRecibosMasivos(true)"
-                                target="_blank"
-                                class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 sm:w-auto"
-                            >
-                                <i class="ti ti-printer" aria-hidden="true"></i>
-                                PDF todos
-                            </a>
+                        <div class="relative flex-1 min-w-[200px]">
+                            <select v-model="criterioOrden" class="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-4 pr-10 text-sm font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 appearance-none transition-all cursor-pointer">
+                                <option value="asc">Nombre (A - Z)</option>
+                                <option value="desc">Nombre (Z - A)</option>
+                                <option value="num_asc">No. Emp. (Menor a Mayor)</option>
+                                <option value="num_desc">No. Emp. (Mayor a Menor)</option>
+                            </select>
+                            <i class="ti ti-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+                        </div>
+
+                        <div class="relative flex-1 min-w-[200px]">
+                            <select v-model="filtroBanco" class="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-4 pr-10 text-sm font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 appearance-none transition-all cursor-pointer">
+                                <option value="todos">Todos los bancos</option>
+                                <option v-for="banco in bancosDisponibles" :key="banco" :value="banco">
+                                    {{ banco }}
+                                </option>
+                            </select>
+                            <i class="ti ti-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
                         </div>
                     </div>
 
-                    <div class="p-5 sm:p-6">
-                        <div v-if="Object.keys(empleadosAgrupados).length === 0" class="empty-state rounded-xl border border-dashed border-slate-300 p-10 text-center">
-                            No se encontraron empleados para ese filtro.
+                    <div class="flex flex-col xl:flex-row justify-between gap-4 border-t border-slate-100 pt-6">
+                        <div class="relative w-full xl:w-80">
+                            <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
+                            <input v-model="searchQuery" type="text" class="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="Buscar empleado o ID..." />
                         </div>
 
-                        <div v-else>
-                            <div v-for="(empleadosBanco, nombreBanco) in empleadosAgrupados" :key="nombreBanco" class="mb-10 scroll-mt-6 last:mb-0">
-                                
-                                <div :class="['sticky top-3 z-20 mb-4 overflow-hidden rounded-xl border border-l-8 px-4 py-3 shadow-sm backdrop-blur', temaBanco(nombreBanco).header]">
-                                    <div class="flex flex-wrap items-center gap-3">
-                                    <div :class="['flex h-9 w-9 items-center justify-center rounded-lg border shadow-sm', temaBanco(nombreBanco).icon]">
-                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3Z" />
-                                        </svg>
+                        <div class="flex flex-wrap gap-2 sm:gap-3">
+                            <a :href="route('nominas.reporte', { semana: numeroSemanaSeleccionada, fecha_corte: selectedCorte })" target="_blank" class="flex items-center gap-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                                <i class="ti ti-file-spreadsheet text-lg"></i> Excel Global
+                            </a>
+                            
+                            <a v-if="seleccionadosCount > 0" :href="urlRecibosMasivos(false)" target="_blank" class="flex items-center gap-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                                <i class="ti ti-printer text-lg"></i> PDF Seleccionados ({{ seleccionadosCount }})
+                            </a>
+                            <button v-else disabled class="flex items-center gap-2 rounded-xl bg-slate-50 text-slate-400 border border-slate-200 px-4 py-2.5 text-xs font-black uppercase tracking-wider cursor-not-allowed">
+                                <i class="ti ti-printer text-lg"></i> PDF Seleccionados
+                            </button>
+
+                            <a :href="urlRecibosMasivos(true)" target="_blank" class="flex items-center gap-2 rounded-xl bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-lg hover:shadow-slate-900/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                                <i class="ti ti-printer text-lg"></i> PDF Todos
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50/50 p-6 sm:p-8 border-t border-slate-100">
+                    <div v-if="Object.keys(empleadosAgrupados).length === 0" class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white p-12 text-slate-400">
+                        <i class="ti ti-file-x text-5xl mb-3 text-slate-300"></i>
+                        <p class="font-bold">No se encontraron empleados para ese filtro.</p>
+                    </div>
+
+                    <div v-else>
+                        <div v-for="(empleadosBanco, nombreBanco) in empleadosAgrupados" :key="nombreBanco" class="mb-12 last:mb-0">
+                            
+                            <div :class="['sticky top-4 z-20 mb-6 overflow-hidden rounded-2xl border px-5 py-4 shadow-md backdrop-blur-md transition-all', temaBanco(nombreBanco).header]">
+                                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                    <div class="flex items-center gap-4">
+                                        <div :class="['flex h-12 w-12 items-center justify-center rounded-xl shadow-sm border text-2xl', temaBanco(nombreBanco).icon]">
+                                            <i class="ti ti-building-bank"></i>
+                                        </div>
+                                        <div>
+                                            <h4 :class="['text-xl font-black tracking-tight', temaBanco(nombreBanco).title]">{{ nombreBanco }}</h4>
+                                            <div class="flex items-center gap-2 mt-1">
+                                                <div :class="['h-1.5 w-16 rounded-full', temaBanco(nombreBanco).stripe]"></div>
+                                                <span :class="['rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', temaBanco(nombreBanco).badge]">
+                                                    {{ empleadosBanco.length }} cuenta(s)
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="min-w-0">
-                                        <h4 :class="['truncate text-lg font-black uppercase tracking-wide', temaBanco(nombreBanco).title]">{{ nombreBanco }}</h4>
-                                        <div :class="['mt-1 h-1 w-32 rounded-full', temaBanco(nombreBanco).stripe]" aria-hidden="true"></div>
-                                    </div>
-                                    <span :class="['rounded-full px-2.5 py-1 text-xs font-bold', temaBanco(nombreBanco).badge]">
-                                        {{ empleadosBanco.length }} empleado(s)
-                                    </span>
-                                    <div class="ml-auto flex w-full flex-wrap gap-2 sm:w-auto">
-                                        <button
-                                            type="button"
-                                            @click="seleccionarBanco(empleadosBanco)"
-                                            :class="['inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold shadow-sm transition sm:flex-none', temaBanco(nombreBanco).button]"
-                                        >
-                                            <i class="ti ti-checks" aria-hidden="true"></i>
-                                            Seleccionar banco
+                                    <div class="flex gap-2">
+                                        <button @click="seleccionarBanco(empleadosBanco)" :class="['flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all hover:-translate-y-0.5', temaBanco(nombreBanco).button]">
+                                            <i class="ti ti-checks text-base"></i> Seleccionar grupo
                                         </button>
-                                        <a
-                                            :href="urlRecibosGrupo(empleadosBanco)"
-                                            target="_blank"
-                                            :class="['inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold shadow-sm transition sm:flex-none', temaBanco(nombreBanco).pdf]"
-                                        >
-                                            <i class="ti ti-printer" aria-hidden="true"></i>
-                                            PDF banco
+                                        <a :href="urlRecibosGrupo(empleadosBanco)" target="_blank" :class="['flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all hover:-translate-y-0.5', temaBanco(nombreBanco).pdf]">
+                                            <i class="ti ti-printer text-base"></i> PDF Grupo
                                         </a>
                                     </div>
-                                    </div>
                                 </div>
+                            </div>
 
-                                <div class="space-y-3">
-                                    <article
-                                        v-for="empleado in empleadosBanco"
-                                        :key="`compacto-${empleado.id}`"
-                                        :class="[
-                                            'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:border-teal-200',
-                                            tieneReglaEspecial(empleado) ? 'border-l-4 border-l-amber-400 bg-amber-50/20' : ''
-                                        ]"
-                                    >
-                                        <div class="grid gap-3 border-b border-slate-100 bg-white p-3 lg:grid-cols-[minmax(260px,1.2fr)_minmax(210px,0.9fr)_minmax(170px,0.7fr)_auto] lg:items-center">
-                                            <div class="flex min-w-0 items-center gap-3">
-                                                <input
-                                                    type="checkbox"
-                                                    :checked="empleadoSeleccionado(empleado.id)"
-                                                    @change="toggleEmpleado(empleado.id, $event.target.checked)"
-                                                    class="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                                                    :title="`Seleccionar ${empleado.nombre_completo}`"
-                                                />
-                                                <div :class="['flex h-10 min-w-10 max-w-16 items-center justify-center rounded-lg border px-2 text-xs font-bold', claseNumeroNomina(empleado)]">
-                                                    {{ empleado.numero_empleado || 'S/N' }}
-                                                </div>
-                                                <div class="min-w-0">
-                                                    <div class="truncate text-sm font-black uppercase text-slate-950">{{ empleado.nombre_completo }}</div>
-                                                    <div class="text-xs font-semibold text-slate-500">{{ empleado.puesto || 'Sin puesto asignado' }}</div>
-                                                    <div v-if="tieneReglaEspecial(empleado)" class="mt-1 flex flex-wrap gap-1">
-                                                        <span
-                                                            v-for="regla in reglasEspecialesEmpleado(empleado)"
-                                                            :key="regla.texto"
-                                                            :class="['rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide', regla.clase]"
-                                                        >
-                                                            {{ regla.texto }}
-                                                        </span>
-                                                    </div>
-                                                </div>
+                            <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                <article v-for="empleado in empleadosBanco" :key="`compacto-${empleado.id}`" 
+                                    :class="['rounded-3xl border bg-white shadow-sm transition-all duration-300 hover:shadow-xl hover:border-blue-200 overflow-hidden flex flex-col', tieneReglaEspecial(empleado) ? 'border-amber-200' : 'border-slate-200/60']">
+                                    
+                                    <div class="border-b border-slate-100 bg-slate-50/50 p-5 flex flex-wrap gap-4 items-start justify-between">
+                                        <div class="flex items-start gap-4">
+                                            <div class="pt-1">
+                                                <input type="checkbox" :checked="empleadoSeleccionado(empleado.id)" @change="toggleEmpleado(empleado.id, $event.target.checked)" class="h-5 w-5 rounded-md border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer shadow-sm" :title="`Seleccionar ${empleado.nombre_completo}`" />
                                             </div>
-
                                             <div>
-                                                <div v-if="empleado.numero_cuenta" class="flex flex-col items-start">
-                                                    <span class="text-[10px] font-black uppercase tracking-wide text-slate-500">{{ empleado.banco || 'Banco no especificado' }}</span>
-                                                    <button
-                                                        @click="copiarCuenta(empleado.banco, empleado.numero_cuenta)"
-                                                        class="mt-1 inline-flex max-w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700"
-                                                        title="Copiar cuenta"
-                                                        type="button"
-                                                    >
-                                                        <span class="truncate font-mono">{{ empleado.numero_cuenta }}</span>
-                                                        <i class="ti ti-copy shrink-0" aria-hidden="true"></i>
-                                                    </button>
-                                                </div>
-                                                <div v-else class="inline-flex items-center gap-1.5 rounded-md border border-rose-100 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600">
-                                                    <i class="ti ti-alert-triangle" aria-hidden="true"></i>
-                                                    Sin cuenta
-                                                </div>
-                                            </div>
-
-                                            <div>
-                                                <div v-if="!empleado.nomina_generada" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500">
-                                                    Genera el recibo primero
-                                                </div>
-                                                <div v-else class="flex flex-wrap items-center gap-2">
-                                                    <span :class="empleado.pagado ? 'status-success' : 'status-warning'" class="status-pill">
-                                                        {{ empleado.pagado ? 'Liquidado' : 'Pendiente' }}
+                                                <div class="flex items-center gap-3 mb-1">
+                                                    <span :class="['flex h-6 items-center justify-center rounded-lg border px-2 text-[10px] font-black uppercase tracking-widest', claseNumeroNomina(empleado)]">
+                                                        #{{ empleado.numero_empleado || 'S/N' }}
                                                     </span>
-                                                    <button
-                                                        @click="cambiarEstadoPago(empleado.nomina_id, empleado.pagado, empleado)"
-                                                        class="text-xs font-semibold text-slate-500 underline decoration-slate-300 transition hover:text-teal-700 hover:decoration-teal-500"
-                                                        type="button"
-                                                    >
-                                                        {{ empleado.pagado ? 'Revertir pago' : 'Marcar pagado y aplicar saldos' }}
-                                                    </button>
+                                                    <h4 class="text-base font-black uppercase text-slate-900 leading-tight">{{ empleado.nombre_completo }}</h4>
+                                                </div>
+                                                <p class="text-xs font-bold text-slate-500 mb-2">{{ empleado.puesto || 'Sin puesto asignado' }}</p>
+                                                
+                                                <div v-if="tieneReglaEspecial(empleado)" class="flex flex-wrap gap-1">
+                                                    <span v-for="regla in reglasEspecialesEmpleado(empleado)" :key="regla.texto" :class="['rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider shadow-sm', regla.clase]">
+                                                        {{ regla.texto }}
+                                                    </span>
                                                 </div>
                                             </div>
+                                        </div>
 
-                                            <div class="flex flex-col gap-2 sm:flex-row lg:justify-end">
-                                                <a
-                                                    :href="route('nominas.excel-individual', parametrosNomina(empleado))"
-                                                    class="inline-flex items-center justify-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-green-700 active:scale-95"
-                                                    title="Descargar Recibo en Excel"
-                                                >
-                                                    <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
-                                                    Excel
+                                        <div class="flex flex-col items-end gap-2">
+                                            <div v-if="!empleado.nomina_generada" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 shadow-sm">
+                                                <i class="ti ti-clock-pause"></i> No generada
+                                            </div>
+                                            <div v-else class="flex flex-col items-end gap-1">
+                                                <span :class="['rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1.5 border', empleado.pagado ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200']">
+                                                    <i :class="empleado.pagado ? 'ti ti-circle-check' : 'ti ti-clock-dollar'"></i>
+                                                    {{ empleado.pagado ? 'Liquidado' : 'Pendiente' }}
+                                                </span>
+                                                <button @click="cambiarEstadoPago(empleado.nomina_id, empleado.pagado, empleado)" class="text-[9px] font-bold text-slate-400 hover:text-blue-600 underline underline-offset-2 transition-colors">
+                                                    {{ empleado.pagado ? 'Revertir pago' : 'Marcar pagado y saldar' }}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="p-5 flex-1 flex flex-col">
+                                        <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+                                            <div v-if="empleado.numero_cuenta" class="flex flex-col items-start">
+                                                <span class="text-[9px] font-black uppercase tracking-wider text-slate-400">{{ empleado.banco }}</span>
+                                                <button @click="copiarCuenta(empleado.banco, empleado.numero_cuenta)" class="mt-0.5 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 group" title="Copiar cuenta">
+                                                    <span class="font-mono">{{ empleado.numero_cuenta }}</span>
+                                                    <i class="ti ti-copy text-slate-400 group-hover:text-blue-600 transition-colors"></i>
+                                                </button>
+                                            </div>
+                                            <div v-else class="inline-flex items-center gap-1.5 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">
+                                                <i class="ti ti-alert-triangle text-base"></i> Sin cuenta
+                                            </div>
+
+                                            <div class="flex items-center gap-2 ml-auto">
+                                                <a :href="route('nominas.excel-individual', parametrosNomina(empleado))" class="flex h-9 w-9 items-center justify-center rounded-xl bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-all" title="Descargar Excel">
+                                                    <i class="ti ti-file-spreadsheet text-lg"></i>
                                                 </a>
-
-                                                <a
-                                                    :href="route('nominas.generar', parametrosNomina(empleado))"
-                                                    target="_blank"
-                                                    @click="marcarComoGenerado(empleado)"
-                                                    :class="empleado.nomina_generada ? 'btn-warning text-xs' : 'btn-accent text-xs'"
-                                                >
-                                                    <i class="ti ti-printer" aria-hidden="true"></i>
+                                                <a :href="route('nominas.generar', parametrosNomina(empleado))" target="_blank" @click="marcarComoGenerado(empleado)" :class="['flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider shadow-sm transition-all', empleado.nomina_generada ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100' : 'bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-md']">
+                                                    <i class="ti ti-printer text-base"></i>
                                                     {{ empleado.nomina_generada ? 'Regenerar' : 'Crear recibo' }}
                                                 </a>
                                             </div>
                                         </div>
 
-                                        <div v-if="ajustesNomina[empleado.id]" class="p-3">
-                                            <div class="grid grid-cols-2 gap-2 text-xs lg:grid-cols-4">
-                                                <div class="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-800">
-                                                    <span class="block text-[10px] font-black uppercase tracking-wide">Neto</span>
-                                                    <span class="text-base font-black">${{ moneda(resumenNomina(empleado).pago_neto) }}</span>
+                                        <div v-if="ajustesNomina[empleado.id]" class="rounded-2xl border border-slate-100 bg-slate-50 p-4 flex-1">
+                                            
+                                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
+                                                <div class="rounded-xl border border-emerald-100 bg-white p-2.5 shadow-sm text-center">
+                                                    <span class="block text-[9px] font-black uppercase tracking-wider text-emerald-500 mb-0.5">Pago Neto</span>
+                                                    <span class="text-sm font-black text-emerald-700">${{ moneda(resumenNomina(empleado).pago_neto) }}</span>
                                                 </div>
-                                                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
-                                                    <span class="block text-[10px] font-black uppercase tracking-wide">Deuda actual</span>
-                                                    <span class="text-base font-black">${{ moneda(resumenNomina(empleado).saldo_prestamo_actual ?? empleado.saldo_prestamo) }}</span>
+                                                <div class="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm text-center">
+                                                    <span class="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Deuda Actual</span>
+                                                    <span class="text-sm font-black text-slate-700">${{ moneda(resumenNomina(empleado).saldo_prestamo_actual ?? empleado.saldo_prestamo) }}</span>
                                                 </div>
-                                                <div class="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-blue-800">
-                                                    <span class="block text-[10px] font-black uppercase tracking-wide">Despues ajuste</span>
-                                                    <span class="text-base font-black">${{ moneda(deudaDespues(empleado)) }}</span>
+                                                <div class="rounded-xl border border-blue-100 bg-white p-2.5 shadow-sm text-center">
+                                                    <span class="block text-[9px] font-black uppercase tracking-wider text-blue-500 mb-0.5">Deuda después</span>
+                                                    <span class="text-sm font-black text-blue-700">${{ moneda(deudaDespues(empleado)) }}</span>
                                                 </div>
-                                                <div class="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-amber-800">
-                                                    <span class="block text-[10px] font-black uppercase tracking-wide">Horas adeudo</span>
-                                                    <span class="text-base font-black">{{ horas(saldoHorasPreview(empleado)) }} h</span>
+                                                <div class="rounded-xl border border-amber-100 bg-white p-2.5 shadow-sm text-center">
+                                                    <span class="block text-[9px] font-black uppercase tracking-wider text-amber-500 mb-0.5">Horas pendientes</span>
+                                                    <span class="text-sm font-black text-amber-700">{{ horas(saldoHorasPreview(empleado)) }} h</span>
                                                 </div>
                                             </div>
 
-                                            <div class="mt-3 grid gap-3 xl:grid-cols-[0.82fr_1.7fr_1fr]">
-                                                <section class="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
-                                                    <div class="mb-2 flex items-center gap-2 text-sm font-black text-blue-900">
-                                                        <i class="ti ti-cash-banknote" aria-hidden="true"></i>
-                                                        Prestamo
+                                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                                <section class="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+                                                    <div class="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-blue-800">
+                                                        <i class="ti ti-cash-banknote text-base"></i> Préstamo
                                                     </div>
-                                                    <div class="grid grid-cols-2 gap-2 xl:grid-cols-1">
+                                                    <div class="grid grid-cols-2 gap-3">
                                                         <label class="block">
-                                                            <span class="mb-1 block text-[10px] font-bold uppercase leading-tight text-blue-700">Compensacion</span>
-                                                            <input v-model="ajustesNomina[empleado.id].prestamo_otorgado" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                            <span class="mb-1 block text-[9px] font-bold uppercase tracking-wider text-blue-600">Entregar hoy</span>
+                                                            <input v-model="ajustesNomina[empleado.id].prestamo_otorgado" type="number" step="0.01" min="0" class="w-full rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm" />
                                                         </label>
                                                         <label class="block">
-                                                            <span class="mb-1 block text-[10px] font-bold uppercase leading-tight text-blue-700">Adeudo</span>
-                                                            <input v-model="ajustesNomina[empleado.id].prestamo_descuento" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                            <span class="mb-1 block text-[9px] font-bold uppercase tracking-wider text-blue-600">Descontar hoy</span>
+                                                            <input v-model="ajustesNomina[empleado.id].prestamo_descuento" type="number" step="0.01" min="0" class="w-full rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm" />
                                                         </label>
                                                     </div>
                                                 </section>
 
-                                                <section class="rounded-lg border border-amber-100 bg-amber-50/70 p-3">
-                                                    <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                                        <div class="flex items-center gap-2 text-sm font-black text-amber-900">
-                                                            <i class="ti ti-calendar-exclamation" aria-hidden="true"></i>
-                                                            Faltas y coberturas
+                                                <section class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                                                    <div class="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-700">
+                                                        <i class="ti ti-adjustments-dollar text-base"></i> Otros Ajustes
+                                                    </div>
+                                                    <div class="grid grid-cols-2 gap-3">
+                                                        <label class="block">
+                                                            <span class="mb-1 block text-[9px] font-bold uppercase tracking-wider text-slate-500">Desc. manual</span>
+                                                            <input v-model="ajustesNomina[empleado.id].deduccion_manual" type="number" step="0.01" min="0" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm" />
+                                                        </label>
+                                                        <label class="block">
+                                                            <span class="mb-1 block text-[9px] font-bold uppercase tracking-wider text-slate-500">+ Días vac.</span>
+                                                            <input v-model="ajustesNomina[empleado.id].dias_vacaciones_adicionales" type="number" step="0.5" min="0" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm" />
+                                                        </label>
+                                                    </div>
+                                                </section>
+
+                                                <section class="lg:col-span-2 rounded-xl border border-amber-100 bg-amber-50/40 p-3">
+                                                    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                                        <div class="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-800">
+                                                            <i class="ti ti-calendar-exclamation text-base"></i> Faltas y forma de pago
                                                         </div>
-                                                        <span class="rounded-full border border-rose-200 bg-white px-2 py-1 text-[11px] font-bold text-rose-700">
-                                                            {{ resumenNomina(empleado).faltas_detectadas || 0 }} falta(s) reales
+                                                        <span class="rounded-md bg-white border border-rose-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-rose-600 shadow-sm">
+                                                            Reloj detectó {{ resumenNomina(empleado).faltas_detectadas || 0 }} falta(s)
                                                         </span>
                                                     </div>
 
-                                                    <div class="grid grid-cols-2 gap-2 text-[11px] font-bold md:grid-cols-4">
-                                                        <span class="rounded-md bg-white px-2 py-1 text-rose-700">{{ faltasConDescuentoPreview(empleado) }} desc.</span>
-                                                        <span class="rounded-md bg-white px-2 py-1 text-blue-700">{{ faltasPagadasPreview(empleado) }} con horas</span>
-                                                        <span class="rounded-md bg-white px-2 py-1 text-emerald-700">{{ faltasCubiertasVacacionesPreview(empleado) }} vac.</span>
-                                                        <span class="rounded-md bg-white px-2 py-1 text-violet-700">{{ faltasCubiertasIncapacidadPreview(empleado) }} incap.</span>
+                                                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                                                        <span class="rounded-lg bg-white border border-rose-100 px-2 py-1.5 text-center text-[10px] font-bold text-rose-600 shadow-sm">{{ faltasConDescuentoPreview(empleado) }} falta(s) se descuentan</span>
+                                                        <span class="rounded-lg bg-white border border-blue-100 px-2 py-1.5 text-center text-[10px] font-bold text-blue-600 shadow-sm">{{ faltasPagadasPreview(empleado) }} se pagan con horas</span>
+                                                        <span class="rounded-lg bg-white border border-emerald-100 px-2 py-1.5 text-center text-[10px] font-bold text-emerald-600 shadow-sm">{{ faltasCubiertasVacacionesPreview(empleado) }} con vacaciones</span>
+                                                        <span class="rounded-lg bg-white border border-violet-100 px-2 py-1.5 text-center text-[10px] font-bold text-violet-600 shadow-sm">{{ faltasCubiertasIncapacidadPreview(empleado) }} con incapacidad</span>
                                                     </div>
 
-                                                    <div class="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                                                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
                                                         <label class="block">
-                                                            <span class="mb-1 block min-h-6 text-[10px] font-bold uppercase leading-tight text-amber-700">Sin descuento / adeuda h</span>
-                                                            <input v-model="ajustesNomina[empleado.id].faltas_pagadas" type="number" step="1" min="0" :max="resumenNomina(empleado).faltas_detectadas || 0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                            <span class="mb-1 block text-[9px] font-bold uppercase tracking-wider text-amber-700 leading-tight">Pagar hoy y deber horas</span>
+                                                            <input v-model="ajustesNomina[empleado.id].faltas_pagadas" type="number" step="1" min="0" :max="resumenNomina(empleado).faltas_detectadas || 0" class="w-full rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all shadow-sm" />
                                                         </label>
                                                         <label class="block">
-                                                            <span class="mb-1 block min-h-6 text-[10px] font-bold uppercase leading-tight text-emerald-700">Pagar con vacaciones</span>
-                                                            <input v-model="ajustesNomina[empleado.id].faltas_cubiertas_vacaciones" type="number" step="1" min="0" :max="Math.max(0, Number(resumenNomina(empleado).faltas_detectadas || 0) - faltasPagadasPreview(empleado))" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                            <span class="mb-1 block text-[9px] font-bold uppercase tracking-wider text-emerald-700 leading-tight">Cubrir con vacaciones</span>
+                                                            <input v-model="ajustesNomina[empleado.id].faltas_cubiertas_vacaciones" type="number" step="1" min="0" :max="Math.max(0, Number(resumenNomina(empleado).faltas_detectadas || 0) - faltasPagadasPreview(empleado))" class="w-full rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all shadow-sm" />
                                                         </label>
                                                         <label class="block">
-                                                            <span class="mb-1 block min-h-6 text-[10px] font-bold uppercase leading-tight text-violet-700">Pagar con incapacidad</span>
-                                                            <input v-model="ajustesNomina[empleado.id].faltas_cubiertas_incapacidad" type="number" step="1" min="0" :max="Math.max(0, Number(resumenNomina(empleado).faltas_detectadas || 0) - faltasPagadasPreview(empleado) - faltasCubiertasVacacionesPreview(empleado))" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                            <span class="mb-1 block text-[9px] font-bold uppercase tracking-wider text-violet-700 leading-tight">Cubrir con incapacidad</span>
+                                                            <input v-model="ajustesNomina[empleado.id].faltas_cubiertas_incapacidad" type="number" step="1" min="0" :max="Math.max(0, Number(resumenNomina(empleado).faltas_detectadas || 0) - faltasPagadasPreview(empleado) - faltasCubiertasVacacionesPreview(empleado))" class="w-full rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 transition-all shadow-sm" />
                                                         </label>
                                                         <label class="block">
-                                                            <span class="mb-1 block min-h-6 text-[10px] font-bold uppercase leading-tight text-amber-700">Hrs extra a tomar</span>
-                                                            <input v-model="ajustesNomina[empleado.id].horas_adeudo_descontadas" type="number" step="0.5" min="0" :max="resumenNomina(empleado).horas_extra_detectadas || 0" class="field-input-soft px-2 py-1.5 text-xs" />
+                                                            <span class="mb-1 block text-[9px] font-bold uppercase tracking-wider text-amber-700 leading-tight">Usar horas extra</span>
+                                                            <input v-model="ajustesNomina[empleado.id].horas_adeudo_descontadas" type="number" step="0.5" min="0" :max="resumenNomina(empleado).horas_extra_detectadas || 0" class="w-full rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all shadow-sm" />
                                                         </label>
                                                     </div>
 
-                                                    <div class="mt-2 grid grid-cols-2 gap-2 text-[11px] font-bold lg:grid-cols-4">
-                                                        <span class="rounded-md bg-white px-2 py-1 text-slate-600">Genera {{ horas(horasAdeudoGeneradasPreview(empleado)) }} h</span>
-                                                        <span class="rounded-md bg-white px-2 py-1 text-slate-600">Extra {{ horas(resumenNomina(empleado).horas_extra_detectadas) }} h</span>
-                                                        <span class="rounded-md bg-white px-2 py-1 text-emerald-700">Paga {{ horas(horasExtraPagadasPreview(empleado)) }} h</span>
-                                                        <span class="rounded-md bg-white px-2 py-1 text-amber-700">Saldo {{ horas(saldoHorasPreview(empleado)) }} h</span>
+                                                    <div class="flex flex-wrap gap-2 text-[9px] font-black uppercase tracking-wider mt-2">
+                                                        <span class="rounded-md bg-white border border-slate-200 px-2 py-1 text-slate-500 shadow-sm">Horas que debe: {{ horas(horasAdeudoGeneradasPreview(empleado)) }}h</span>
+                                                        <span class="rounded-md bg-white border border-slate-200 px-2 py-1 text-slate-500 shadow-sm">Horas extra detectadas: {{ horas(resumenNomina(empleado).horas_extra_detectadas) }}h</span>
+                                                        <span class="rounded-md bg-white border border-emerald-200 px-2 py-1 text-emerald-600 shadow-sm">Horas extra a pagar: {{ horas(horasExtraPagadasPreview(empleado)) }}h</span>
+                                                        <span class="rounded-md bg-white border border-amber-200 px-2 py-1 text-amber-600 shadow-sm">Horas pendientes finales: {{ horas(saldoHorasPreview(empleado)) }}h</span>
                                                     </div>
-                                                    <div v-if="Number(resumenNomina(empleado).horas_extra_miercoles_anterior || 0) > 0" class="mt-2 text-[11px] font-semibold text-amber-800">
-                                                        Incluye {{ horas(resumenNomina(empleado).horas_extra_miercoles_anterior) }} h del miercoles anterior.
-                                                    </div>
-                                                    <div v-if="horasAdeudoMiercolesAnterior(empleado) > 0" class="mt-2 text-[11px] font-semibold text-rose-700">
-                                                        Adeuda {{ horas(horasAdeudoMiercolesAnterior(empleado)) }} h del miercoles anterior.
-                                                    </div>
-                                                </section>
 
-                                                <section class="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                                    <div class="mb-2 flex items-center gap-2 text-sm font-black text-slate-800">
-                                                        <i class="ti ti-adjustments-dollar" aria-hidden="true"></i>
-                                                        Otros
+                                                    <div v-if="Number(resumenNomina(empleado).horas_extra_miercoles_anterior || 0) > 0" class="mt-2 text-[10px] font-bold text-amber-700">
+                                                        <i class="ti ti-info-circle"></i> Incluye {{ horas(resumenNomina(empleado).horas_extra_miercoles_anterior) }}h del miércoles anterior.
                                                     </div>
-                                                    <div class="grid grid-cols-2 gap-2 xl:grid-cols-1">
-                                                        <label class="block">
-                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-slate-500">Desc. extra</span>
-                                                            <input v-model="ajustesNomina[empleado.id].deduccion_manual" type="number" step="0.01" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
-                                                        </label>
-                                                        <label class="block">
-                                                            <span class="mb-1 block text-[10px] font-bold uppercase text-slate-500">Vac. adicionales</span>
-                                                            <input v-model="ajustesNomina[empleado.id].dias_vacaciones_adicionales" type="number" step="0.5" min="0" class="field-input-soft px-2 py-1.5 text-xs" />
-                                                        </label>
+                                                    <div v-if="horasAdeudoMiercolesAnterior(empleado) > 0" class="mt-1 text-[10px] font-bold text-rose-600">
+                                                        <i class="ti ti-alert-circle"></i> Adeuda {{ horas(horasAdeudoMiercolesAnterior(empleado)) }}h del miércoles anterior.
                                                     </div>
-                                                    <div class="mt-2 grid grid-cols-2 gap-2 text-[11px] font-bold">
-                                                        <span class="rounded-md bg-white px-2 py-1 text-rose-700">{{ faltasConDescuentoPreview(empleado) }} falta(s) desc.</span>
-                                                        <span class="rounded-md bg-white px-2 py-1 text-amber-700">{{ resumenNomina(empleado).minutos_tarde_descontables || 0 }} min ret.</span>
-                                                        <span class="rounded-md bg-white px-2 py-1 text-violet-700">{{ horas(diasIncapacidadPreview(empleado)) }} incap.</span>
-                                                        <span class="rounded-md bg-white px-2 py-1 text-violet-700">${{ moneda(pagoIncapacidadPreview(empleado)) }}</span>
-                                                        <span class="rounded-md bg-white px-2 py-1 text-blue-700">{{ horas(diasVacacionesPreview(empleado)) }} dia(s) vac.</span>
-                                                        <span class="rounded-md bg-white px-2 py-1 text-emerald-700">${{ moneda(pagoVacacionesPreview(empleado)) }}</span>
-                                                    </div>
-                                                    <button type="button" @click="guardarAjustes(empleado)" class="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800">
-                                                        <i class="ti ti-device-floppy" aria-hidden="true"></i>
-                                                        {{ guardandoAjuste === empleado.id ? 'Guardando...' : 'Guardar ajustes' }}
-                                                    </button>
                                                 </section>
                                             </div>
-                                        </div>
-                                    </article>
-                                </div>
 
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <section class="app-panel">
-                    <div class="panel-header">
-                        <div class="flex items-start gap-3">
-                            <div class="soft-icon">
-                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h3 class="panel-title">Historial de recibos emitidos</h3>
-                                <p class="panel-subtitle">Consulta pagos anteriores, estatus y archivos PDF.</p>
-                            </div>
-                        </div>
-                        <div class="relative w-full sm:w-80">
-                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                                <i class="ti ti-search" aria-hidden="true"></i>
-                            </div>
-                            <input
-                                v-model="historialSearch"
-                                type="text"
-                                class="field-input-soft pl-9"
-                                placeholder="Buscar nombre o numero..."
-                            />
-                        </div>
-                    </div>
-
-                    <div class="overflow-x-auto">
-                        <table class="table-premium">
-                            <thead>
-                                <tr>
-                                    <th>Periodo</th>
-                                    <th>Empleado</th>
-                                    <th class="text-center">Estado de pago</th>
-                                    <th>Total</th>
-                                    <th class="text-right">Archivo</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="registro in historialFiltrado" :key="registro.id">
-                                    <td class="whitespace-nowrap">
-                                        <div class="font-semibold text-slate-950">Semana {{ registro.numero_semana }}</div>
-                                        <div class="text-xs text-slate-500">{{ registro.fecha_inicio }} al {{ registro.fecha_fin }}</div>
-                                    </td>
-                                    <td class="whitespace-nowrap font-semibold text-slate-900">{{ registro.empleado?.nombre_completo || 'Sin empleado' }}</td>
-                                    <td class="whitespace-nowrap text-center">
-                                        <div class="flex flex-col items-center justify-center gap-1.5">
-                                            <span :class="registro.pagado ? 'status-success' : 'status-warning'" class="status-pill">
-                                                {{ registro.pagado ? 'Liquidado' : 'Pendiente' }}
-                                            </span>
-                                            <button
-                                                @click="cambiarEstadoPago(registro.id, registro.pagado)"
-                                                class="text-xs font-semibold text-slate-500 underline decoration-slate-300 transition hover:text-teal-700 hover:decoration-teal-500"
-                                                type="button"
-                                            >
-                                                {{ registro.pagado ? 'Revertir pago' : 'Marcar pagado' }}
+                                            <button type="button" @click="guardarAjustes(empleado)" class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-slate-900/20 transition-all hover:bg-slate-800 hover:-translate-y-0.5">
+                                                <i class="ti ti-device-floppy text-base"></i>
+                                                {{ guardandoAjuste === empleado.id ? 'Guardando cambios...' : 'Guardar y recalcular ajustes' }}
                                             </button>
                                         </div>
-                                    </td>
-                                    <td class="whitespace-nowrap">
-                                        <span class="status-pill status-neutral">
-                                            ${{ Number(registro.pago_neto).toLocaleString('es-MX', { minimumFractionDigits: 2 }) }}
-                                        </span>
-                                    </td>
-                                    <td class="whitespace-nowrap text-right">
-                                        <a
-                                            :href="route('nominas.descargar', registro.id)"
-                                            target="_blank"
-                                            class="btn-secondary"
-                                        >
-                                            <svg class="h-4 w-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 0 0 2-2V9.414a1 1 0 0 0-.293-.707l-5.414-5.414A1 1 0 0 0 12.586 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2Z" />
-                                            </svg>
-                                            PDF
-                                        </a>
-                                    </td>
-                                </tr>
-                                <tr v-if="historialFiltrado.length === 0">
-                                    <td colspan="5" class="empty-state">
-                                        Todavía no hay recibos emitidos en el historial.
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                                    </div>
+                                </article>
+                            </div>
+                        </div>
                     </div>
-                </section>
-            </div>
+                </div>
+            </section>
 
-            <div
-                class="fixed inset-x-3 bottom-4 z-50 transition duration-300 sm:inset-x-auto sm:bottom-5 sm:right-5"
-                :class="showToast ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'"
-            >
-                <div class="flex items-center gap-3 rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-white shadow-2xl">
-                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-300">
-                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 13 4 4L19 7" />
-                        </svg>
+            <section class="rounded-3xl border border-slate-200/60 bg-white shadow-sm overflow-hidden">
+                <div class="border-b border-slate-100 bg-slate-50/50 px-6 py-5 sm:px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="flex h-12 w-12 items-center justify-center rounded-2xl shadow-inner text-2xl bg-indigo-100 text-indigo-600 border border-indigo-200">
+                            <i class="ti ti-history"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-['Sora'] text-lg font-bold text-slate-900">Historial de Recibos</h3>
+                            <p class="text-xs font-medium text-slate-500">Consulta pagos anteriores, estatus y archivos PDF.</p>
+                        </div>
                     </div>
-                    <div>
-                        <h4 class="text-sm font-semibold">{{ toastTitle }}</h4>
-                        <p class="mt-0.5 text-xs text-slate-300">{{ toastMessage }}</p>
+
+                    <div class="relative w-full sm:w-72">
+                        <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
+                        <input v-model="historialSearch" type="text" class="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold text-slate-800 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all" placeholder="Buscar empleado o semana..." />
                     </div>
+                </div>
+
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left text-sm text-slate-600">
+                        <thead class="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100">
+                            <tr>
+                                <th class="px-6 py-4">Periodo</th>
+                                <th class="px-6 py-4">Colaborador</th>
+                                <th class="px-6 py-4 text-center">Estado</th>
+                                <th class="px-6 py-4">Monto Neto</th>
+                                <th class="px-6 py-4 text-right">Archivo PDF</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <tr v-for="registro in historialFiltrado" :key="registro.id" class="transition-colors hover:bg-slate-50/50">
+                                <td class="px-6 py-4">
+                                    <div class="font-black text-slate-800">Semana {{ registro.numero_semana }}</div>
+                                    <div class="text-[10px] font-bold uppercase text-slate-400 mt-0.5">{{ registro.fecha_inicio }} al {{ registro.fecha_fin }}</div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="font-bold text-slate-900 uppercase">{{ registro.empleado?.nombre_completo || 'Sin empleado' }}</div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="flex flex-col items-center justify-center gap-1.5">
+                                        <span :class="['rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1.5 border', registro.pagado ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200']">
+                                            <i :class="registro.pagado ? 'ti ti-circle-check' : 'ti ti-clock-dollar'"></i>
+                                            {{ registro.pagado ? 'Liquidado' : 'Pendiente' }}
+                                        </span>
+                                        <button @click="cambiarEstadoPago(registro.id, registro.pagado)" class="text-[9px] font-bold text-slate-400 hover:text-indigo-600 underline underline-offset-2 transition-colors" type="button">
+                                            {{ registro.pagado ? 'Revertir pago' : 'Marcar pagado' }}
+                                        </button>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span class="inline-flex rounded-lg bg-slate-100 border border-slate-200 px-3 py-1.5 text-xs font-black text-slate-800 shadow-sm">
+                                        ${{ Number(registro.pago_neto).toLocaleString('es-MX', { minimumFractionDigits: 2 }) }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <a :href="route('nominas.descargar', registro.id)" target="_blank" class="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 shadow-sm transition-all hover:bg-rose-100 hover:border-rose-300">
+                                        <i class="ti ti-file-type-pdf text-lg"></i> Recibo
+                                    </a>
+                                </td>
+                            </tr>
+                            <tr v-if="historialFiltrado.length === 0">
+                                <td colspan="5" class="px-6 py-12 text-center">
+                                    <div class="flex flex-col items-center justify-center text-slate-400">
+                                        <i class="ti ti-receipt-off text-5xl mb-3 text-slate-300"></i>
+                                        <p class="font-bold">El historial de nóminas está vacío o no hay coincidencias.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <div class="fixed inset-x-4 bottom-4 z-50 transition-all duration-500 sm:inset-x-auto sm:bottom-6 sm:right-6"
+             :class="showToast ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0 pointer-events-none'">
+            <div class="flex items-center gap-4 rounded-2xl border border-emerald-500/20 bg-slate-900/95 px-5 py-4 text-white shadow-2xl backdrop-blur-md">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400">
+                    <i class="ti ti-check text-2xl"></i>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold text-white">{{ toastTitle }}</h4>
+                    <p class="mt-0.5 text-xs font-medium text-slate-300">{{ toastMessage }}</p>
                 </div>
             </div>
         </div>
+
     </AuthenticatedLayout>
 </template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Para esconder las flechitas feas de los inputs tipo number */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+</style>
