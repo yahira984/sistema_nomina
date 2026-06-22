@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\AsistenciasSemanalesExport;
 use App\Models\Asistencia;
 use App\Models\Empleado;
 use App\Support\ReglasNominaEmpleado;
+use App\Support\SemanaNomina;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Maatwebsite\Excel\Facades\Excel;
 
 class AsistenciaController extends Controller
 {
@@ -15,7 +19,10 @@ class AsistenciaController extends Controller
 
     public function index(Request $request)
     {
-        $empleados = Empleado::where('estatus', true)->orderBy('nombre_completo', 'asc')->get();
+        $empleados = Empleado::where('estatus', true)
+            ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), NULLIF(numero_empleado_baja, ''), id) AS UNSIGNED) ASC")
+            ->orderBy('nombre_completo', 'asc')
+            ->get();
         $asistencias = Asistencia::with('empleado')->orderBy('fecha', 'desc')->get();
 
         return Inertia::render('Asistencias/Index', [
@@ -23,6 +30,79 @@ class AsistenciaController extends Controller
             'asistencias' => $asistencias,
             'previewImportacion' => $request->session()->get(self::PREVIEW_SESSION_KEY),
         ]);
+    }
+
+    public function exportarSemana(Request $request)
+    {
+        $inicioSemana = $this->inicioSemanaNomina($request->input('fecha', now()->format('Y-m-d')));
+        $finSemana = $inicioSemana->copy()->addDays(6);
+        $nombreArchivo = 'Asistencias_Semana_' . $inicioSemana->isoWeek()
+            . '_' . $inicioSemana->format('Ymd')
+            . '_' . $finSemana->format('Ymd')
+            . '.xlsx';
+
+        return Excel::download(new AsistenciasSemanalesExport($inicioSemana, $finSemana), $nombreArchivo);
+    }
+
+    public function horasAlumnos(Request $request)
+    {
+        [$inicioSemana, $finSemana, $numeroSemana] = SemanaNomina::desdeCorte(
+            $request->input('fecha_corte') ?: SemanaNomina::corteActual()->format('Y-m-d')
+        );
+
+        return Inertia::render('Asistencias/HorasAlumnos', [
+            'estudiantes' => $this->queryAlumnosActivos()->get(),
+            'semanas' => SemanaNomina::disponibles(SemanaNomina::corteActual(), 14),
+            'fechaCorteActual' => $finSemana->format('Y-m-d'),
+            'numeroSemanaActual' => $numeroSemana,
+            'rangoSemanaActual' => $this->rangoSemanaTexto($inicioSemana, $finSemana),
+        ]);
+    }
+
+    public function imprimirHorasAlumnos(Request $request)
+    {
+        $request->validate([
+            'fecha_corte' => 'nullable|date',
+        ]);
+
+        [$inicioSemana, $finSemana, $numeroSemana] = SemanaNomina::desdeCorte(
+            $request->input('fecha_corte') ?: SemanaNomina::corteActual()->format('Y-m-d')
+        );
+
+        $empleadoIds = $this->resolverIdsSeleccionados($request->input('empleado_ids', []));
+        $empleados = $this->queryAlumnosActivos()
+            ->when(count($empleadoIds) > 0, fn ($query) => $query->whereIn('id', $empleadoIds))
+            ->get();
+
+        $asistenciasPorAlumno = Asistencia::whereIn('empleado_id', $empleados->pluck('id')->all())
+            ->whereBetween('fecha', [$inicioSemana->format('Y-m-d'), $finSemana->format('Y-m-d')])
+            ->where('tipo_asistencia', 'Normal')
+            ->orderBy('fecha')
+            ->get()
+            ->groupBy('empleado_id');
+
+        $alumnos = $empleados->map(function (Empleado $empleado) use ($asistenciasPorAlumno) {
+            $registros = $this->registrosHorasServicio($asistenciasPorAlumno->get($empleado->id, collect()));
+
+            return [
+                'empleado' => $empleado,
+                'registros' => $registros,
+                'total_horas' => round($registros->sum('horas'), 2),
+                'total_horas_texto' => $this->formatoHorasServicio(round($registros->sum('horas'), 2)),
+            ];
+        })->values();
+
+        $pdf = Pdf::loadView('pdf.horas_servicio_alumnos', [
+            'alumnos' => $alumnos,
+            'universidad' => '',
+            'horasCumplir' => '',
+            'inicioSemana' => $inicioSemana,
+            'finSemana' => $finSemana,
+            'numeroSemana' => $numeroSemana,
+            'rangoSemana' => $this->rangoSemanaTexto($inicioSemana, $finSemana),
+        ])->setPaper('letter', 'portrait');
+
+        return $pdf->stream('Registro_Horas_Alumnos_Semana_' . $numeroSemana . '.pdf');
     }
 
     public function store(Request $request)
@@ -179,12 +259,26 @@ class AsistenciaController extends Controller
         return redirect()->back()->with('success', 'Revision de importacion descartada.');
     }
 
+    private function inicioSemanaNomina(string $fecha): Carbon
+    {
+        $inicio = Carbon::parse($fecha)->startOfDay();
+
+        while (!$inicio->isThursday()) {
+            $inicio->subDay();
+        }
+
+        return $inicio;
+    }
+
     private function prepararRevisionImportacion(string $path, ?string $fechaInicio, ?string $fechaFin): array
     {
         [$agrupados, $fechasCsv] = $this->leerMarcajesCsv($path);
 
         $rango = $this->resolverRangoRevision($fechasCsv, $fechaInicio, $fechaFin);
-        $empleados = Empleado::where('estatus', true)->orderBy('nombre_completo', 'asc')->get();
+        $empleados = Empleado::where('estatus', true)
+            ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), NULLIF(numero_empleado_baja, ''), id) AS UNSIGNED) ASC")
+            ->orderBy('nombre_completo', 'asc')
+            ->get();
         $empleadosPorNumero = $this->indexarEmpleadosPorNumero($empleados);
         $existentes = $this->obtenerAsistenciasExistentes($empleados->pluck('id')->all(), $rango);
 
@@ -716,5 +810,124 @@ class AsistenciaController extends Controller
     private function redondearHoraCompletaCercana(float $horas): float
     {
         return max(0, round($horas));
+    }
+
+    private function queryAlumnosActivos()
+    {
+        return Empleado::where('estatus', true)
+            ->where('es_estudiante', true)
+            ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), NULLIF(numero_empleado_baja, ''), id) AS UNSIGNED) ASC")
+            ->orderBy('nombre_completo', 'asc');
+    }
+
+    private function resolverIdsSeleccionados($ids): array
+    {
+        if (is_string($ids)) {
+            $ids = explode(',', $ids);
+        }
+
+        if (!is_array($ids)) {
+            $ids = [$ids];
+        }
+
+        return collect($ids)
+            ->flatten()
+            ->filter(fn ($id) => is_numeric($id))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function registrosHorasServicio($asistencias)
+    {
+        return collect($asistencias)
+            ->sortBy('fecha')
+            ->map(function (Asistencia $asistencia) {
+                $horas = $this->horasServicioAsistencia($asistencia);
+
+                return [
+                    'fecha' => Carbon::parse($asistencia->fecha)->locale('es')->isoFormat('D-MMM-YY'),
+                    'hora_entrada' => $this->horaCorta($asistencia->hora_entrada),
+                    'hora_salida' => $this->horaCorta($asistencia->hora_salida),
+                    'horas' => $horas,
+                    'horas_texto' => $this->formatoHorasServicio($horas),
+                ];
+            })
+            ->values();
+    }
+
+    private function horasServicioAsistencia(Asistencia $asistencia): float
+    {
+        $fecha = Carbon::parse($asistencia->fecha);
+
+        if ($fecha->isSaturday() && $asistencia->hora_entrada && $asistencia->hora_salida) {
+            $entrada = Carbon::parse($fecha->format('Y-m-d') . ' ' . $asistencia->hora_entrada);
+            $salida = Carbon::parse($fecha->format('Y-m-d') . ' ' . $asistencia->hora_salida);
+
+            if ($salida->greaterThan($entrada)) {
+                $horaOficial = Carbon::parse($fecha->format('Y-m-d') . ' 08:00:00');
+                $inicio = $entrada->lessThan($horaOficial) ? $horaOficial : $entrada;
+
+                return max(0, round($inicio->diffInMinutes($salida) / 60));
+            }
+        }
+
+        $horasGuardadas = (float) $asistencia->horas_trabajadas + (float) $asistencia->horas_extra;
+
+        if ($horasGuardadas > 0) {
+            return round($horasGuardadas, 2);
+        }
+
+        if (!$asistencia->hora_entrada || !$asistencia->hora_salida) {
+            return 0;
+        }
+
+        $entrada = Carbon::parse($fecha->format('Y-m-d') . ' ' . $asistencia->hora_entrada);
+        $salida = Carbon::parse($fecha->format('Y-m-d') . ' ' . $asistencia->hora_salida);
+
+        if ($salida->lessThanOrEqualTo($entrada)) {
+            return 0;
+        }
+
+        return round($entrada->diffInMinutes($salida) / 60, 2);
+    }
+
+    private function horaCorta($hora): string
+    {
+        if (!$hora) {
+            return '';
+        }
+
+        return Carbon::parse('2000-01-01 ' . $hora)->format('H:i');
+    }
+
+    private function formatoHorasServicio(float $horas): string
+    {
+        $horas = round($horas, 2);
+        $enteras = (int) floor($horas);
+        $minutos = (int) round(($horas - $enteras) * 60);
+
+        if ($minutos === 60) {
+            $enteras++;
+            $minutos = 0;
+        }
+
+        if ($minutos === 0) {
+            return $enteras . ' HRS';
+        }
+
+        if ($minutos === 30) {
+            return $enteras . ' 1/2 HRS';
+        }
+
+        return $enteras . ':' . str_pad((string) $minutos, 2, '0', STR_PAD_LEFT) . ' HRS';
+    }
+
+    private function rangoSemanaTexto(Carbon $inicioSemana, Carbon $finSemana): string
+    {
+        return $inicioSemana->locale('es')->isoFormat('D MMM YYYY')
+            . ' al '
+            . $finSemana->locale('es')->isoFormat('D MMM YYYY');
     }
 }
