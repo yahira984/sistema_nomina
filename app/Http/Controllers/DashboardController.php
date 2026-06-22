@@ -9,6 +9,7 @@ use App\Models\Nomina;
 use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
@@ -109,7 +110,290 @@ class DashboardController extends Controller
                 'mes' => $this->liderLlegadasTempranas($hoy->copy()->startOfMonth(), $hoy->copy()->endOfMonth(), $hoy->locale('es')->isoFormat('MMMM YYYY')),
                 'anio' => $this->liderLlegadasTempranas($hoy->copy()->startOfYear(), $hoy->copy()->endOfYear(), (string) $anioActual),
             ],
+            'finanzasNomina' => [
+                'desgloseGasto' => $this->desgloseGastoSemanal($inicioSemana, $finSemana),
+                'prestamos' => $this->resumenPrestamos($hoy),
+                'comparativa' => $this->comparativaGastoNomina($inicioSemana, $finSemana),
+            ],
+            'operatividad' => [
+                'mapaCalor' => $this->mapaCalorAusentismo($hoy),
+                'puntualidad' => $this->tasaPuntualidadGlobal($inicioSemana, $finSemana),
+            ],
+            'recursosHumanos' => [
+                'rotacion' => $this->rotacionMes($hoy),
+                'pasivoVacacional' => $this->pasivoVacacional(),
+                'antiguedad' => $this->distribucionAntiguedad(),
+            ],
         ]);
+    }
+
+    private function desgloseGastoSemanal(Carbon $inicioSemana, Carbon $finSemana): array
+    {
+        $nominas = Nomina::with('empleado')
+            ->whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
+            ->whereDate('fecha_fin', $finSemana->format('Y-m-d'))
+            ->get();
+
+        $desglose = [
+            'Salario base' => 0,
+            'Horas extra' => 0,
+            'Primas vacacionales' => 0,
+            'Incapacidades' => 0,
+        ];
+
+        foreach ($nominas as $nomina) {
+            $empleado = $nomina->empleado;
+            if (!$empleado) {
+                continue;
+            }
+
+            $esEstudiante = (bool) ($empleado->es_estudiante ?? false);
+            $sueldoSemanal = (float) ($empleado->sueldo_semanal ?? 0);
+            $sueldoPorHora = (float) ($empleado->sueldo_por_hora ?? 0);
+
+            if (!$esEstudiante && $sueldoSemanal <= 0 && $sueldoPorHora > 0) {
+                $sueldoSemanal = $sueldoPorHora * 56;
+            }
+
+            $tarifaHora = $esEstudiante
+                ? $sueldoPorHora
+                : ($sueldoSemanal > 0 ? $sueldoSemanal / 56 : 0);
+            $pagoDia = $sueldoSemanal > 0 ? $sueldoSemanal / 7 : 0;
+
+            $pagoExtra = (float) ($nomina->horas_extra_pagadas ?? $nomina->horas_extra ?? 0) * ($tarifaHora * 2);
+            $pagoVacaciones = !$esEstudiante
+                ? (float) ($nomina->dias_vacaciones_pagadas ?? 0) * ($pagoDia * 1.25)
+                : 0;
+            $diasIncapacidad = (float) ($nomina->faltas_cubiertas_incapacidad ?? 0)
+                + $this->diasIncapacidadPeriodo($nomina);
+            $pagoIncapacidad = !$esEstudiante ? $diasIncapacidad * ($pagoDia * 0.60) : 0;
+            $totalPercepcionesNomina = max(0, (float) ($nomina->total_percepciones ?? 0) - (float) ($nomina->prestamo_otorgado ?? 0));
+            $salarioBase = max(0, $totalPercepcionesNomina - $pagoExtra - $pagoVacaciones - $pagoIncapacidad);
+
+            $desglose['Salario base'] += $salarioBase;
+            $desglose['Horas extra'] += $pagoExtra;
+            $desglose['Primas vacacionales'] += $pagoVacaciones;
+            $desglose['Incapacidades'] += $pagoIncapacidad;
+        }
+
+        $total = array_sum($desglose);
+
+        return [
+            'labels' => array_keys($desglose),
+            'datos' => array_map(fn ($valor) => round($valor, 2), array_values($desglose)),
+            'porcentajes' => array_map(fn ($valor) => $total > 0 ? round(($valor / $total) * 100, 1) : 0, array_values($desglose)),
+            'total' => round($total, 2),
+        ];
+    }
+
+    private function diasIncapacidadPeriodo(Nomina $nomina): int
+    {
+        return Asistencia::where('empleado_id', $nomina->empleado_id)
+            ->whereBetween('fecha', [$nomina->fecha_inicio, $nomina->fecha_fin])
+            ->where('tipo_asistencia', 'Incapacidad')
+            ->count();
+    }
+
+    private function resumenPrestamos(Carbon $hoy): array
+    {
+        $inicioMes = $hoy->copy()->startOfMonth()->format('Y-m-d');
+        $finMes = $hoy->copy()->endOfMonth()->format('Y-m-d');
+        $capitalPrestado = (float) Empleado::where('saldo_prestamo', '>', 0)->sum('saldo_prestamo');
+
+        if (Schema::hasColumn('nominas', 'prestamo_saldo_aplicado_at')) {
+            $recuperadoMes = (float) Nomina::where('pagado', true)
+                ->whereBetween('prestamo_saldo_aplicado_at', [$hoy->copy()->startOfMonth(), $hoy->copy()->endOfMonth()])
+                ->sum('prestamo_saldo_aplicado_descuento');
+        } else {
+            $recuperadoMes = (float) Nomina::where('pagado', true)
+                ->whereBetween('fecha_fin', [$inicioMes, $finMes])
+                ->sum('prestamo_descuento');
+        }
+
+        return [
+            'capitalPrestado' => round($capitalPrestado, 2),
+            'recuperadoMes' => round($recuperadoMes, 2),
+        ];
+    }
+
+    private function comparativaGastoNomina(Carbon $inicioSemana, Carbon $finSemana): array
+    {
+        $periodos = collect();
+
+        for ($i = 3; $i >= 0; $i--) {
+            $inicio = $inicioSemana->copy()->subWeeks($i);
+            $fin = $finSemana->copy()->subWeeks($i);
+            $gasto = (float) Nomina::whereDate('fecha_inicio', $inicio->format('Y-m-d'))
+                ->whereDate('fecha_fin', $fin->format('Y-m-d'))
+                ->sum('pago_neto');
+
+            $periodos->push([
+                'label' => 'Sem. ' . $inicio->weekOfYear,
+                'inicio' => $inicio->format('Y-m-d'),
+                'fin' => $fin->format('Y-m-d'),
+                'gasto' => round($gasto, 2),
+            ]);
+        }
+
+        $actual = (float) ($periodos->last()['gasto'] ?? 0);
+        $anterior = (float) ($periodos->slice(-2, 1)->first()['gasto'] ?? 0);
+
+        return [
+            'labels' => $periodos->pluck('label')->values(),
+            'datos' => $periodos->pluck('gasto')->values(),
+            'actual' => round($actual, 2),
+            'anterior' => round($anterior, 2),
+            'variacion' => round($actual - $anterior, 2),
+        ];
+    }
+
+    private function mapaCalorAusentismo(Carbon $hoy): array
+    {
+        $dias = [
+            Carbon::MONDAY => 'Lun',
+            Carbon::TUESDAY => 'Mar',
+            Carbon::WEDNESDAY => 'Mie',
+            Carbon::THURSDAY => 'Jue',
+            Carbon::FRIDAY => 'Vie',
+            Carbon::SATURDAY => 'Sab',
+        ];
+
+        $faltas = array_fill_keys(array_values($dias), 0);
+        $retardos = array_fill_keys(array_values($dias), 0);
+
+        $asistencias = $this->asistenciasDashboard()
+            ->with('empleado')
+            ->whereBetween('fecha', [$hoy->copy()->startOfMonth()->format('Y-m-d'), $hoy->copy()->endOfMonth()->format('Y-m-d')])
+            ->get();
+
+        foreach ($asistencias as $asistencia) {
+            $dia = Carbon::parse($asistencia->fecha)->dayOfWeek;
+            if (!isset($dias[$dia])) {
+                continue;
+            }
+
+            $label = $dias[$dia];
+
+            if ($asistencia->tipo_asistencia === 'Falta') {
+                $faltas[$label]++;
+            }
+
+            if ((int) ($asistencia->minutos_tarde ?? 0) > 0
+                && $this->empleadoCuentaParaPuntualidad($asistencia->empleado)
+                && $this->asistenciaTieneRetardoValido($asistencia)) {
+                $retardos[$label]++;
+            }
+        }
+
+        return [
+            'labels' => array_values($dias),
+            'series' => [
+                [
+                    'name' => 'Faltas',
+                    'data' => collect($faltas)->map(fn ($valor, $dia) => ['x' => $dia, 'y' => $valor])->values(),
+                ],
+                [
+                    'name' => 'Retardos',
+                    'data' => collect($retardos)->map(fn ($valor, $dia) => ['x' => $dia, 'y' => $valor])->values(),
+                ],
+            ],
+        ];
+    }
+
+    private function tasaPuntualidadGlobal(Carbon $inicioSemana, Carbon $finSemana): array
+    {
+        $empleados = Empleado::where('estatus', true)
+            ->get()
+            ->filter(fn ($empleado) => $this->empleadoCuentaParaPuntualidad($empleado))
+            ->values();
+
+        $total = $empleados->count();
+
+        if ($total === 0) {
+            return ['porcentaje' => 100, 'perfectos' => 0, 'evaluados' => 0];
+        }
+
+        $asistencias = Asistencia::with('empleado')
+            ->whereIn('empleado_id', $empleados->pluck('id'))
+            ->whereBetween('fecha', [$inicioSemana->format('Y-m-d'), $finSemana->format('Y-m-d')])
+            ->get();
+
+        $empleadosConFalta = $asistencias
+            ->where('tipo_asistencia', 'Falta')
+            ->pluck('empleado_id')
+            ->unique();
+
+        $empleadosConRetardoDescontable = $asistencias
+            ->where('tipo_asistencia', 'Normal')
+            ->filter(fn ($asistencia) => $this->asistenciaTieneRetardoValido($asistencia))
+            ->groupBy('empleado_id')
+            ->filter(fn ($registros) => (int) $registros->sum('minutos_tarde') >= self::UMBRAL_RETARDO_SEMANAL_MINUTOS)
+            ->keys();
+
+        $conIncidencia = $empleadosConFalta->merge($empleadosConRetardoDescontable)->unique()->count();
+        $perfectos = max(0, $total - $conIncidencia);
+
+        return [
+            'porcentaje' => round(($perfectos / $total) * 100, 1),
+            'perfectos' => $perfectos,
+            'evaluados' => $total,
+        ];
+    }
+
+    private function rotacionMes(Carbon $hoy): array
+    {
+        $inicioMes = $hoy->copy()->startOfMonth();
+        $finMes = $hoy->copy()->endOfMonth();
+        $labels = [];
+        $altas = [];
+        $bajas = [];
+        $inicio = $inicioMes->copy();
+        $contador = 1;
+
+        while ($inicio->lte($finMes)) {
+            $fin = $inicio->copy()->addDays(6);
+            if ($fin->gt($finMes)) {
+                $fin = $finMes->copy();
+            }
+            $labels[] = 'S' . $contador;
+            $altas[] = Empleado::whereBetween('fecha_ingreso', [$inicio->format('Y-m-d'), $fin->format('Y-m-d')])->count();
+            $bajas[] = Empleado::whereBetween('fecha_baja', [$inicio->format('Y-m-d'), $fin->format('Y-m-d')])->count();
+            $inicio = $fin->copy()->addDay();
+            $contador++;
+        }
+
+        return [
+            'labels' => $labels,
+            'altas' => $altas,
+            'bajas' => $bajas,
+            'totalAltas' => array_sum($altas),
+            'totalBajas' => array_sum($bajas),
+        ];
+    }
+
+    private function pasivoVacacional(): array
+    {
+        $empleados = Empleado::where('estatus', true)->get();
+        $dias = $empleados->sum(fn ($empleado) => max(0, (float) $empleado->dias_vacaciones_restantes));
+
+        return [
+            'diasPendientes' => round($dias, 2),
+            'empleadosConSaldo' => $empleados->filter(fn ($empleado) => (float) $empleado->dias_vacaciones_restantes > 0)->count(),
+        ];
+    }
+
+    private function distribucionAntiguedad(): array
+    {
+        $empleados = Empleado::where('estatus', true)->get();
+
+        return [
+            'labels' => ['Menos de 1 año', '1 a 3 años', 'Mas de 3 años'],
+            'datos' => [
+                $empleados->filter(fn ($empleado) => (float) $empleado->antiguedad_anios < 1)->count(),
+                $empleados->filter(fn ($empleado) => (float) $empleado->antiguedad_anios >= 1 && (float) $empleado->antiguedad_anios <= 3)->count(),
+                $empleados->filter(fn ($empleado) => (float) $empleado->antiguedad_anios > 3)->count(),
+            ],
+        ];
     }
 
     private function asistenciasDashboard()

@@ -15,7 +15,10 @@ const props = defineProps({
   graficaAsistencia: Array,
   graficaExtras:     Object,
   retardosControl:   { type: Object, default: () => ({}) },
-  tempranoControl:   { type: Object, default: () => ({}) }
+  tempranoControl:   { type: Object, default: () => ({}) },
+  finanzasNomina:    { type: Object, default: () => ({}) },
+  operatividad:      { type: Object, default: () => ({}) },
+  recursosHumanos:   { type: Object, default: () => ({}) }
 })
 
 const kpisDashboard = computed(() => props.kpis ?? { faltas: 0, cumpleaneros: [] })
@@ -29,6 +32,27 @@ const periodosControl = [
 ]
 const retardosControlData = computed(() => props.retardosControl ?? {})
 const tempranoControlData = computed(() => props.tempranoControl ?? {})
+const finanzasData = computed(() => props.finanzasNomina ?? {})
+const operatividadData = computed(() => props.operatividad ?? {})
+const rhData = computed(() => props.recursosHumanos ?? {})
+const desgloseGasto = computed(() => finanzasData.value.desgloseGasto ?? { labels: [], datos: [], porcentajes: [], total: 0 })
+const prestamosData = computed(() => finanzasData.value.prestamos ?? { capitalPrestado: 0, recuperadoMes: 0 })
+const comparativaData = computed(() => finanzasData.value.comparativa ?? { labels: [], datos: [], actual: 0, anterior: 0, variacion: 0 })
+const mapaCalorData = computed(() => operatividadData.value.mapaCalor ?? { labels: [], series: [] })
+const puntualidadData = computed(() => operatividadData.value.puntualidad ?? { porcentaje: 0, perfectos: 0, evaluados: 0 })
+const rotacionData = computed(() => rhData.value.rotacion ?? { labels: [], altas: [], bajas: [], totalAltas: 0, totalBajas: 0 })
+const pasivoVacacional = computed(() => rhData.value.pasivoVacacional ?? { diasPendientes: 0, empleadosConSaldo: 0 })
+const antiguedadData = computed(() => rhData.value.antiguedad ?? { labels: [], datos: [] })
+const desgloseSinDatos = computed(() => (desgloseGasto.value.datos ?? []).reduce((total, item) => total + Number(item || 0), 0) <= 0)
+const desgloseLabels = computed(() => desgloseSinDatos.value ? ['Sin nominas'] : (desgloseGasto.value.labels ?? []))
+const desgloseSeries = computed(() => desgloseSinDatos.value ? [1] : (desgloseGasto.value.datos ?? []))
+const puntualidadSeries = computed(() => [Number(puntualidadData.value.porcentaje || 0)])
+const comparativaSeries = computed(() => [{ name: 'Gasto neto', data: comparativaData.value.datos ?? [] }])
+const rotacionSeries = computed(() => [
+  { name: 'Altas', data: rotacionData.value.altas ?? [] },
+  { name: 'Bajas', data: rotacionData.value.bajas ?? [] },
+])
+const antiguedadSeries = computed(() => [{ name: 'Empleados', data: antiguedadData.value.datos ?? [] }])
 const retardosItems = computed(() => periodosControl.map(item => ({
   ...item,
   tone: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -47,6 +71,16 @@ const formatoMinutos = (minutos) => {
 
   return horas > 0 ? `${horas} h ${resto} min` : `${resto} min`
 }
+
+const formatoMoneda = (valor) => Number(valor || 0).toLocaleString('es-MX', {
+  style: 'currency',
+  currency: 'MXN',
+  maximumFractionDigits: 2,
+})
+
+const formatoNumero = (valor) => Number(valor || 0).toLocaleString('es-MX', {
+  maximumFractionDigits: 1,
+})
 
 const modules = [
   { name: 'Directorio de personal', desc: 'Alta, edición y consulta', route: 'empleados.index', icon: 'ti-address-book', tone: 'bg-blue-50 text-blue-600 border-blue-100' },
@@ -80,6 +114,117 @@ const barOptions = computed(() => ({
   yaxis: { title: { text: 'Horas Extra Totales', style: { color: '#64748b' } } },
   grid: { borderColor: '#f1f5f9', strokeDashArray: 4 }
 }));
+
+const desgloseGastoOptions = computed(() => ({
+  chart: { type: 'donut', fontFamily: 'Sora, sans-serif', background: 'transparent' },
+  labels: desgloseLabels.value,
+  colors: desgloseSinDatos.value ? ['#cbd5e1'] : ['#0f766e', '#2563eb', '#f59e0b', '#8b5cf6'],
+  dataLabels: { enabled: false },
+  stroke: { colors: ['#ffffff'], width: 3 },
+  legend: {
+    position: 'bottom',
+    fontSize: '11px',
+    fontWeight: 700,
+    labels: { colors: '#475569' },
+    markers: { radius: 8 }
+  },
+  plotOptions: {
+    pie: {
+      donut: {
+        size: '68%',
+        labels: {
+          show: true,
+          total: {
+            show: true,
+            label: 'Total',
+            formatter: () => formatoMoneda(desgloseGasto.value.total || 0)
+          }
+        }
+      }
+    }
+  },
+  tooltip: { y: { formatter: (value) => formatoMoneda(value) } }
+}))
+
+const comparativaOptions = computed(() => ({
+  chart: { type: 'area', fontFamily: 'Sora, sans-serif', toolbar: { show: false }, background: 'transparent' },
+  colors: ['#0d9488'],
+  stroke: { width: 3, curve: 'smooth' },
+  fill: { type: 'gradient', gradient: { shadeIntensity: 0.35, opacityFrom: 0.3, opacityTo: 0.05 } },
+  dataLabels: { enabled: false },
+  xaxis: {
+    categories: comparativaData.value.labels ?? [],
+    axisBorder: { show: false },
+    axisTicks: { show: false },
+    labels: { style: { colors: '#64748b', fontWeight: 700 } }
+  },
+  yaxis: { labels: { formatter: (value) => `$${Math.round(value).toLocaleString('es-MX')}` } },
+  grid: { borderColor: '#f1f5f9', strokeDashArray: 4 },
+  tooltip: { y: { formatter: (value) => formatoMoneda(value) } }
+}))
+
+const heatmapOptions = computed(() => ({
+  chart: { type: 'heatmap', fontFamily: 'Sora, sans-serif', toolbar: { show: false }, background: 'transparent' },
+  dataLabels: { enabled: true, style: { colors: ['#0f172a'], fontWeight: 800 } },
+  colors: ['#ef4444'],
+  plotOptions: {
+    heatmap: {
+      radius: 6,
+      enableShades: true,
+      colorScale: {
+        ranges: [
+          { from: 0, to: 0, color: '#ecfdf5', name: 'Limpio' },
+          { from: 1, to: 2, color: '#fef3c7', name: 'Bajo' },
+          { from: 3, to: 5, color: '#fed7aa', name: 'Medio' },
+          { from: 6, to: 999, color: '#fecaca', name: 'Alto' },
+        ]
+      }
+    }
+  },
+  xaxis: { labels: { style: { colors: '#64748b', fontWeight: 800 } } },
+  yaxis: { labels: { style: { colors: '#334155', fontWeight: 800 } } },
+  tooltip: { y: { formatter: (value) => `${value} evento(s)` } }
+}))
+
+const puntualidadOptions = computed(() => ({
+  chart: { type: 'radialBar', fontFamily: 'Sora, sans-serif', sparkline: { enabled: true }, background: 'transparent' },
+  colors: [puntualidadData.value.porcentaje >= 90 ? '#10b981' : puntualidadData.value.porcentaje >= 75 ? '#f59e0b' : '#ef4444'],
+  plotOptions: {
+    radialBar: {
+      startAngle: -135,
+      endAngle: 135,
+      hollow: { size: '62%' },
+      track: { background: '#e2e8f0', strokeWidth: '96%' },
+      dataLabels: {
+        name: { show: true, offsetY: 28, color: '#64748b', fontSize: '11px', fontWeight: 800 },
+        value: { show: true, offsetY: -10, color: '#0f172a', fontSize: '30px', fontWeight: 900, formatter: value => `${Number(value).toFixed(1)}%` },
+      }
+    }
+  },
+  labels: ['Puntualidad']
+}))
+
+const rotacionOptions = computed(() => ({
+  chart: { type: 'bar', stacked: true, fontFamily: 'Sora, sans-serif', toolbar: { show: false }, background: 'transparent' },
+  colors: ['#10b981', '#f43f5e'],
+  plotOptions: { bar: { borderRadius: 6, columnWidth: '52%' } },
+  dataLabels: { enabled: false },
+  xaxis: { categories: rotacionData.value.labels ?? [], labels: { style: { colors: '#64748b', fontWeight: 800 } } },
+  yaxis: { labels: { formatter: value => Math.round(value) } },
+  grid: { borderColor: '#f1f5f9', strokeDashArray: 4 },
+  legend: { position: 'top', horizontalAlign: 'right', fontWeight: 800 }
+}))
+
+const antiguedadOptions = computed(() => ({
+  chart: { type: 'bar', fontFamily: 'Sora, sans-serif', toolbar: { show: false }, background: 'transparent' },
+  colors: ['#6366f1'],
+  plotOptions: { bar: { horizontal: true, borderRadius: 8, barHeight: '52%' } },
+  dataLabels: { enabled: true, style: { colors: ['#ffffff'], fontWeight: 900 } },
+  xaxis: { categories: antiguedadData.value.labels ?? [], labels: { style: { colors: '#64748b', fontWeight: 700 } } },
+  yaxis: { labels: { style: { colors: '#334155', fontWeight: 800 } } },
+  grid: { borderColor: '#f1f5f9', strokeDashArray: 4 },
+  tooltip: { y: { formatter: value => `${value} empleado(s)` } }
+}))
 </script>
 
 <template>
@@ -120,6 +265,177 @@ const barOptions = computed(() => ({
         <p class="break-words font-['Sora'] text-2xl font-extrabold text-slate-800 sm:text-3xl">${{ gastoSemanal }}</p>
       </div>
     </div>
+
+    <section class="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="border-b border-slate-100 bg-slate-50/60 px-5 py-4 sm:px-6">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-xl text-emerald-700">
+            <i class="ti ti-report-money" aria-hidden="true"></i>
+          </div>
+          <div>
+            <h2 class="font-['Sora'] text-base font-bold text-slate-800">Finanzas y Nomina</h2>
+            <p class="text-xs font-semibold text-slate-500">Gasto, prestamos y comparativa semanal</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid gap-4 p-5 sm:p-6 xl:grid-cols-12">
+        <article class="rounded-2xl border border-slate-100 bg-slate-50/40 p-4 shadow-sm xl:col-span-5">
+          <div class="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs font-black uppercase tracking-wider text-slate-400">Desglose del gasto semanal</p>
+              <p class="mt-1 text-sm font-bold text-slate-800">{{ formatoMoneda(desgloseGasto.total || 0) }}</p>
+            </div>
+            <span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700">Semana {{ semanaContable }}</span>
+          </div>
+          <VueApexCharts width="100%" height="260" :options="desgloseGastoOptions" :series="desgloseSeries" />
+          <div class="grid grid-cols-2 gap-2 text-[11px] font-bold text-slate-600">
+            <div v-for="(label, index) in desgloseGasto.labels" :key="label" class="rounded-lg border border-white bg-white px-3 py-2 shadow-sm">
+              <span class="block text-slate-400">{{ label }}</span>
+              <span>{{ formatoMoneda(desgloseGasto.datos?.[index] || 0) }} · {{ formatoNumero(desgloseGasto.porcentajes?.[index] || 0) }}%</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm xl:col-span-3">
+          <div class="mb-4 flex items-center justify-between">
+            <div class="flex h-11 w-11 items-center justify-center rounded-xl border border-blue-200 bg-white text-xl text-blue-700 shadow-sm">
+              <i class="ti ti-cash-banknote" aria-hidden="true"></i>
+            </div>
+            <span class="rounded-full border border-blue-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-blue-700">Prestamos</span>
+          </div>
+          <p class="text-xs font-black uppercase tracking-wider text-blue-500">Capital prestado total</p>
+          <p class="mt-1 break-words font-['Sora'] text-2xl font-black text-slate-900">{{ formatoMoneda(prestamosData.capitalPrestado) }}</p>
+          <div class="mt-5 rounded-xl border border-emerald-100 bg-white p-3 shadow-sm">
+            <p class="text-[10px] font-black uppercase tracking-wider text-emerald-600">Recuperado este mes</p>
+            <p class="mt-1 text-lg font-black text-emerald-700">{{ formatoMoneda(prestamosData.recuperadoMes) }}</p>
+          </div>
+          <p class="mt-3 text-[11px] font-semibold text-slate-500">Se calcula con saldos actuales y nominas marcadas como pagadas.</p>
+        </article>
+
+        <article class="rounded-2xl border border-teal-100 bg-white p-4 shadow-sm xl:col-span-4">
+          <div class="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs font-black uppercase tracking-wider text-slate-400">Comparativa de nomina</p>
+              <p class="mt-1 text-sm font-bold text-slate-800">Semana actual vs anteriores</p>
+            </div>
+            <span :class="['rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wider', Number(comparativaData.variacion || 0) > 0 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700']">
+              {{ Number(comparativaData.variacion || 0) > 0 ? '+' : '' }}{{ formatoMoneda(comparativaData.variacion) }}
+            </span>
+          </div>
+          <VueApexCharts width="100%" height="245" :options="comparativaOptions" :series="comparativaSeries" />
+          <div class="grid grid-cols-2 gap-2 text-center">
+            <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+              <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Semana pasada</p>
+              <p class="text-sm font-black text-slate-800">{{ formatoMoneda(comparativaData.anterior) }}</p>
+            </div>
+            <div class="rounded-xl border border-teal-100 bg-teal-50 px-3 py-2">
+              <p class="text-[10px] font-black uppercase tracking-wider text-teal-600">Semana actual</p>
+              <p class="text-sm font-black text-teal-800">{{ formatoMoneda(comparativaData.actual) }}</p>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="border-b border-slate-100 bg-slate-50/60 px-5 py-4 sm:px-6">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-xl text-amber-700">
+            <i class="ti ti-activity-heartbeat" aria-hidden="true"></i>
+          </div>
+          <div>
+            <h2 class="font-['Sora'] text-base font-bold text-slate-800">Operatividad y Asistencias</h2>
+            <p class="text-xs font-semibold text-slate-500">Puntualidad global y dias con mas incidencias</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid gap-4 p-5 sm:p-6 lg:grid-cols-5">
+        <article class="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm lg:col-span-2">
+          <div class="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-xs font-black uppercase tracking-wider text-emerald-600">Tasa de puntualidad global</p>
+              <p class="mt-1 text-sm font-semibold text-slate-500">Sin estudiantes ni empleados exentos</p>
+            </div>
+            <i class="ti ti-gauge text-2xl text-emerald-600" aria-hidden="true"></i>
+          </div>
+          <VueApexCharts width="100%" height="235" :options="puntualidadOptions" :series="puntualidadSeries" />
+          <div class="grid grid-cols-2 gap-2 text-center">
+            <div class="rounded-xl border border-white bg-white px-3 py-2 shadow-sm">
+              <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Perfectos</p>
+              <p class="text-lg font-black text-emerald-700">{{ puntualidadData.perfectos }}</p>
+            </div>
+            <div class="rounded-xl border border-white bg-white px-3 py-2 shadow-sm">
+              <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Evaluados</p>
+              <p class="text-lg font-black text-slate-800">{{ puntualidadData.evaluados }}</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="rounded-2xl border border-slate-100 bg-slate-50/40 p-4 shadow-sm lg:col-span-3">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-xs font-black uppercase tracking-wider text-slate-400">Mapa de calor de ausentismo</p>
+              <p class="mt-1 text-sm font-bold text-slate-800">Faltas y retardos por dia del mes</p>
+            </div>
+            <span class="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-rose-700">Riesgo visual</span>
+          </div>
+          <VueApexCharts width="100%" height="260" :options="heatmapOptions" :series="mapaCalorData.series || []" />
+        </article>
+      </div>
+    </section>
+
+    <section class="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="border-b border-slate-100 bg-slate-50/60 px-5 py-4 sm:px-6">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 text-xl text-indigo-700">
+            <i class="ti ti-users-group" aria-hidden="true"></i>
+          </div>
+          <div>
+            <h2 class="font-['Sora'] text-base font-bold text-slate-800">Recursos Humanos</h2>
+            <p class="text-xs font-semibold text-slate-500">Rotacion, vacaciones pendientes y antiguedad del equipo</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid gap-4 p-5 sm:p-6 xl:grid-cols-12">
+        <article class="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm xl:col-span-5">
+          <div class="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs font-black uppercase tracking-wider text-slate-400">Termometro de rotacion</p>
+              <p class="mt-1 text-sm font-bold text-slate-800">Altas vs bajas del mes</p>
+            </div>
+            <div class="flex gap-2 text-[10px] font-black uppercase tracking-wider">
+              <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">+{{ rotacionData.totalAltas }}</span>
+              <span class="rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-rose-700">-{{ rotacionData.totalBajas }}</span>
+            </div>
+          </div>
+          <VueApexCharts width="100%" height="245" :options="rotacionOptions" :series="rotacionSeries" />
+        </article>
+
+        <article class="rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-4 shadow-sm xl:col-span-3">
+          <div class="mb-5 flex h-11 w-11 items-center justify-center rounded-xl border border-amber-200 bg-white text-xl text-amber-700 shadow-sm">
+            <i class="ti ti-beach" aria-hidden="true"></i>
+          </div>
+          <p class="text-xs font-black uppercase tracking-wider text-amber-600">Pasivo vacacional</p>
+          <p class="mt-1 font-['Sora'] text-3xl font-black text-slate-900">{{ formatoNumero(pasivoVacacional.diasPendientes) }}</p>
+          <p class="text-sm font-bold text-slate-500">dias pendientes</p>
+          <div class="mt-5 rounded-xl border border-white bg-white px-3 py-2 shadow-sm">
+            <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Empleados con saldo</p>
+            <p class="text-lg font-black text-amber-700">{{ pasivoVacacional.empleadosConSaldo }}</p>
+          </div>
+        </article>
+
+        <article class="rounded-2xl border border-indigo-100 bg-slate-50/40 p-4 shadow-sm xl:col-span-4">
+          <div class="mb-3">
+            <p class="text-xs font-black uppercase tracking-wider text-slate-400">Distribucion por antiguedad</p>
+            <p class="mt-1 text-sm font-bold text-slate-800">Experiencia acumulada del equipo</p>
+          </div>
+          <VueApexCharts width="100%" height="250" :options="antiguedadOptions" :series="antiguedadSeries" />
+        </article>
+      </div>
+    </section>
 
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-8">
 
