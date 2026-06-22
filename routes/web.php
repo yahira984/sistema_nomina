@@ -6,6 +6,7 @@ use App\Http\Controllers\AsistenciaController;
 use App\Http\Controllers\NominaController;
 use App\Http\Controllers\DashboardController; // <-- Agregado
 use App\Http\Controllers\BaseDatosController;
+use App\Models\Empleado;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -39,6 +40,77 @@ Route::middleware('auth')->group(function () {
     Route::put('/empleados/{empleado}', [EmpleadoController::class, 'update'])->name('empleados.update');
     Route::delete('/empleados/{empleado}', [EmpleadoController::class, 'destroy'])->name('empleados.destroy');
     Route::put('/empleados/{empleado}/restaurar', [EmpleadoController::class, 'restaurar'])->name('empleados.restaurar');
+    Route::get('/empleados/fotos/{empleado}', function (Empleado $empleado) {
+        $limpiarClave = fn ($valor) => preg_replace('/[^A-Za-z0-9_-]/', '', (string) ($valor ?? ''));
+        $clavesId = collect([
+            "id-{$empleado->id}",
+            "empleado-{$empleado->id}",
+        ])
+            ->map($limpiarClave)
+            ->filter()
+            ->unique()
+            ->values();
+
+        $numerosEmpleado = collect([$empleado->numero_empleado, $empleado->numero_empleado_baja])
+            ->map($limpiarClave)
+            ->filter()
+            ->flatMap(fn ($clave) => [$clave, ltrim($clave, '0') ?: $clave])
+            ->unique()
+            ->values();
+
+        $numeroUsadoPorActivo = false;
+        foreach ($numerosEmpleado as $numero) {
+            $variantes = collect([$numero, ltrim($numero, '0') ?: $numero])->unique()->values()->all();
+            if (Empleado::query()
+                ->whereKeyNot($empleado->id)
+                ->where('estatus', true)
+                ->whereIn('numero_empleado', $variantes)
+                ->exists()) {
+                $numeroUsadoPorActivo = true;
+                break;
+            }
+        }
+
+        $directorioActivo = public_path('img/empleados');
+        $directorioBajas = $directorioActivo . DIRECTORY_SEPARATOR . 'bajas';
+        $busquedas = [];
+
+        if (!$empleado->estatus) {
+            $busquedas[] = [$directorioBajas, $clavesId->merge($numerosEmpleado)->unique()->values()];
+        }
+
+        $busquedas[] = [$directorioActivo, $clavesId];
+
+        if ($empleado->estatus || !$numeroUsadoPorActivo) {
+            $busquedas[] = [$directorioActivo, $numerosEmpleado];
+        }
+
+        if ($empleado->estatus) {
+            $busquedas[] = [$directorioBajas, $clavesId];
+        }
+
+        foreach ($busquedas as [$directorio, $claves]) {
+            foreach ($claves as $clave) {
+                foreach (['webp', 'jpg', 'jpeg', 'png'] as $extension) {
+                    $path = $directorio . DIRECTORY_SEPARATOR . "{$clave}.{$extension}";
+
+                    if (is_file($path)) {
+                        return response()->file($path, [
+                            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                            'Pragma' => 'no-cache',
+                            'Expires' => '0',
+                        ]);
+                    }
+                }
+            }
+        }
+
+        return response('', 404)->withHeaders([
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+            'Expires' => '0',
+        ]);
+    })->whereNumber('empleado')->name('empleados.foto');
     Route::get('/empleados/{id}/perfil', [EmpleadoController::class, 'show'])->name('empleados.show');
     
     // Asistencias

@@ -310,13 +310,11 @@ const fechasSemanaRevision = computed(() => fechasSemanaNomina(fechaRevisionRefe
 
 const rangoSemanaRegistros = computed(() => {
     const fechas = fechasSemanaRegistros.value;
-
     return `${formatoFecha(fechas[0]?.iso)} - ${formatoFecha(fechas[6]?.iso)}`;
 });
 
 const rangoSemanaRevision = computed(() => {
     const fechas = fechasSemanaRevision.value;
-
     return `${formatoFecha(fechas[0]?.iso)} - ${formatoFecha(fechas[6]?.iso)}`;
 });
 
@@ -346,11 +344,9 @@ const coincideFilaRevision = (fila, termino) => {
 
 const asistenciasPorEmpleadoFecha = computed(() => {
     const mapa = new Map();
-
     props.asistencias.forEach((asistencia) => {
         mapa.set(`${asistencia.empleado_id}|${asistencia.fecha}`, asistencia);
     });
-
     return mapa;
 });
 
@@ -400,13 +396,11 @@ const totalRegistrosSemana = computed(() => filasMatrizAsistencias.value.reduce(
 
 const filasMatrizAsistenciasPaginadas = computed(() => {
     const inicio = (paginaUltimosRegistros.value - 1) * REGISTROS_POR_PAGINA;
-
     return filasMatrizAsistencias.value.slice(inicio, inicio + REGISTROS_POR_PAGINA);
 });
 
 const llaveGrupoRevision = (fila) => {
     if (fila.empleado_id) return `empleado-${fila.empleado_id}`;
-
     return `csv-${fila.csv_numero_empleado || fila.numero_empleado || fila.nombre_completo || fila._uid}`;
 };
 
@@ -466,7 +460,6 @@ const filasMatrizRevision = computed(() => {
 
 const filasMatrizRevisionPaginadas = computed(() => {
     const inicio = (paginaRevision.value - 1) * REGISTROS_POR_PAGINA;
-
     return filasMatrizRevision.value.slice(inicio, inicio + REGISTROS_POR_PAGINA);
 });
 
@@ -557,11 +550,26 @@ const formatoHora = (hora) => {
     return hora ? hora.substring(0, 5) : '--';
 };
 
-const claseTipo = (tipo) => {
-    if (tipo === 'Falta') return 'border-rose-200 bg-rose-50 text-rose-700';
-    if (tipo === 'Incapacidad') return 'border-amber-200 bg-amber-50 text-amber-700';
-    if (tipo === 'Vacaciones') return 'border-teal-200 bg-teal-50 text-teal-700';
-    return 'border-blue-200 bg-blue-50 text-blue-700';
+// --- AQUI REGRESAMOS LAS CLASES ORIGINALES PARA LA TABLA ---
+const claseCeldaAsistencia = (registro) => {
+    if (!registro) return 'asistencia-cell-empty';
+    if (registro.tipo_asistencia === 'Falta') return 'asistencia-cell-falta';
+    if (registro.tipo_asistencia === 'Incapacidad') return 'asistencia-cell-incapacidad';
+    if (registro.tipo_asistencia === 'Vacaciones') return 'asistencia-cell-vacaciones';
+    if (Number(registro.minutos_tarde || 0) >= 30) return 'asistencia-cell-retardo';
+
+    return 'asistencia-cell-normal';
+};
+
+const claseFilaRevision = (fila) => {
+    if (!fila) return 'asistencia-cell-empty';
+    if (!fila.aprobado) return 'asistencia-cell-omitida';
+    if (fila.tipo_asistencia === 'Falta') return 'asistencia-cell-falta';
+    if (fila.tipo_asistencia === 'Incapacidad') return 'asistencia-cell-incapacidad';
+    if (fila.tipo_asistencia === 'Vacaciones') return 'asistencia-cell-vacaciones';
+    if (fila.estado === 'incompleta') return 'asistencia-cell-incompleta';
+
+    return 'asistencia-cell-normal';
 };
 
 const claseEstadoRevision = (estado) => {
@@ -581,13 +589,9 @@ const textoEstadoRevision = (estado) => {
 };
 
 const rangoPagina = (pagina, total) => {
-    if (total === 0) {
-        return '0 de 0';
-    }
-
+    if (total === 0) return '0 de 0';
     const inicio = ((pagina - 1) * REGISTROS_POR_PAGINA) + 1;
     const fin = Math.min(total, pagina * REGISTROS_POR_PAGINA);
-
     return `${inicio}-${fin} de ${total}`;
 };
 
@@ -693,10 +697,7 @@ const enfocarUltimosRegistros = () => {
 };
 
 const verRegistrosEmpleadoSeleccionado = () => {
-    if (!form.empleado_id) {
-        return;
-    }
-
+    if (!form.empleado_id) return;
     empleadoRegistrosId.value = form.empleado_id;
     busquedaUltimosRegistros.value = '';
     paginaUltimosRegistros.value = 1;
@@ -749,27 +750,6 @@ const etiquetaTipoCorta = (tipo) => {
     if (tipo === 'Incapacidad') return 'INCAP.';
     if (tipo === 'Vacaciones') return 'VAC.';
     return 'NORMAL';
-};
-
-const claseCeldaAsistencia = (registro) => {
-    if (!registro) return 'asistencia-cell-empty';
-    if (registro.tipo_asistencia === 'Falta') return 'asistencia-cell-falta';
-    if (registro.tipo_asistencia === 'Incapacidad') return 'asistencia-cell-incapacidad';
-    if (registro.tipo_asistencia === 'Vacaciones') return 'asistencia-cell-vacaciones';
-    if (Number(registro.minutos_tarde || 0) >= 30) return 'asistencia-cell-retardo';
-
-    return 'asistencia-cell-normal';
-};
-
-const claseFilaRevision = (fila) => {
-    if (!fila) return 'asistencia-cell-empty';
-    if (!fila.aprobado) return 'asistencia-cell-omitida';
-    if (fila.tipo_asistencia === 'Falta') return 'asistencia-cell-falta';
-    if (fila.tipo_asistencia === 'Incapacidad') return 'asistencia-cell-incapacidad';
-    if (fila.tipo_asistencia === 'Vacaciones') return 'asistencia-cell-vacaciones';
-    if (fila.estado === 'incompleta') return 'asistencia-cell-incompleta';
-
-    return 'asistencia-cell-normal';
 };
 
 const sincronizarEmpleadoGrupoRevision = (grupo, empleadoId) => {
@@ -962,25 +942,35 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex min-w-0 items-center gap-3 sm:gap-4">
-                <Link :href="route('dashboard')" class="icon-button" aria-label="Volver al panel">
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19 3 12m0 0 7-7m-7 7h18" />
-                    </svg>
-                </Link>
-                <div class="min-w-0">
-                    <p class="text-sm font-semibold text-teal-700">Registro y Control</p>
-                    <h2 class="text-xl font-semibold text-slate-950 sm:text-2xl">Jornadas e Incidencias</h2>
+            <div class="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div class="flex min-w-0 items-center gap-3 sm:gap-4">
+                    <Link :href="route('dashboard')" class="icon-button" aria-label="Volver al panel">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19 3 12m0 0 7-7m-7 7h18" />
+                        </svg>
+                    </Link>
+                    <div class="min-w-0">
+                        <p class="text-sm font-black uppercase tracking-wide text-teal-700">Registro y Control</p>
+                        <h2 class="text-xl font-black text-slate-950 sm:text-2xl">Jornadas e Incidencias</h2>
+                    </div>
+                </div>
+
+                <div class="hidden items-center gap-3 rounded-xl border border-slate-200/70 bg-white px-4 py-3 shadow-sm xl:flex">
+                    <img :src="'/img/lugarth.png'" alt="LUGARTH" class="h-10 w-auto object-contain" />
+                    <div class="leading-tight">
+                        <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">LUGARTH</p>
+                        <p class="text-sm font-black text-slate-900">Nomina Pachuca</p>
+                    </div>
                 </div>
             </div>
         </template>
 
         <div class="page-shell">
-            <div class="content-wrap space-y-6">
+            <div class="content-wrap space-y-7">
                 <div class="tab-strip sm:grid-cols-2 md:grid-cols-5">
                     <button
                         @click="tabActiva = 'captura'"
-                        :class="tabActiva === 'captura' ? 'bg-white text-teal-700 shadow font-bold' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'"
+                        :class="tabActiva === 'captura' ? 'bg-gradient-to-br from-white to-teal-50 text-teal-700 shadow-sm ring-1 ring-teal-200/70 font-black' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
                         class="tab-button"
                         type="button"
                     >
@@ -989,7 +979,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                     </button>
                     <button
                         @click="tabActiva = 'revision'"
-                        :class="tabActiva === 'revision' ? 'bg-white text-blue-700 shadow font-bold' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'"
+                        :class="tabActiva === 'revision' ? 'bg-gradient-to-br from-white to-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200/70 font-black' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
                         class="tab-button"
                         type="button"
                     >
@@ -1001,7 +991,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                     </button>
                     <button
                         @click="tabActiva = 'vacaciones'"
-                        :class="tabActiva === 'vacaciones' ? 'bg-white text-teal-700 shadow font-bold' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'"
+                        :class="tabActiva === 'vacaciones' ? 'bg-gradient-to-br from-white to-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200/70 font-black' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
                         class="tab-button"
                         type="button"
                     >
@@ -1010,7 +1000,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                     </button>
                     <button
                         @click="tabActiva = 'faltas'"
-                        :class="tabActiva === 'faltas' ? 'bg-white text-rose-700 shadow font-bold' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'"
+                        :class="tabActiva === 'faltas' ? 'bg-gradient-to-br from-white to-rose-50 text-rose-700 shadow-sm ring-1 ring-rose-200/70 font-black' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
                         class="tab-button"
                         type="button"
                     >
@@ -1019,15 +1009,15 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                     </button>
                     <Link
                         :href="route('asistencias.alumnos-horas')"
-                        class="tab-button text-slate-600 hover:bg-slate-200 hover:text-slate-800"
+                        class="tab-button text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     >
                         <i class="ti ti-school" aria-hidden="true"></i>
                         Horas Alumnos
                     </Link>
                 </div>
 
-                <div v-show="tabActiva === 'captura'" class="space-y-8 animate-fade-in">
-                    <section class="app-panel border border-emerald-200 bg-emerald-50/50">
+                <div v-if="tabActiva === 'captura'" class="space-y-8 animate-fade-in">
+                    <section class="app-panel upload-panel">
                         <form @submit.prevent="subirArchivo" class="grid gap-4 p-5 sm:p-6 lg:grid-cols-[auto_1.5fr_1fr_1fr_auto] lg:items-end">
                             <div class="hidden h-14 w-14 items-center justify-center rounded-xl border border-emerald-200 bg-white text-2xl text-emerald-600 shadow-sm lg:flex">
                                 <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
@@ -1300,7 +1290,8 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                             <span class="text-xs text-slate-500">Página {{ paginaUltimosRegistros }} de {{ totalPaginasUltimosRegistros }}</span>
                         </div>
 
-                        <div class="overflow-x-auto">
+                        <!-- TABLA ORIGINAL RESTAURADA -->
+                        <div class="overflow-x-auto custom-scrollbar">
                             <table class="asistencia-week-table">
                                 <thead>
                                     <tr class="asistencia-title-row">
@@ -1398,7 +1389,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                     </section>
                 </div>
 
-                <div v-show="tabActiva === 'revision'" class="space-y-6 animate-fade-in">
+                <div v-if="tabActiva === 'revision'" class="space-y-6 animate-fade-in">
                     <section class="app-panel">
                         <div class="panel-header">
                             <div class="flex items-start gap-3">
@@ -1489,7 +1480,8 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                 Vista semanal del CSV: <span class="text-blue-700">{{ rangoSemanaRevision }}</span>
                             </div>
 
-                            <div class="overflow-x-auto rounded-lg border border-slate-200">
+                            <!-- TABLA ORIGINAL RESTAURADA (REVISION) -->
+                            <div class="overflow-x-auto custom-scrollbar rounded-2xl border border-slate-200/80 bg-white">
                                 <table class="asistencia-week-table revision-week-table">
                                     <thead>
                                         <tr class="asistencia-title-row">
@@ -1641,7 +1633,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                     </section>
                 </div>
 
-                <div v-show="tabActiva === 'vacaciones'" class="space-y-6 animate-fade-in">
+                <div v-if="tabActiva === 'vacaciones'" class="space-y-6 animate-fade-in">
                     <section class="app-panel">
                         <div class="panel-header">
                             <div class="flex items-start gap-3">
@@ -1670,7 +1662,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                             </div>
                         </div>
 
-                        <div class="overflow-x-auto">
+                        <div class="overflow-x-auto custom-scrollbar">
                             <table class="table-premium">
                                 <thead>
                                     <tr>
@@ -1726,7 +1718,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                     </section>
                 </div>
 
-                <div v-show="tabActiva === 'faltas'" class="space-y-6 animate-fade-in">
+                <div v-if="tabActiva === 'faltas'" class="space-y-6 animate-fade-in">
                     <section class="app-panel">
                         <div class="panel-header border-b-rose-100">
                             <div class="flex items-start gap-3">
@@ -1755,7 +1747,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                             </div>
                         </div>
 
-                        <div class="overflow-x-auto">
+                        <div class="overflow-x-auto custom-scrollbar">
                             <table class="table-premium">
                                 <thead class="bg-rose-50/50">
                                     <tr>
@@ -1834,26 +1826,66 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
     animation: fadeIn 0.3s ease-in-out;
 }
 
+.upload-panel {
+    border-color: rgba(45, 212, 191, 0.36);
+    background:
+        linear-gradient(135deg, rgba(236, 253, 245, 0.98), rgba(255, 255, 255, 0.96) 52%, rgba(239, 246, 255, 0.78)),
+        #ffffff;
+}
+
+.btn-secondary.px-0 {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+/* ESTILOS ORIGINALES RESTAURADOS DE LA TABLA */
 .asistencia-week-table {
     min-width: 1420px;
     width: 100%;
-    border-collapse: collapse;
-    background: white;
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: hidden;
+    border: 1px solid rgba(203, 213, 225, 0.86);
+    border-radius: 1.15rem;
+    background: #ffffff;
     font-size: 12px;
 }
 
 .asistencia-week-table th,
 .asistencia-week-table td {
-    border: 1px solid #cbd5e1;
+    border-right: 1px solid rgba(203, 213, 225, 0.72);
+    border-bottom: 1px solid rgba(203, 213, 225, 0.72);
     padding: 8px;
     vertical-align: middle;
 }
 
-.asistencia-week-table thead th {
+.asistencia-week-table th:last-child,
+.asistencia-week-table td:last-child {
+    border-right: 0;
+}
+
+.asistencia-week-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.asistencia-week-table thead tr:first-child th {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    background: #ffffff;
+}
+
+.asistencia-week-table thead tr:nth-child(2) th {
+    position: sticky;
+    top: 34px;
+    z-index: 7;
     background: #f8fafc;
+}
+
+.asistencia-week-table thead th {
     color: #0f172a;
     font-size: 11px;
-    font-weight: 900;
+    font-weight: 950;
     text-transform: uppercase;
 }
 
@@ -1872,6 +1904,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
 .asistencia-day-cell {
     min-width: 160px;
     height: 96px;
+    position: relative;
     vertical-align: top !important;
 }
 
@@ -1886,24 +1919,24 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
 }
 
 .asistencia-cell-normal {
-    background: #ffffff;
+    background: linear-gradient(180deg, #ffffff, #f8fafc);
 }
 
 .asistencia-cell-retardo,
 .asistencia-cell-incompleta {
-    background: #fff7ed;
+    background: linear-gradient(180deg, #fff7ed, #ffffff);
 }
 
 .asistencia-cell-falta {
-    background: #fff1f2;
+    background: linear-gradient(180deg, #fff1f2, #ffffff);
 }
 
 .asistencia-cell-incapacidad {
-    background: #fffbeb;
+    background: linear-gradient(180deg, #fffbeb, #ffffff);
 }
 
 .asistencia-cell-vacaciones {
-    background: #ecfdf5;
+    background: linear-gradient(180deg, #ecfdf5, #ffffff);
 }
 
 .asistencia-cell-omitida {
@@ -1914,7 +1947,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
 .cell-main {
     color: #0f172a;
     font-size: 13px;
-    font-weight: 900;
+    font-weight: 950;
     text-align: center;
 }
 
@@ -1940,17 +1973,19 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(203, 213, 225, 0.86);
+    border-radius: 0.65rem;
     color: #475569;
-    background: #ffffff;
-    transition: 0.15s ease;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+    transition: all 0.2s ease;
 }
 
 .cell-actions button:hover {
-    border-color: #0f766e;
+    transform: translateY(-1px);
+    border-color: rgba(15, 118, 110, 0.55);
     color: #0f766e;
 }
 
@@ -1963,13 +1998,20 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
 
 .mini-field {
     width: 100%;
-    border-radius: 6px;
-    border: 1px solid #cbd5e1;
-    background: #ffffff;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(203, 213, 225, 0.78);
+    background: rgba(255, 255, 255, 0.96);
     padding: 6px 8px;
     color: #0f172a;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 800;
+    transition: all 0.2s ease;
+}
+
+.mini-field:focus {
+    outline: none;
+    border-color: rgba(37, 99, 235, 0.58);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 @keyframes fadeIn {

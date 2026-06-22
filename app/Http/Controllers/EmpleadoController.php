@@ -156,6 +156,7 @@ class EmpleadoController extends Controller
         $fechaBaja = Carbon::now()->startOfDay();
         $fechaIngreso = $empleado->fecha_ingreso ? Carbon::parse($empleado->fecha_ingreso)->startOfDay() : null;
         $diasLaborados = $fechaIngreso ? $fechaIngreso->diffInDays($fechaBaja) + 1 : 0;
+        $this->moverFotoEmpleadoABajas($empleado);
 
         $empleado->update([
             'estatus' => false,
@@ -179,5 +180,53 @@ class EmpleadoController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'Empleado restaurado. Asignale un numero nuevo o disponible antes de usarlo en checador.');
+    }
+
+    private function moverFotoEmpleadoABajas(Empleado $empleado): void
+    {
+        $directorioActivo = public_path('img/empleados');
+        $directorioBajas = $directorioActivo . DIRECTORY_SEPARATOR . 'bajas';
+
+        if (!is_dir($directorioActivo)) {
+            return;
+        }
+
+        if (!is_dir($directorioBajas)) {
+            mkdir($directorioBajas, 0755, true);
+        }
+
+        $numero = $this->limpiarClaveFoto($empleado->numero_empleado ?: $empleado->numero_empleado_baja);
+        $claves = collect([
+            "id-{$empleado->id}",
+            "empleado-{$empleado->id}",
+            $numero,
+            ltrim($numero, '0') ?: $numero,
+        ])->filter()->unique();
+
+        foreach ($claves as $clave) {
+            foreach ($this->extensionesFotoEmpleado() as $extension) {
+                $origen = $directorioActivo . DIRECTORY_SEPARATOR . "{$clave}.{$extension}";
+
+                if (!is_file($origen)) {
+                    continue;
+                }
+
+                $destino = $directorioBajas . DIRECTORY_SEPARATOR . "id-{$empleado->id}.{$extension}";
+
+                if (!@rename($origen, $destino) && @copy($origen, $destino)) {
+                    @unlink($origen);
+                }
+            }
+        }
+    }
+
+    private function limpiarClaveFoto($valor): string
+    {
+        return preg_replace('/[^A-Za-z0-9_-]/', '', (string) ($valor ?? ''));
+    }
+
+    private function extensionesFotoEmpleado(): array
+    {
+        return ['webp', 'jpg', 'jpeg', 'png'];
     }
 }

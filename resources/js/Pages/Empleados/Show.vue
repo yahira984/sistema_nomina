@@ -2,6 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+import { clavesFotoEmpleado, fotoEmpleadoSrc, mostrarFotoEmpleado, probarSiguienteFotoEmpleado } from '@/Utils/employeePhotos';
 
 const props = defineProps({
     empleado: Object
@@ -58,8 +59,18 @@ const prestamoActivo = computed(() => saldoPrestamo.value > 0);
                 <div class="relative flex flex-col items-start gap-5 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 md:flex-row md:items-center md:gap-6">
                     <div class="absolute top-0 left-0 w-full h-16 bg-gradient-to-r from-teal-500 to-emerald-600 opacity-20"></div>
                     
-                    <div class="z-10 flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-teal-600 to-emerald-800 text-2xl font-black text-white shadow-lg sm:h-24 sm:w-24 sm:text-3xl">
-                        {{ iniciales }}
+                    <div class="relative z-10 flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-gradient-to-br from-teal-600 to-emerald-800 text-2xl font-black text-white shadow-lg sm:h-24 sm:w-24 sm:text-3xl">
+                        <span>{{ iniciales }}</span>
+                        <img
+                            v-if="clavesFotoEmpleado(empleado).length"
+                            :src="fotoEmpleadoSrc(empleado)"
+                            :alt="`Foto de ${empleado.nombre_completo}`"
+                            loading="lazy"
+                            decoding="async"
+                            class="absolute inset-0 h-full w-full object-cover"
+                            @load="mostrarFotoEmpleado"
+                            @error="probarSiguienteFotoEmpleado(empleado, $event)"
+                        />
                     </div>
                     
                     <div class="z-10 min-w-0 flex-1">
