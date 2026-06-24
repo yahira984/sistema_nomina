@@ -472,7 +472,11 @@ const toggleEmpleadosGrupo = (empleadosGrupo, checked) => {
 };
 
 const seleccionarBanco = (empleadosBanco) => {
-    toggleEmpleadosGrupo(empleadosBanco, true);
+    toggleEmpleadosGrupo(empleadosBanco, !empleadosGrupoSeleccionados(empleadosBanco));
+};
+
+const limpiarSeleccion = () => {
+    selectedEmpleadoIds.value = [];
 };
 
 const urlRecibosMasivos = (todos = false) => {
@@ -661,6 +665,10 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
                                 <i class="ti ti-printer text-lg"></i> PDF Seleccionados
                             </button>
 
+                            <button v-if="seleccionadosCount > 0" @click="limpiarSeleccion" type="button" class="flex items-center gap-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                                <i class="ti ti-square-x text-lg"></i> Limpiar seleccion
+                            </button>
+
                             <a :href="urlRecibosMasivos(true)" target="_blank" class="flex items-center gap-2 rounded-xl bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-lg hover:shadow-slate-900/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-printer text-lg"></i> PDF Todos
                             </a>
@@ -695,7 +703,8 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
                                     </div>
                                     <div class="flex gap-2">
                                         <button @click="seleccionarBanco(empleadosBanco)" :class="['flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all hover:-translate-y-0.5', temaBanco(nombreBanco).button]">
-                                            <i class="ti ti-checks text-base"></i> Seleccionar grupo
+                                            <i :class="['ti text-base', empleadosGrupoSeleccionados(empleadosBanco) ? 'ti-square-x' : 'ti-checks']"></i>
+                                            {{ empleadosGrupoSeleccionados(empleadosBanco) ? 'Quitar grupo' : 'Seleccionar grupo' }}
                                         </button>
                                         <a :href="urlRecibosGrupo(empleadosBanco)" target="_blank" :class="['flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all hover:-translate-y-0.5', temaBanco(nombreBanco).pdf]">
                                             <i class="ti ti-printer text-base"></i> PDF Grupo

@@ -522,6 +522,25 @@ const sincronizarBusquedaManual = () => {
     }
 };
 
+const prepararBusquedaEmpleadoManual = (event) => {
+    if (editando.value) return;
+    event.target.select();
+};
+
+const limpiarEmpleadoCaptura = () => {
+    if (editando.value) return;
+    form.empleado_id = '';
+    busquedaEmpleadoManual.value = '';
+};
+
+const manejarBusquedaEmpleadoManual = () => {
+    if (!empleadoSeleccionado.value) return;
+
+    if (busquedaEmpleadoManual.value !== etiquetaEmpleado(empleadoSeleccionado.value)) {
+        form.empleado_id = '';
+    }
+};
+
 const totalPaginasRevision = computed(() => Math.max(1, Math.ceil(filasMatrizRevision.value.length / REGISTROS_POR_PAGINA)));
 
 const resumenRevision = computed(() => {
@@ -1089,9 +1108,20 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                             v-model="busquedaEmpleadoManual"
                                             type="text"
                                             :disabled="editando"
-                                            class="field-input-soft pl-9 text-base font-semibold text-slate-800"
+                                            class="field-input-soft pl-9 pr-11 text-base font-semibold text-slate-800"
                                             placeholder="Numero o nombre..."
+                                            @focus="prepararBusquedaEmpleadoManual"
+                                            @input="manejarBusquedaEmpleadoManual"
                                         />
+                                        <button
+                                            v-if="!editando && (busquedaEmpleadoManual || form.empleado_id)"
+                                            @click="limpiarEmpleadoCaptura"
+                                            type="button"
+                                            class="absolute inset-y-0 right-2 my-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-rose-600"
+                                            title="Limpiar empleado"
+                                        >
+                                            <i class="ti ti-x" aria-hidden="true"></i>
+                                        </button>
                                     </div>
                                 </div>
                                 <div>
