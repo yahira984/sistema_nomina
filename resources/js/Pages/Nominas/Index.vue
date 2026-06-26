@@ -19,6 +19,7 @@ const toastMessage = ref('');
 
 const ajustesNomina = ref({});
 const guardandoAjuste = ref(null);
+const pagandoMasivo = ref(null);
 const selectedEmpleadoIds = ref([]);
 
 const selectedCorte = ref(props.fechaCorteActual);
@@ -425,6 +426,14 @@ const empleadosFiltrados = computed(() => {
 });
 
 const seleccionadosCount = computed(() => selectedEmpleadoIds.value.length);
+const empleadosSeleccionados = computed(() => {
+    const ids = new Set(selectedEmpleadoIds.value);
+    return props.empleados.filter((empleado) => ids.has(empleado.id));
+});
+const seleccionadosConRecibo = computed(() => empleadosSeleccionados.value.filter((empleado) => empleado.nomina_generada));
+const seleccionadosPendientes = computed(() => seleccionadosConRecibo.value.filter((empleado) => !empleado.pagado).length);
+const seleccionadosLiquidados = computed(() => seleccionadosConRecibo.value.filter((empleado) => empleado.pagado).length);
+const seleccionadosSinRecibo = computed(() => Math.max(0, seleccionadosCount.value - seleccionadosConRecibo.value.length));
 const empleadoSeleccionado = (empleadoId) => selectedEmpleadoIds.value.includes(empleadoId);
 
 const toggleEmpleado = (empleadoId, checked) => {
@@ -569,6 +578,44 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
         preserveScroll: true
     });
 };
+
+const cambiarPagosMasivos = (accion) => {
+    if (seleccionadosCount.value <= 0 || pagandoMasivo.value) {
+        return;
+    }
+
+    const objetivo = accion === 'pagar' ? seleccionadosPendientes.value : seleccionadosLiquidados.value;
+
+    if (objetivo <= 0) {
+        alert(accion === 'pagar'
+            ? 'No hay nominas pendientes generadas dentro de la seleccion.'
+            : 'No hay nominas liquidadas dentro de la seleccion.'
+        );
+        return;
+    }
+
+    const textoAccion = accion === 'pagar' ? 'marcar como liquidadas' : 'revertir a pendientes';
+    const detalleSinRecibo = seleccionadosSinRecibo.value > 0
+        ? `\n\n${seleccionadosSinRecibo.value} empleado(s) no tienen recibo generado y se omitiran.`
+        : '';
+
+    if (!confirm(`Se van a ${textoAccion} ${objetivo} nomina(s).${detalleSinRecibo}\n\n¿Continuamos?`)) {
+        return;
+    }
+
+    pagandoMasivo.value = accion;
+
+    router.put(route('nominas.pagos-masivos'), {
+        fecha_corte: selectedCorte.value,
+        empleado_ids: selectedEmpleadoIds.value,
+        accion,
+    }, {
+        preserveScroll: true,
+        onFinish: () => {
+            pagandoMasivo.value = null;
+        },
+    });
+};
 </script>
 
 <template>
@@ -672,6 +719,44 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
                             <a :href="urlRecibosMasivos(true)" target="_blank" class="flex items-center gap-2 rounded-xl bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-lg hover:shadow-slate-900/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-printer text-lg"></i> PDF Todos
                             </a>
+                        </div>
+                    </div>
+
+                    <div v-if="seleccionadosCount > 0" class="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 via-white to-emerald-50 p-4 shadow-sm">
+                        <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                            <div class="flex flex-wrap items-center gap-3">
+                                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+                                    <i class="ti ti-checklist text-xl"></i>
+                                </span>
+                                <div>
+                                    <p class="text-sm font-black text-slate-900">{{ seleccionadosCount }} empleado(s) seleccionados</p>
+                                    <p class="text-xs font-semibold text-slate-500">
+                                        {{ seleccionadosPendientes }} pendiente(s) · {{ seleccionadosLiquidados }} liquidado(s)
+                                        <span v-if="seleccionadosSinRecibo > 0"> · {{ seleccionadosSinRecibo }} sin recibo</span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    @click="cambiarPagosMasivos('pagar')"
+                                    :disabled="seleccionadosPendientes <= 0 || pagandoMasivo"
+                                    class="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-600 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:translate-y-0"
+                                >
+                                    <i class="ti ti-circle-check text-lg"></i>
+                                    {{ pagandoMasivo === 'pagar' ? 'Liquidando...' : 'Liquidar selección' }}
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="cambiarPagosMasivos('revertir')"
+                                    :disabled="seleccionadosLiquidados <= 0 || pagandoMasivo"
+                                    class="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-wider text-amber-700 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:translate-y-0"
+                                >
+                                    <i class="ti ti-rotate-clockwise text-lg"></i>
+                                    {{ pagandoMasivo === 'revertir' ? 'Revirtiendo...' : 'Revertir selección' }}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

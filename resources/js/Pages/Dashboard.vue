@@ -18,7 +18,9 @@ const props = defineProps({
   tempranoControl:   { type: Object, default: () => ({}) },
   finanzasNomina:    { type: Object, default: () => ({}) },
   operatividad:      { type: Object, default: () => ({}) },
-  recursosHumanos:   { type: Object, default: () => ({}) }
+  recursosHumanos:   { type: Object, default: () => ({}) },
+  diasFestivos:      { type: Object, default: () => ({}) },
+  avanceLaboralAnual:{ type: Object, default: () => ({}) }
 })
 
 const kpisDashboard = computed(() => props.kpis ?? { faltas: 0, cumpleaneros: [] })
@@ -35,6 +37,24 @@ const tempranoControlData = computed(() => props.tempranoControl ?? {})
 const finanzasData = computed(() => props.finanzasNomina ?? {})
 const operatividadData = computed(() => props.operatividad ?? {})
 const rhData = computed(() => props.recursosHumanos ?? {})
+const diasFestivosData = computed(() => props.diasFestivos ?? { mes: [], proximos: [] })
+const festivosDelMes = computed(() => diasFestivosData.value.mes ?? [])
+const proximosFestivos = computed(() => diasFestivosData.value.proximos ?? [])
+const avanceLaboralData = computed(() => props.avanceLaboralAnual ?? {
+  anio: new Date().getFullYear(),
+  dias_calendario: 0,
+  domingos: 0,
+  festivos_descontados: 0,
+  dias_laborables: 0,
+  dias_transcurridos: 0,
+  dias_pendientes: 0,
+  porcentaje: 0,
+  festivos: [],
+})
+const avanceLaboralPorcentaje = computed(() => Math.max(0, Math.min(100, Number(avanceLaboralData.value.porcentaje || 0))))
+const avanceLaboralStyle = computed(() => ({
+  background: `conic-gradient(#0d9488 ${avanceLaboralPorcentaje.value * 3.6}deg, #e2e8f0 0deg)`,
+}))
 const desgloseGasto = computed(() => finanzasData.value.desgloseGasto ?? { labels: [], datos: [], porcentajes: [], total: 0 })
 const prestamosData = computed(() => finanzasData.value.prestamos ?? { capitalPrestado: 0, recuperadoMes: 0 })
 const comparativaData = computed(() => finanzasData.value.comparativa ?? { labels: [], datos: [], actual: 0, anterior: 0, variacion: 0 })
@@ -81,6 +101,13 @@ const formatoMoneda = (valor) => Number(valor || 0).toLocaleString('es-MX', {
 const formatoNumero = (valor) => Number(valor || 0).toLocaleString('es-MX', {
   maximumFractionDigits: 1,
 })
+
+const textoDiasRestantes = (dias) => {
+  const total = Number(dias || 0)
+  if (total === 0) return 'Hoy'
+  if (total === 1) return 'Manana'
+  return `En ${total} dias`
+}
 
 const modules = [
   { name: 'Directorio de personal', desc: 'Alta, edición y consulta', route: 'empleados.index', icon: 'ti-address-book', tone: 'bg-blue-50 text-blue-600 border-blue-100' },
@@ -265,6 +292,164 @@ const antiguedadOptions = computed(() => ({
         <p class="break-words font-['Sora'] text-2xl font-extrabold text-slate-800 sm:text-3xl">${{ gastoSemanal }}</p>
       </div>
     </div>
+
+    <section class="mb-8 overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-teal-50 shadow-sm">
+      <div class="grid gap-0 lg:grid-cols-12">
+        <div class="border-b border-amber-100/70 p-5 sm:p-6 lg:col-span-4 lg:border-b-0 lg:border-r">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-amber-700">
+                <i class="ti ti-calendar-event" aria-hidden="true"></i>
+                Calendario Mexico
+              </p>
+              <h2 class="mt-4 font-['Sora'] text-xl font-black text-slate-950">Dias festivos</h2>
+              <p class="mt-2 text-sm font-semibold text-slate-500">Oficiales por LFT y ajustes manuales de la empresa.</p>
+            </div>
+            <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-white text-2xl text-amber-600 shadow-sm">
+              <i class="ti ti-confetti" aria-hidden="true"></i>
+            </div>
+          </div>
+
+          <Link :href="route('dias-festivos.index')" class="mt-5 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-700 shadow-sm transition hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700">
+            <i class="ti ti-settings" aria-hidden="true"></i>
+            Editar calendario
+          </Link>
+        </div>
+
+        <div class="p-5 sm:p-6 lg:col-span-5">
+          <div class="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-xs font-black uppercase tracking-wider text-slate-400">Proximos descansos</p>
+              <p class="text-sm font-bold text-slate-700">Los siguientes 5 dias activos</p>
+            </div>
+            <span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-teal-700">{{ proximosFestivos.length }} activo(s)</span>
+          </div>
+
+          <div v-if="proximosFestivos.length > 0" class="grid gap-2">
+            <div v-for="dia in proximosFestivos" :key="dia.id" class="flex items-center gap-3 rounded-2xl border border-white bg-white/90 p-3 shadow-sm">
+              <div class="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl border border-amber-100 bg-amber-50 text-amber-700">
+                <span class="text-[10px] font-black uppercase">{{ dia.fecha_corta?.split(' ')?.[1] || '' }}</span>
+                <span class="text-lg font-black leading-none">{{ dia.fecha_corta?.split(' ')?.[0] || '' }}</span>
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-black text-slate-900">{{ dia.nombre }}</p>
+                <p class="truncate text-xs font-semibold capitalize text-slate-500">{{ dia.dia_semana }} · {{ dia.fecha }}</p>
+              </div>
+              <span class="rounded-lg border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-700">
+                {{ textoDiasRestantes(dia.dias_restantes) }}
+              </span>
+            </div>
+          </div>
+
+          <div v-else class="flex min-h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/70 text-center">
+            <i class="ti ti-calendar-off text-3xl text-slate-300" aria-hidden="true"></i>
+            <p class="mt-2 text-sm font-bold text-slate-500">Sin festivos proximos generados</p>
+          </div>
+        </div>
+
+        <div class="border-t border-amber-100/70 p-5 sm:p-6 lg:col-span-3 lg:border-l lg:border-t-0">
+          <p class="text-xs font-black uppercase tracking-wider text-slate-400">Este mes</p>
+          <div v-if="festivosDelMes.length > 0" class="mt-4 space-y-3">
+            <div v-for="dia in festivosDelMes" :key="`mes-${dia.id}`" class="rounded-2xl border border-white bg-white/90 p-3 shadow-sm">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-sm font-black text-slate-900">{{ dia.nombre }}</p>
+                  <p class="mt-1 text-xs font-semibold capitalize text-slate-500">{{ dia.dia_semana }} · {{ dia.fecha_corta }}</p>
+                </div>
+                <span :class="['rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-wider', dia.es_oficial ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700']">
+                  {{ dia.es_oficial ? 'Oficial' : 'Manual' }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-5 text-center">
+            <i class="ti ti-calendar-check text-2xl text-slate-300" aria-hidden="true"></i>
+            <p class="mt-2 text-sm font-bold text-slate-500">Sin festivos este mes</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8 overflow-hidden rounded-2xl border border-teal-100 bg-white shadow-sm">
+      <div class="grid gap-0 xl:grid-cols-12">
+        <div class="border-b border-teal-100 bg-gradient-to-br from-teal-50 to-white p-5 sm:p-6 xl:col-span-4 xl:border-b-0 xl:border-r">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-teal-700">
+                <i class="ti ti-calendar-stats" aria-hidden="true"></i>
+                Avance {{ avanceLaboralData.anio }}
+              </p>
+              <h2 class="mt-4 font-['Sora'] text-xl font-black text-slate-950">Dias laborales del año</h2>
+              <p class="mt-2 text-sm font-semibold text-slate-500">Lunes a sabado, sin domingos ni festivos activos.</p>
+            </div>
+            <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-teal-200 bg-white text-2xl text-teal-600 shadow-sm">
+              <i class="ti ti-progress-check" aria-hidden="true"></i>
+            </div>
+          </div>
+
+          <div class="mt-6 rounded-2xl border border-white bg-white p-4 shadow-sm">
+            <p class="text-xs font-black uppercase tracking-wider text-slate-400">Formula anual</p>
+            <p class="mt-2 text-sm font-black text-slate-900">
+              {{ avanceLaboralData.dias_calendario }} dias - {{ avanceLaboralData.domingos }} domingos - {{ avanceLaboralData.festivos_descontados }} festivos
+            </p>
+            <p class="mt-1 text-lg font-black text-teal-700">
+              = {{ avanceLaboralData.dias_laborables }} dias laborables
+            </p>
+          </div>
+        </div>
+
+        <div class="p-5 sm:p-6 xl:col-span-4">
+          <div class="flex h-full flex-col items-center justify-center gap-5">
+            <div class="relative flex h-56 w-56 items-center justify-center rounded-full p-4 shadow-inner" :style="avanceLaboralStyle">
+              <div class="flex h-full w-full flex-col items-center justify-center rounded-full bg-white text-center shadow-sm">
+                <p class="font-['Sora'] text-4xl font-black text-slate-950">{{ formatoNumero(avanceLaboralData.dias_transcurridos) }}</p>
+                <p class="text-xs font-black uppercase tracking-wider text-slate-400">de {{ formatoNumero(avanceLaboralData.dias_laborables) }}</p>
+                <p class="mt-2 rounded-full border border-teal-100 bg-teal-50 px-3 py-1 text-xs font-black text-teal-700">
+                  {{ formatoNumero(avanceLaboralPorcentaje) }}%
+                </p>
+              </div>
+            </div>
+
+            <div class="text-center">
+              <p class="text-base font-black text-slate-900">Llevamos {{ avanceLaboralData.dias_transcurridos }} de {{ avanceLaboralData.dias_laborables }} dias</p>
+              <p class="mt-1 text-sm font-semibold text-slate-500">Quedan {{ avanceLaboralData.dias_pendientes }} dias pendientes por trabajar.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t border-teal-100 bg-slate-50/60 p-5 sm:p-6 xl:col-span-4 xl:border-l xl:border-t-0">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="rounded-2xl border border-white bg-white p-4 shadow-sm">
+              <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Trabajados</p>
+              <p class="mt-2 text-2xl font-black text-teal-700">{{ avanceLaboralData.dias_transcurridos }}</p>
+            </div>
+            <div class="rounded-2xl border border-white bg-white p-4 shadow-sm">
+              <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Pendientes</p>
+              <p class="mt-2 text-2xl font-black text-amber-700">{{ avanceLaboralData.dias_pendientes }}</p>
+            </div>
+            <div class="rounded-2xl border border-white bg-white p-4 shadow-sm">
+              <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Domingos fuera</p>
+              <p class="mt-2 text-2xl font-black text-slate-800">{{ avanceLaboralData.domingos }}</p>
+            </div>
+            <div class="rounded-2xl border border-white bg-white p-4 shadow-sm">
+              <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Festivos fuera</p>
+              <p class="mt-2 text-2xl font-black text-blue-700">{{ avanceLaboralData.festivos_descontados }}</p>
+            </div>
+          </div>
+
+          <div class="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+            <p class="text-xs font-black uppercase tracking-wider text-blue-700">Festivos que descuentan</p>
+            <div v-if="(avanceLaboralData.festivos || []).length > 0" class="mt-3 max-h-36 space-y-2 overflow-y-auto pr-1">
+              <div v-for="dia in avanceLaboralData.festivos" :key="`avance-${dia.id}`" class="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-xs shadow-sm">
+                <span class="truncate font-black text-slate-800">{{ dia.nombre }}</span>
+                <span class="shrink-0 font-bold text-blue-700">{{ dia.fecha_corta }}</span>
+              </div>
+            </div>
+            <p v-else class="mt-3 text-sm font-semibold text-slate-500">Sin festivos laborables activos para descontar.</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <section class="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div class="border-b border-slate-100 bg-slate-50/60 px-5 py-4 sm:px-6">

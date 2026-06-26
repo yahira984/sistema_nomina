@@ -6,6 +6,7 @@ use App\Http\Controllers\AsistenciaController;
 use App\Http\Controllers\NominaController;
 use App\Http\Controllers\DashboardController; // <-- Agregado
 use App\Http\Controllers\BaseDatosController;
+use App\Http\Controllers\DiaFestivoController;
 use App\Models\Empleado;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +34,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/sistema/base-datos', [BaseDatosController::class, 'index'])->name('base-datos.index');
     Route::get('/sistema/base-datos/exportar', [BaseDatosController::class, 'exportar'])->name('base-datos.exportar');
     Route::post('/sistema/base-datos/importar', [BaseDatosController::class, 'importar'])->name('base-datos.importar');
+    Route::get('/sistema/dias-festivos', [DiaFestivoController::class, 'index'])->name('dias-festivos.index');
+    Route::post('/sistema/dias-festivos', [DiaFestivoController::class, 'store'])->name('dias-festivos.store');
+    Route::put('/sistema/dias-festivos/{diaFestivo}', [DiaFestivoController::class, 'update'])->name('dias-festivos.update');
+    Route::delete('/sistema/dias-festivos/{diaFestivo}', [DiaFestivoController::class, 'destroy'])->name('dias-festivos.destroy');
+    Route::post('/sistema/dias-festivos/generar', [DiaFestivoController::class, 'generar'])->name('dias-festivos.generar');
 
     // Empleados
     Route::get('/empleados', [EmpleadoController::class, 'index'])->name('empleados.index');
@@ -134,6 +140,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/nominas/recibos-masivos', [NominaController::class, 'generarRecibosMasivos'])->name('nominas.recibos-masivos');
     Route::get('/nominas/descargar/{nomina}', [NominaController::class, 'descargar'])->name('nominas.descargar');
     Route::put('/nominas/ajustes/{empleado_id}', [NominaController::class, 'actualizarAjustes'])->name('nominas.ajustes');
+    Route::put('/nominas/pagos-masivos', [NominaController::class, 'actualizarPagosMasivos'])->name('nominas.pagos-masivos');
     Route::put('/nominas/{nomina}/pagar', [NominaController::class, 'pagar'])->name('nominas.pagar');
     Route::get('/nominas/reporte-global/{semana}', [NominaController::class, 'reporteGlobal'])->name('nominas.reporte');
 });

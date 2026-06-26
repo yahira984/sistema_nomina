@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use Inertia\Inertia;
 use App\Models\Empleado;
 use App\Models\Asistencia;
+use App\Models\DiaFestivo;
 use App\Models\Nomina;
+use App\Services\DiasFestivosMexicoService;
 use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Carbon\Carbon;
@@ -23,11 +25,21 @@ class DashboardController extends Controller
 
         // 1. LÓGICA DE SEMANAS
         [$inicioSemana, $finSemana, $semanaActual] = SemanaNomina::desdeCorte();
+        $diasFestivosDashboard = ['mes' => [], 'proximos' => []];
+
+        if (Schema::hasTable('dias_festivos')) {
+            app(DiasFestivosMexicoService::class)->sincronizarRango($anioActual, $anioActual + 1);
+            $diasFestivosDashboard = [
+                'mes' => $this->diasFestivosDelMes($hoy),
+                'proximos' => $this->proximosDiasFestivos($hoy),
+            ];
+        }
 
         // 2. INDICADORES RÁPIDOS
         $totalEmpleados = Empleado::where('estatus', true)->count();
         $gastoSemanal = Nomina::whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
             ->whereDate('fecha_fin', $finSemana->format('Y-m-d'))
+            ->where('pagado', true)
             ->sum('pago_neto');
         // Buscamos las nóminas de la semana actual donde la columna booleana 'pagado' sea falsa (0)
         $nominasPendientes = Nomina::whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
@@ -124,7 +136,126 @@ class DashboardController extends Controller
                 'pasivoVacacional' => $this->pasivoVacacional(),
                 'antiguedad' => $this->distribucionAntiguedad(),
             ],
+            'diasFestivos' => $diasFestivosDashboard,
+            'avanceLaboralAnual' => $this->avanceLaboralAnual($hoy),
         ]);
+    }
+
+    private function avanceLaboralAnual(Carbon $hoy): array
+    {
+        $inicioAnio = $hoy->copy()->startOfYear();
+        $finAnio = $hoy->copy()->endOfYear();
+        $hoyCorte = $hoy->copy()->startOfDay();
+        $festivosLaborables = collect();
+
+        if (Schema::hasTable('dias_festivos')) {
+            $festivosLaborables = DiaFestivo::where('activo', true)
+                ->whereBetween('fecha', [$inicioAnio->format('Y-m-d'), $finAnio->format('Y-m-d')])
+                ->orderBy('fecha')
+                ->get()
+                ->filter(fn ($dia) => !Carbon::parse($dia->fecha)->isSunday())
+                ->values();
+        }
+
+        $fechasFestivas = $festivosLaborables
+            ->map(fn ($dia) => Carbon::parse($dia->fecha)->format('Y-m-d'))
+            ->unique()
+            ->values()
+            ->all();
+
+        $diasCalendario = (int) $inicioAnio->diffInDays($finAnio) + 1;
+        $domingos = $this->contarDiasPeriodo($inicioAnio, $finAnio, fn (Carbon $fecha) => $fecha->isSunday());
+        $diasLaborables = $this->contarDiasLaborablesCalendario($inicioAnio, $finAnio, $fechasFestivas);
+        $finTranscurrido = $hoyCorte->gt($finAnio) ? $finAnio : $hoyCorte;
+        $diasTranscurridos = $this->contarDiasLaborablesCalendario($inicioAnio, $finTranscurrido, $fechasFestivas);
+        $diasPendientes = max(0, $diasLaborables - $diasTranscurridos);
+
+        return [
+            'anio' => (int) $hoy->year,
+            'inicio' => $inicioAnio->format('Y-m-d'),
+            'fin' => $finAnio->format('Y-m-d'),
+            'dias_calendario' => $diasCalendario,
+            'domingos' => $domingos,
+            'festivos_descontados' => count($fechasFestivas),
+            'dias_laborables' => $diasLaborables,
+            'dias_transcurridos' => $diasTranscurridos,
+            'dias_pendientes' => $diasPendientes,
+            'porcentaje' => $diasLaborables > 0 ? round(($diasTranscurridos / $diasLaborables) * 100, 1) : 0,
+            'festivos' => $festivosLaborables
+                ->map(fn ($dia) => $this->mapearDiaFestivo($dia))
+                ->values()
+                ->all(),
+        ];
+    }
+
+    private function contarDiasLaborablesCalendario(Carbon $inicio, Carbon $fin, array $fechasFestivas): int
+    {
+        return $this->contarDiasPeriodo($inicio, $fin, function (Carbon $fecha) use ($fechasFestivas) {
+            return !$fecha->isSunday() && !in_array($fecha->format('Y-m-d'), $fechasFestivas, true);
+        });
+    }
+
+    private function contarDiasPeriodo(Carbon $inicio, Carbon $fin, callable $filtro): int
+    {
+        if ($fin->lt($inicio)) {
+            return 0;
+        }
+
+        $cursor = $inicio->copy()->startOfDay();
+        $limite = $fin->copy()->startOfDay();
+        $total = 0;
+
+        while ($cursor->lte($limite)) {
+            if ($filtro($cursor->copy())) {
+                $total++;
+            }
+
+            $cursor->addDay();
+        }
+
+        return $total;
+    }
+
+    private function diasFestivosDelMes(Carbon $hoy): array
+    {
+        return DiaFestivo::where('activo', true)
+            ->whereBetween('fecha', [$hoy->copy()->startOfMonth()->format('Y-m-d'), $hoy->copy()->endOfMonth()->format('Y-m-d')])
+            ->orderBy('fecha')
+            ->get()
+            ->map(fn ($dia) => $this->mapearDiaFestivo($dia))
+            ->values()
+            ->all();
+    }
+
+    private function proximosDiasFestivos(Carbon $hoy): array
+    {
+        return DiaFestivo::where('activo', true)
+            ->whereDate('fecha', '>=', $hoy->copy()->startOfDay()->format('Y-m-d'))
+            ->orderBy('fecha')
+            ->limit(5)
+            ->get()
+            ->map(fn ($dia) => $this->mapearDiaFestivo($dia))
+            ->values()
+            ->all();
+    }
+
+    private function mapearDiaFestivo(DiaFestivo $dia): array
+    {
+        $fecha = Carbon::parse($dia->fecha)->startOfDay();
+        $hoy = now()->startOfDay();
+
+        return [
+            'id' => $dia->id,
+            'fecha' => $fecha->format('Y-m-d'),
+            'nombre' => $dia->nombre,
+            'tipo' => $dia->tipo,
+            'es_oficial' => (bool) $dia->es_oficial,
+            'origen' => $dia->origen,
+            'descripcion' => $dia->descripcion,
+            'fecha_corta' => $fecha->locale('es')->isoFormat('D MMM'),
+            'dia_semana' => $fecha->locale('es')->isoFormat('dddd'),
+            'dias_restantes' => (int) $hoy->diffInDays($fecha, false),
+        ];
     }
 
     private function desgloseGastoSemanal(Carbon $inicioSemana, Carbon $finSemana): array
@@ -132,6 +263,7 @@ class DashboardController extends Controller
         $nominas = Nomina::with('empleado')
             ->whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
             ->whereDate('fecha_fin', $finSemana->format('Y-m-d'))
+            ->where('pagado', true)
             ->get();
 
         $desglose = [
@@ -140,12 +272,14 @@ class DashboardController extends Controller
             'Primas vacacionales' => 0,
             'Incapacidades' => 0,
         ];
+        $totalNetoPagado = 0;
 
         foreach ($nominas as $nomina) {
             $empleado = $nomina->empleado;
             if (!$empleado) {
                 continue;
             }
+            $totalNetoPagado += (float) ($nomina->pago_neto ?? 0);
 
             $esEstudiante = (bool) ($empleado->es_estudiante ?? false);
             $sueldoSemanal = (float) ($empleado->sueldo_semanal ?? 0);
@@ -174,6 +308,17 @@ class DashboardController extends Controller
             $desglose['Horas extra'] += $pagoExtra;
             $desglose['Primas vacacionales'] += $pagoVacaciones;
             $desglose['Incapacidades'] += $pagoIncapacidad;
+        }
+
+        $totalBruto = array_sum($desglose);
+
+        if ($totalBruto > 0) {
+            $factorNeto = $totalNetoPagado / $totalBruto;
+            foreach ($desglose as $concepto => $valor) {
+                $desglose[$concepto] = $valor * $factorNeto;
+            }
+        } elseif ($totalNetoPagado > 0) {
+            $desglose['Salario base'] = $totalNetoPagado;
         }
 
         $total = array_sum($desglose);
@@ -225,6 +370,7 @@ class DashboardController extends Controller
             $fin = $finSemana->copy()->subWeeks($i);
             $gasto = (float) Nomina::whereDate('fecha_inicio', $inicio->format('Y-m-d'))
                 ->whereDate('fecha_fin', $fin->format('Y-m-d'))
+                ->where('pagado', true)
                 ->sum('pago_neto');
 
             $periodos->push([

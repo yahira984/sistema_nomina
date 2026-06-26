@@ -23,6 +23,7 @@ const navItems = [
     label: 'Sistema',
     links: [
       { name: 'Configuración', route: 'profile.edit', icon: 'ti-settings' },
+      { name: 'Dias festivos', route: 'dias-festivos.index', icon: 'ti-calendar-event' },
       { name: 'Base de datos', route: 'base-datos.index', icon: 'ti-database' },
     ]
   }
