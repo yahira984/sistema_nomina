@@ -40,6 +40,8 @@ Route::middleware('auth')->group(function () {
     Route::put('/empleados/{empleado}', [EmpleadoController::class, 'update'])->name('empleados.update');
     Route::delete('/empleados/{empleado}', [EmpleadoController::class, 'destroy'])->name('empleados.destroy');
     Route::put('/empleados/{empleado}/restaurar', [EmpleadoController::class, 'restaurar'])->name('empleados.restaurar');
+    Route::post('/empleados/{empleado}/acceso-app', [EmpleadoController::class, 'guardarAccesoApp'])->name('empleados.acceso-app.guardar');
+    Route::delete('/empleados/{empleado}/acceso-app', [EmpleadoController::class, 'desactivarAccesoApp'])->name('empleados.acceso-app.desactivar');
     Route::get('/empleados/fotos/{empleado}', function (Empleado $empleado) {
         $limpiarClave = fn ($valor) => preg_replace('/[^A-Za-z0-9_-]/', '', (string) ($valor ?? ''));
         $clavesId = collect([

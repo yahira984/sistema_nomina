@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exports\AsistenciasSemanalesExport;
 use App\Models\Asistencia;
 use App\Models\Empleado;
+use App\Services\FirebaseSyncService;
 use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -116,13 +117,15 @@ class AsistenciaController extends Controller
         $empleado = Empleado::findOrFail($request->empleado_id);
         $datosCalculados = $this->calcularHoras($request->fecha, $request->hora_entrada, $request->hora_salida, $request->tipo_asistencia, $empleado);
 
-        Asistencia::create(array_merge([
+        $asistencia = Asistencia::create(array_merge([
             'empleado_id' => $request->empleado_id,
             'fecha' => $request->fecha,
             'tipo_asistencia' => $request->tipo_asistencia,
             'hora_entrada' => $request->tipo_asistencia === 'Normal' ? $request->hora_entrada : null,
             'hora_salida' => $request->tipo_asistencia === 'Normal' ? $request->hora_salida : null,
         ], $datosCalculados));
+
+        FirebaseSyncService::sincronizarAsistencia($asistencia);
 
         return redirect()->back()->with('success', 'Asistencia registrada con exito.');
     }
@@ -144,13 +147,17 @@ class AsistenciaController extends Controller
             'hora_salida' => $request->tipo_asistencia === 'Normal' ? $request->hora_salida : null,
         ], $datosCalculados));
 
+        FirebaseSyncService::sincronizarAsistencia($asistencia->fresh('empleado'));
+
         return redirect()->back()->with('success', 'Asistencia actualizada.');
     }
 
     public function destroy($id)
     {
-        $asistencia = Asistencia::findOrFail($id);
+        $asistencia = Asistencia::with('empleado')->findOrFail($id);
         $asistencia->delete();
+
+        FirebaseSyncService::eliminarAsistencia($asistencia);
 
         return redirect()->back()->with('success', 'Asistencia eliminada.');
     }
@@ -211,6 +218,7 @@ class AsistenciaController extends Controller
 
         $guardadas = 0;
         $omitidas = 0;
+        $asistenciasSincronizar = [];
 
         foreach ($validated['filas'] as $fila) {
             if (!($fila['aprobado'] ?? false) || empty($fila['empleado_id'])) {
@@ -230,7 +238,7 @@ class AsistenciaController extends Controller
             $empleado = Empleado::find($fila['empleado_id']);
             $datosCalculados = $this->calcularHoras($fila['fecha'], $horaEntrada, $horaSalida, $tipoAsistencia, $empleado);
 
-            Asistencia::updateOrCreate(
+            $asistencia = Asistencia::updateOrCreate(
                 [
                     'empleado_id' => $fila['empleado_id'],
                     'fecha' => $fila['fecha'],
@@ -242,8 +250,11 @@ class AsistenciaController extends Controller
                 ], $datosCalculados)
             );
 
+            $asistenciasSincronizar[] = $asistencia->fresh('empleado');
             $guardadas++;
         }
+
+        FirebaseSyncService::sincronizarAsistencias($asistenciasSincronizar);
 
         if ($guardadas > 0) {
             $request->session()->forget(self::PREVIEW_SESSION_KEY);

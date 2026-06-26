@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'firebase' => [
+        'credentials' => env('FIREBASE_CREDENTIALS'),
+        'database_url' => env('FIREBASE_DATABASE_URL'),
+        'auth_login_domain' => env('FIREBASE_AUTH_LOGIN_DOMAIN', 'mi-lugarth.app'),
+    ],
+
 ];

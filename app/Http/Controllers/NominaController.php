@@ -7,6 +7,7 @@ use App\Exports\ReporteSemanalExport;
 use App\Models\Asistencia;
 use App\Models\Empleado;
 use App\Models\Nomina;
+use App\Services\FirebaseSyncService;
 use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -161,7 +162,7 @@ class NominaController extends Controller
 
     public function pagar(Request $request, Nomina $nomina)
     {
-        $pagado = DB::transaction(function () use ($request, $nomina) {
+        $resultadoPago = DB::transaction(function () use ($request, $nomina) {
             $nomina = Nomina::whereKey($nomina->id)->lockForUpdate()->firstOrFail();
             $empleado = Empleado::findOrFail($nomina->empleado_id);
             $controlPrestamoAplicado = $this->controlPrestamoAplicadoDisponible();
@@ -188,18 +189,26 @@ class NominaController extends Controller
 
                 $nomina->forceFill($datos)->save();
 
-                return false;
+                return [
+                    'pagado' => false,
+                    'empleado_id' => $empleado->id,
+                    'nomina_id' => $nomina->id,
+                ];
             }
 
+            $inicioSemana = Carbon::parse($nomina->fecha_inicio)->startOfDay();
+            $finSemana = Carbon::parse($nomina->fecha_fin)->endOfDay();
+
             if ($this->requestTieneAjustesNomina($request)) {
-                $inicioSemana = Carbon::parse($nomina->fecha_inicio)->startOfDay();
-                $finSemana = Carbon::parse($nomina->fecha_fin)->endOfDay();
                 $ajustes = $this->ajustesDesdeRequest($request, $empleado);
                 $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
 
                 $nomina->fill($this->datosNominaParaGuardar($inicioSemana, $finSemana, $desglose));
                 $nomina->save();
                 $nomina->refresh();
+            } else {
+                $ajustes = $this->ajustesDesdeNomina($nomina, $empleado);
+                $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
             }
 
             $prestamoOtorgadoNomina = (float) ($nomina->prestamo_otorgado ?? 0);
@@ -225,12 +234,28 @@ class NominaController extends Controller
 
             $nomina->forceFill($datos)->save();
 
-            return true;
+            return [
+                'pagado' => true,
+                'empleado_id' => $empleado->id,
+                'nomina_id' => $nomina->id,
+                'desglose' => $desglose,
+            ];
         });
+
+        $empleadoSync = Empleado::find($resultadoPago['empleado_id']);
+        $nominaSync = Nomina::find($resultadoPago['nomina_id']);
+
+        if ($empleadoSync && $nominaSync) {
+            if ($resultadoPago['pagado']) {
+                FirebaseSyncService::sincronizarNominaPagada($empleadoSync, $nominaSync, $resultadoPago['desglose'] ?? []);
+            } else {
+                FirebaseSyncService::eliminarNominaPagada($empleadoSync, $nominaSync);
+            }
+        }
 
         return back()->with(
             'success',
-            $pagado
+            $resultadoPago['pagado']
                 ? 'Nomina marcada como pagada. Prestamos y vacaciones aplicados al saldo del empleado.'
                 : 'Nomina regresada a pendiente. Prestamos y vacaciones revertidos del saldo del empleado.'
         );

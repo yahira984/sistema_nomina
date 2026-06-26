@@ -1,4 +1,7 @@
 *
+!firebase/
+!firebase/.gitignore
+!firebase/README.txt
 !private/
 !public/
 !.gitignore
