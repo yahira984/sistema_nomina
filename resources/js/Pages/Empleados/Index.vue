@@ -256,6 +256,38 @@ const restaurarEmpleado = (id, nombre) => { if (confirm(`¿Restaurar a ${nombre}
                             
                             <!-- Generales -->
                             <div class="md:col-span-4"><label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Nacimiento</label><input v-model="form.fecha_nacimiento" type="date" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold" /></div>
+                            <div class="md:col-span-4">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">G&eacute;nero</label>
+                                <select v-model="form.genero" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold">
+                                    <option value="">Sin registrar</option>
+                                    <option value="Masculino">Masculino</option>
+                                    <option value="Femenino">Femenino</option>
+                                    <option value="Otro">Otro</option>
+                                </select>
+                            </div>
+                            <div class="md:col-span-4">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Estado civil</label>
+                                <select v-model="form.estado_civil" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold">
+                                    <option value="">Sin registrar</option>
+                                    <option value="Soltero(a)">Soltero(a)</option>
+                                    <option value="Casado(a)">Casado(a)</option>
+                                    <option value="Uni&oacute;n libre">Uni&oacute;n libre</option>
+                                    <option value="Divorciado(a)">Divorciado(a)</option>
+                                    <option value="Viudo(a)">Viudo(a)</option>
+                                </select>
+                            </div>
+                            <div class="md:col-span-4">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Correo electr&oacute;nico</label>
+                                <input v-model="form.correo" type="email" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold" placeholder="correo@empresa.com" />
+                            </div>
+                            <div class="md:col-span-8">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Direcci&oacute;n</label>
+                                <input v-model="form.direccion" type="text" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold" placeholder="Calle, numero, colonia" />
+                            </div>
+                            <div class="md:col-span-4">
+                                <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-rose-500">Emergencia (Nombre)</label>
+                                <input v-model="form.contacto_emergencia_nombre" type="text" class="w-full rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-bold" placeholder="Nombre completo" @input="form.contacto_emergencia_nombre = form.contacto_emergencia_nombre.replace(/[0-9]/g, '')" />
+                            </div>
                             <div class="md:col-span-4"><label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Teléfono</label><input v-model="form.telefono" type="text" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold" @input="form.telefono = form.telefono.replace(/[^\d+\s()-]/g, '')" /></div>
                             <div class="md:col-span-4">
                                 <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-rose-500">Emergencia (Tel)</label>
