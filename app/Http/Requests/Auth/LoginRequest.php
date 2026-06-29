@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Models\AuditLog;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -49,6 +50,34 @@ class LoginRequest extends FormRequest
                 'email' => trans('auth.failed'),
             ]);
         }
+
+        $user = Auth::user();
+
+        if (!$user->canAccessSystem()) {
+            AuditLog::record('auth.login_blocked', $user, [
+                'description' => $user->isDisabled()
+                    ? 'Intento de acceso con cuenta deshabilitada.'
+                    : 'Intento de acceso con cuenta pendiente de aprobacion.',
+            ]);
+
+            Auth::guard('web')->logout();
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'email' => $user->isDisabled()
+                    ? 'Tu cuenta esta deshabilitada. Contacta a un administrador.'
+                    : 'Tu cuenta esta pendiente de aprobacion por un administrador.',
+            ]);
+        }
+
+        $user->forceFill([
+            'last_login_at' => now(),
+            'last_login_ip' => $this->ip(),
+        ])->saveQuietly();
+
+        AuditLog::record('auth.login', $user, [
+            'description' => 'Inicio de sesion correcto.',
+        ]);
 
         RateLimiter::clear($this->throttleKey());
     }

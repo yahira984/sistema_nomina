@@ -1,11 +1,15 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import { clavesFotoEmpleado, fotoEmpleadoSrc, mostrarFotoEmpleado, probarSiguienteFotoEmpleado } from '@/Utils/employeePhotos';
 
 const props = defineProps({
-    empleado: Object
+    empleado: Object,
+    accesoApp: {
+        type: Object,
+        default: () => ({}),
+    },
 });
 
 const tabActiva = ref('perfil');
@@ -33,6 +37,30 @@ const moneda = (valor) => Number(valor ?? 0).toLocaleString('es-MX', {
 
 const saldoPrestamo = computed(() => Number(props.empleado.saldo_prestamo ?? 0));
 const prestamoActivo = computed(() => saldoPrestamo.value > 0);
+const numeroEmpleado = computed(() => props.empleado.numero_empleado || props.empleado.numero_empleado_baja || props.empleado.id);
+const accesoActivo = computed(() => Boolean(props.accesoApp?.activo));
+const accesoUsuario = computed(() => props.accesoApp?.login_usuario || '');
+const accesoEmail = computed(() => props.accesoApp?.email_login || '');
+
+const accesoForm = useForm({
+    usuario: accesoUsuario.value || String(numeroEmpleado.value || ''),
+    password: '',
+});
+
+const guardarAccesoApp = () => {
+    accesoForm.post(route('empleados.acceso-app.guardar', props.empleado.id), {
+        preserveScroll: true,
+        onSuccess: () => accesoForm.reset('password'),
+    });
+};
+
+const desactivarAccesoApp = () => {
+    if (!window.confirm('Desactivar el acceso de app para este empleado?')) return;
+
+    router.delete(route('empleados.acceso-app.desactivar', props.empleado.id), {
+        preserveScroll: true,
+    });
+};
 </script>
 
 <template>
@@ -89,7 +117,7 @@ const prestamoActivo = computed(() => saldoPrestamo.value > 0);
                         </div>
                         <p class="mb-3 flex flex-wrap items-center gap-2 text-sm font-medium text-slate-600 sm:text-base">
                             <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                            {{ empleado.puesto || 'Puesto no asignado' }} • ID: #{{ empleado.numero_empleado || empleado.numero_empleado_baja || empleado.id }}
+                            {{ empleado.puesto || 'Puesto no asignado' }} • No. empleado: #{{ empleado.numero_empleado || empleado.numero_empleado_baja || empleado.id }}
                         </p>
                         <div v-if="!empleado.estatus" class="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
                             Baja registrada el {{ empleado.fecha_baja || 'sin fecha' }} · {{ empleado.dias_laborados || 0 }} dias laborados
@@ -144,6 +172,85 @@ const prestamoActivo = computed(() => saldoPrestamo.value > 0);
                                 <div class="mt-1"><p class="text-xs text-slate-500">Teléfono:</p><p class="font-bold text-slate-800">{{ empleado.contacto_emergencia_telefono || '--' }}</p></div>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm md:col-span-2">
+                        <div class="mb-4 flex flex-col gap-3 border-b border-blue-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <h3 class="flex items-center gap-2 font-bold text-slate-800">
+                                    <i class="ti ti-device-mobile text-xl text-blue-700" aria-hidden="true"></i>
+                                    Acceso a la app móvil
+                                </h3>
+                                <p class="mt-1 text-sm text-slate-600">
+                                    Crea o cambia el usuario y contraseña temporal para que el empleado entre a Mi Lugarth.
+                                </p>
+                            </div>
+                            <span
+                                :class="accesoActivo ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'"
+                                class="inline-flex w-fit items-center gap-1 rounded-full border px-3 py-1 text-xs font-bold"
+                            >
+                                <i :class="accesoActivo ? 'ti ti-circle-check' : 'ti ti-circle-dashed'" aria-hidden="true"></i>
+                                {{ accesoActivo ? 'Acceso activo' : 'Sin acceso activo' }}
+                            </span>
+                        </div>
+
+                        <div v-if="accesoUsuario" class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div class="rounded-lg border border-blue-100 bg-white px-3 py-2">
+                                <p class="text-xs font-bold uppercase text-blue-700">Usuario actual</p>
+                                <p class="font-black text-slate-900">{{ accesoUsuario }}</p>
+                            </div>
+                            <div class="rounded-lg border border-blue-100 bg-white px-3 py-2">
+                                <p class="text-xs font-bold uppercase text-blue-700">Correo interno Firebase</p>
+                                <p class="break-all text-sm font-semibold text-slate-700">{{ accesoEmail || 'No registrado' }}</p>
+                            </div>
+                        </div>
+
+                        <form class="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr_auto]" @submit.prevent="guardarAccesoApp">
+                            <div>
+                                <label class="mb-1 block text-xs font-bold uppercase text-slate-600">Usuario</label>
+                                <input
+                                    v-model="accesoForm.usuario"
+                                    type="text"
+                                    autocomplete="off"
+                                    class="w-full rounded-lg border-slate-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    placeholder="Ej. 43 o angel.patino"
+                                />
+                                <p v-if="accesoForm.errors.usuario" class="mt-1 text-xs font-semibold text-rose-600">{{ accesoForm.errors.usuario }}</p>
+                            </div>
+                            <div>
+                                <label class="mb-1 block text-xs font-bold uppercase text-slate-600">Contraseña temporal</label>
+                                <input
+                                    v-model="accesoForm.password"
+                                    type="text"
+                                    autocomplete="new-password"
+                                    class="w-full rounded-lg border-slate-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    placeholder="Mínimo 6 caracteres"
+                                />
+                                <p v-if="accesoForm.errors.password" class="mt-1 text-xs font-semibold text-rose-600">{{ accesoForm.errors.password }}</p>
+                            </div>
+                            <div class="flex flex-col gap-2 lg:justify-end">
+                                <button
+                                    type="submit"
+                                    :disabled="accesoForm.processing"
+                                    class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                                    {{ accesoForm.processing ? 'Guardando...' : 'Guardar acceso' }}
+                                </button>
+                                <button
+                                    v-if="accesoActivo"
+                                    type="button"
+                                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 py-2.5 text-sm font-bold text-rose-700 transition hover:bg-rose-50"
+                                    @click="desactivarAccesoApp"
+                                >
+                                    <i class="ti ti-user-off" aria-hidden="true"></i>
+                                    Desactivar
+                                </button>
+                            </div>
+                        </form>
+                        <p v-if="accesoForm.errors.acceso_app" class="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                            {{ accesoForm.errors.acceso_app }}
+                        </p>
                     </div>
                 </div>
 

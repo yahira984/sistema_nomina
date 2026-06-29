@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Throwable;
@@ -79,6 +81,14 @@ class BaseDatosController extends Controller
 
         $sentencias = $this->dividirSql($contenido);
 
+        AuditLog::record('database.import_started', null, [
+            'description' => 'Importacion de respaldo iniciada.',
+            'metadata' => [
+                'file' => $archivoSql->getClientOriginalName(),
+                'size' => $archivoSql->getSize(),
+            ],
+        ]);
+
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
 
         try {
@@ -100,6 +110,12 @@ class BaseDatosController extends Controller
         } finally {
             DB::statement('SET FOREIGN_KEY_CHECKS=1');
         }
+
+        Artisan::call('migrate', ['--force' => true]);
+
+        AuditLog::record('database.import_finished', null, [
+            'description' => 'Importacion de respaldo finalizada y migraciones aplicadas.',
+        ]);
 
         return back()->with('success', 'Base de datos restaurada correctamente.');
     }

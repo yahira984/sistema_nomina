@@ -7,6 +7,7 @@ use App\Exports\ReporteSemanalExport;
 use App\Models\Asistencia;
 use App\Models\Empleado;
 use App\Models\Nomina;
+use App\Services\FirebaseSyncService;
 use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -161,11 +162,92 @@ class NominaController extends Controller
 
     public function pagar(Request $request, Nomina $nomina)
     {
-        $pagado = DB::transaction(function () use ($request, $nomina) {
+        $resultadoPago = $this->procesarCambioPagoNomina($request, $nomina);
+        $this->sincronizarCambioPago($resultadoPago);
+
+        return back()->with(
+            'success',
+            $resultadoPago['pagado']
+                ? 'Nomina marcada como pagada. Prestamos y vacaciones aplicados al saldo del empleado.'
+                : 'Nomina regresada a pendiente. Prestamos y vacaciones revertidos del saldo del empleado.'
+        );
+    }
+
+    public function actualizarPagosMasivos(Request $request)
+    {
+        $validated = $request->validate([
+            'fecha_corte' => 'nullable|date',
+            'empleado_ids' => 'required|array|min:1',
+            'empleado_ids.*' => 'integer|exists:empleados,id',
+            'accion' => 'required|in:pagar,revertir',
+        ]);
+
+        [$inicioSemana, $finSemana] = $this->resolverSemanaNomina($request);
+        $empleadoIds = collect($validated['empleado_ids'])->map(fn ($id) => (int) $id)->unique()->values();
+        $forzarPagado = $validated['accion'] === 'pagar';
+        $nominas = Nomina::whereIn('empleado_id', $empleadoIds)
+            ->whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
+            ->whereDate('fecha_fin', $finSemana->format('Y-m-d'))
+            ->orderBy('empleado_id')
+            ->get();
+
+        $procesadas = 0;
+        $sinCambio = 0;
+        $errores = 0;
+
+        foreach ($nominas as $nomina) {
+            try {
+                $resultadoPago = $this->procesarCambioPagoNomina($request, $nomina, $forzarPagado);
+
+                if ($resultadoPago['sin_cambio'] ?? false) {
+                    $sinCambio++;
+                    continue;
+                }
+
+                $this->sincronizarCambioPago($resultadoPago);
+                $procesadas++;
+            } catch (\Throwable $exception) {
+                report($exception);
+                $errores++;
+            }
+        }
+
+        $sinRecibo = max(0, $empleadoIds->count() - $nominas->count());
+        $estadoDestino = $forzarPagado ? 'liquidadas' : 'regresadas a pendiente';
+        $estadoActual = $forzarPagado ? 'liquidadas' : 'pendientes';
+        $partes = ["{$procesadas} nomina(s) {$estadoDestino}."];
+
+        if ($sinCambio > 0) {
+            $partes[] = "{$sinCambio} ya estaban {$estadoActual}.";
+        }
+
+        if ($sinRecibo > 0) {
+            $partes[] = "{$sinRecibo} empleado(s) no tenian recibo generado para esta semana.";
+        }
+
+        if ($errores > 0) {
+            $partes[] = "{$errores} no se pudieron procesar; revisa el log.";
+        }
+
+        return back()->with('success', implode(' ', $partes));
+    }
+
+    private function procesarCambioPagoNomina(Request $request, Nomina $nomina, ?bool $forzarPagado = null): array
+    {
+        return DB::transaction(function () use ($request, $nomina, $forzarPagado) {
             $nomina = Nomina::whereKey($nomina->id)->lockForUpdate()->firstOrFail();
             $empleado = Empleado::findOrFail($nomina->empleado_id);
             $controlPrestamoAplicado = $this->controlPrestamoAplicadoDisponible();
             [$prestamoOtorgadoAplicado, $prestamoDescuentoAplicado] = $this->prestamoAplicadoAnterior($nomina, $controlPrestamoAplicado);
+
+            if ($forzarPagado !== null && (bool) $nomina->pagado === $forzarPagado) {
+                return [
+                    'pagado' => (bool) $nomina->pagado,
+                    'empleado_id' => $empleado->id,
+                    'nomina_id' => $nomina->id,
+                    'sin_cambio' => true,
+                ];
+            }
 
             if ($nomina->pagado) {
                 $this->aplicarMovimientoPrestamoEmpleado(
@@ -188,18 +270,26 @@ class NominaController extends Controller
 
                 $nomina->forceFill($datos)->save();
 
-                return false;
+                return [
+                    'pagado' => false,
+                    'empleado_id' => $empleado->id,
+                    'nomina_id' => $nomina->id,
+                ];
             }
 
+            $inicioSemana = Carbon::parse($nomina->fecha_inicio)->startOfDay();
+            $finSemana = Carbon::parse($nomina->fecha_fin)->endOfDay();
+
             if ($this->requestTieneAjustesNomina($request)) {
-                $inicioSemana = Carbon::parse($nomina->fecha_inicio)->startOfDay();
-                $finSemana = Carbon::parse($nomina->fecha_fin)->endOfDay();
                 $ajustes = $this->ajustesDesdeRequest($request, $empleado);
                 $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
 
                 $nomina->fill($this->datosNominaParaGuardar($inicioSemana, $finSemana, $desglose));
                 $nomina->save();
                 $nomina->refresh();
+            } else {
+                $ajustes = $this->ajustesDesdeNomina($nomina, $empleado);
+                $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
             }
 
             $prestamoOtorgadoNomina = (float) ($nomina->prestamo_otorgado ?? 0);
@@ -225,15 +315,31 @@ class NominaController extends Controller
 
             $nomina->forceFill($datos)->save();
 
-            return true;
+            return [
+                'pagado' => true,
+                'empleado_id' => $empleado->id,
+                'nomina_id' => $nomina->id,
+                'desglose' => $desglose,
+            ];
         });
+    }
 
-        return back()->with(
-            'success',
-            $pagado
-                ? 'Nomina marcada como pagada. Prestamos y vacaciones aplicados al saldo del empleado.'
-                : 'Nomina regresada a pendiente. Prestamos y vacaciones revertidos del saldo del empleado.'
-        );
+    private function sincronizarCambioPago(array $resultadoPago): void
+    {
+        if ($resultadoPago['sin_cambio'] ?? false) {
+            return;
+        }
+
+        $empleadoSync = Empleado::find($resultadoPago['empleado_id']);
+        $nominaSync = Nomina::find($resultadoPago['nomina_id']);
+
+        if ($empleadoSync && $nominaSync) {
+            if ($resultadoPago['pagado']) {
+                FirebaseSyncService::sincronizarNominaPagada($empleadoSync, $nominaSync, $resultadoPago['desglose'] ?? []);
+            } else {
+                FirebaseSyncService::eliminarNominaPagada($empleadoSync, $nominaSync);
+            }
+        }
     }
 
     private function resolverSemanaNomina(Request $request): array

@@ -1,0 +1,22 @@
+{
+  "rules": {
+    "usuarios": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "empleados": {
+      "$empleadoId": {
+        ".read": "auth != null && root.child('usuarios').child(auth.uid).child('activo').val() === true && root.child('usuarios').child(auth.uid).child('empleado_id_key').val() === $empleadoId",
+        ".write": false,
+        "asistencias": {
+          ".indexOn": ["fecha"]
+        },
+        "nominas": {
+          ".indexOn": ["anio", "semana", "fecha_fin"]
+        }
+      }
+    }
+  }
+}

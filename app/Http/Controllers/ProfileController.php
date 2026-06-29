@@ -29,6 +29,12 @@ class ProfileController extends Controller
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
+        if ($request->user()->isRecoveryAdmin() && $request->validated('email') !== $request->user()->email) {
+            return Redirect::route('profile.edit')->withErrors([
+                'email' => 'La cuenta de recuperacion no puede cambiar su correo.',
+            ]);
+        }
+
         $request->user()->fill($request->validated());
 
         if ($request->user()->isDirty('email')) {
@@ -50,6 +56,12 @@ class ProfileController extends Controller
         ]);
 
         $user = $request->user();
+
+        if ($user->isRecoveryAdmin()) {
+            return Redirect::route('profile.edit')->withErrors([
+                'password' => 'La cuenta de recuperacion no puede eliminarse.',
+            ]);
+        }
 
         Auth::logout();
 

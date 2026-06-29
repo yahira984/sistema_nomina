@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Empleado;
+use App\Services\FirebaseSyncService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -27,7 +28,8 @@ class EmpleadoController extends Controller
         }])->findOrFail($id);
 
         return Inertia::render('Empleados/Show', [
-            'empleado' => $empleado
+            'empleado' => $empleado,
+            'accesoApp' => FirebaseSyncService::obtenerAccesoApp($empleado),
         ]);
     }
 
@@ -88,7 +90,9 @@ class EmpleadoController extends Controller
             $datos['numero_cuenta'] = null;
         }
 
-        Empleado::create($datos);
+        $empleado = Empleado::create($datos);
+        FirebaseSyncService::sincronizarEmpleado($empleado);
+
         return redirect()->back()->with('success', 'Empleado registrado correctamente.');
     }
 
@@ -148,6 +152,8 @@ class EmpleadoController extends Controller
         }
 
         $empleado->update($datos);
+        FirebaseSyncService::sincronizarEmpleado($empleado);
+
         return redirect()->back()->with('success', 'Datos del empleado actualizados correctamente.');
     }
 
@@ -167,6 +173,9 @@ class EmpleadoController extends Controller
             'motivo_baja' => request('motivo_baja'),
         ]);
 
+        FirebaseSyncService::desactivarAccesoApp($empleado);
+        FirebaseSyncService::sincronizarEmpleado($empleado);
+
         return redirect()->back()->with('success', 'Empleado enviado a papelera y numero liberado.');
     }
 
@@ -179,7 +188,47 @@ class EmpleadoController extends Controller
             'motivo_baja' => null,
         ]);
 
+        FirebaseSyncService::sincronizarEmpleado($empleado);
+
         return redirect()->back()->with('success', 'Empleado restaurado. Asignale un numero nuevo o disponible antes de usarlo en checador.');
+    }
+
+    public function guardarAccesoApp(Request $request, Empleado $empleado)
+    {
+        $validated = $request->validate([
+            'usuario' => ['required', 'string', 'min:3', 'max:80', 'regex:/^[A-Za-z0-9._@-]+$/'],
+            'password' => ['required', 'string', 'min:6', 'max:100'],
+        ], [
+            'usuario.regex' => 'Usa solo letras, numeros, punto, guion, guion bajo o correo.',
+            'password.min' => 'La contrasena debe tener al menos 6 caracteres.',
+        ]);
+
+        $resultado = FirebaseSyncService::guardarAccesoApp(
+            $empleado,
+            $validated['usuario'],
+            $validated['password']
+        );
+
+        if (!($resultado['ok'] ?? false)) {
+            return back()->withErrors([
+                'acceso_app' => $resultado['message'] ?? 'No se pudo guardar el acceso de la app.',
+            ]);
+        }
+
+        return back()->with('success', 'Acceso de app guardado. Usuario: ' . $resultado['usuario']);
+    }
+
+    public function desactivarAccesoApp(Empleado $empleado)
+    {
+        $resultado = FirebaseSyncService::desactivarAccesoApp($empleado);
+
+        if (!($resultado['ok'] ?? false)) {
+            return back()->withErrors([
+                'acceso_app' => $resultado['message'] ?? 'No se pudo desactivar el acceso de la app.',
+            ]);
+        }
+
+        return back()->with('success', 'Acceso de app desactivado para este empleado.');
     }
 
     private function moverFotoEmpleadoABajas(Empleado $empleado): void
