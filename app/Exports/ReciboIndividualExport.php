@@ -70,7 +70,7 @@ class ReciboIndividualExport implements FromView, WithColumnWidths, WithEvents
                 $sheet->getRowDimension(3)->setRowHeight(58);
                 $sheet->getRowDimension(4)->setRowHeight(24);
                 $sheet->getRowDimension(5)->setRowHeight(20);
-                $sheet->getRowDimension(6)->setRowHeight(112);
+                $sheet->getRowDimension(6)->setRowHeight(122);
                 $sheet->getRowDimension(7)->setRowHeight(28);
                 $sheet->getRowDimension(8)->setRowHeight(28);
                 $sheet->getRowDimension(9)->setRowHeight(72);

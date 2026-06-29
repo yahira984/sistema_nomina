@@ -24,6 +24,9 @@
         $pagoExtra = $pago_extra ?? 0;
         $pagoIncapacidad = $pago_incapacidad ?? 0;
         $pagoVacaciones = $pago_vacaciones ?? 0;
+        $diasFestivosTrabajados = $dias_festivos_trabajados ?? ($nomina->dias_festivos_trabajados ?? 0);
+        $horasFestivasTrabajadas = $horas_festivas_trabajadas ?? ($nomina->horas_festivas_trabajadas ?? 0);
+        $pagoFestivoTrabajado = $pago_festivo_trabajado ?? $pago_festivo ?? ($nomina->pago_festivo_trabajado ?? 0);
         $prestamoOtorgado = $prestamo_otorgado ?? ($nomina->prestamo_otorgado ?? 0);
 
         $diasFalta = $dias_falta ?? 0;
@@ -100,7 +103,7 @@
             <td style="{{ $center }} font-size: 10px; font-weight: bold;">TOTAL</td>
         </tr>
         <tr>
-            <td style="{{ $top }} height: 140px;">
+            <td style="{{ $top }} height: 150px;">
                 @if($esEstudiante)
                     <b>SUELDO POR HORA</b><br>
                     HORAS NORMALES&nbsp;<span style="color: #0000FF; font-weight: bold;">{{ $horasNormales }}</span><br>
@@ -109,6 +112,9 @@
                     <b>SUELDO SEMANAL</b><br>
                 @endif
                 HRS EXTRA&nbsp;<span style="color: #0000FF; font-weight: bold;">{{ $horasExtraPagadas }}</span><br>
+                @if($pagoFestivoTrabajado > 0)
+                    DIA FESTIVO&nbsp;<span style="color: #0000FF; font-weight: bold;">{{ $esEstudiante ? $horasFestivasTrabajadas . 'h' : $diasFestivosTrabajados }}</span><br>
+                @endif
                 @if($horasExtraMiercolesAnterior > 0)
                     MIE. ANT.&nbsp;<span style="color: #0000FF; font-weight: bold;">{{ $horasExtraMiercolesAnterior }}</span><br>
                 @endif
@@ -131,6 +137,9 @@
                     $ {{ number_format($pagoNormal, 2) }}<br>
                 @endif
                 $ {{ number_format($pagoExtra, 2) }}<br>
+                @if($pagoFestivoTrabajado > 0)
+                    $ {{ number_format($pagoFestivoTrabajado, 2) }}<br>
+                @endif
                 @if($horasExtraMiercolesAnterior > 0)
                     <span style="font-size: 9px;">Incluido</span><br>
                 @endif

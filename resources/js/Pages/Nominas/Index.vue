@@ -611,15 +611,45 @@ const historialFiltrado = computed(() => {
     });
 });
 
-const copiarCuenta = (banco, cuenta) => {
+const copiarTextoSeguro = async (texto) => {
+    if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(texto);
+        return true;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = texto;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-9999px';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    try {
+        return document.execCommand('copy');
+    } finally {
+        document.body.removeChild(textarea);
+    }
+};
+
+const copiarCuenta = async (banco, cuenta) => {
     if (!cuenta) return;
     const texto = `${banco ? banco + ' - ' : ''}${cuenta}`;
-    navigator.clipboard.writeText(cuenta).then(() => {
+
+    try {
+        const copiado = await copiarTextoSeguro(cuenta);
         toastTitle.value = 'Cuenta copiada';
-        toastMessage.value = texto;
+        toastMessage.value = copiado ? texto : 'No se pudo copiar automaticamente. Selecciona la cuenta manualmente.';
         showToast.value = true;
         setTimeout(() => { showToast.value = false; }, 3500);
-    });
+    } catch (error) {
+        toastTitle.value = 'No se pudo copiar';
+        toastMessage.value = 'El navegador bloqueo el portapapeles. Selecciona la cuenta manualmente.';
+        showToast.value = true;
+        setTimeout(() => { showToast.value = false; }, 3500);
+    }
 };
 
 const marcarComoGenerado = (empleado) => {
@@ -1096,6 +1126,12 @@ const cambiarPagosMasivos = (accion) => {
                                                         <span class="rounded-md bg-white border border-slate-200 px-2 py-1 text-slate-500 shadow-sm">Horas que debe: {{ horas(horasAdeudoGeneradasPreview(empleado)) }}h</span>
                                                         <span class="rounded-md bg-white border border-slate-200 px-2 py-1 text-slate-500 shadow-sm">Horas extra detectadas: {{ horas(resumenNomina(empleado).horas_extra_detectadas) }}h</span>
                                                         <span class="rounded-md bg-white border border-emerald-200 px-2 py-1 text-emerald-600 shadow-sm">Horas extra a pagar: {{ horas(horasExtraPagadasPreview(empleado)) }}h</span>
+                                                        <span v-if="Number(resumenNomina(empleado).pago_festivo_trabajado || 0) > 0" class="rounded-md bg-white border border-teal-200 px-2 py-1 text-teal-700 shadow-sm">
+                                                            Festivo trabajado: ${{ moneda(resumenNomina(empleado).pago_festivo_trabajado) }}
+                                                        </span>
+                                                        <span v-if="Number(resumenNomina(empleado).dias_festivos_no_trabajados || 0) > 0" class="rounded-md bg-white border border-teal-100 px-2 py-1 text-teal-600 shadow-sm">
+                                                            Festivo pagado normal: {{ resumenNomina(empleado).dias_festivos_no_trabajados }}
+                                                        </span>
                                                         <span class="rounded-md bg-white border border-amber-200 px-2 py-1 text-amber-600 shadow-sm">Horas pendientes finales: {{ horas(saldoHorasPreview(empleado)) }}h</span>
                                                     </div>
 
