@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exports\ReciboIndividualExport;
+use App\Exports\DiferenciaImssExport;
 use App\Exports\ReporteSemanalExport;
 use App\Models\Asistencia;
 use App\Models\Empleado;
@@ -13,8 +14,10 @@ use App\Support\SemanaNomina;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -62,6 +65,12 @@ class NominaController extends Controller
     {
         $empleado = Empleado::findOrFail($empleado_id);
         [$inicioSemana, $finSemana] = $this->resolverSemanaNomina($request);
+        $estadoCaptura = $this->estadoCapturaAsistencia($empleado, $inicioSemana, $finSemana);
+
+        if (!$estadoCaptura['lista_para_nomina']) {
+            return back()->withErrors(['asistencia' => $estadoCaptura['mensaje']]);
+        }
+
         $ajustes = $this->ajustesDesdeRequest($request, $empleado);
         $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
 
@@ -74,6 +83,8 @@ class NominaController extends Controller
     {
         $empleado = Empleado::findOrFail($empleado_id);
         [$inicioSemana, $finSemana, $numeroSemana] = $this->resolverSemanaNomina($request);
+        $this->abortarSiAsistenciaPendiente($empleado, $inicioSemana, $finSemana);
+
         $ajustes = $this->resolverAjustesParaPeriodo($request, $empleado, $inicioSemana, $finSemana);
         $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
 
@@ -89,6 +100,8 @@ class NominaController extends Controller
     {
         $empleado = Empleado::findOrFail($empleado_id);
         [$inicioSemana, $finSemana, $numeroSemana] = $this->resolverSemanaNomina($request);
+        $this->abortarSiAsistenciaPendiente($empleado, $inicioSemana, $finSemana);
+
         $ajustes = $this->resolverAjustesParaPeriodo($request, $empleado, $inicioSemana, $finSemana);
         $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
 
@@ -113,6 +126,12 @@ class NominaController extends Controller
             ->get();
 
         abort_if($empleados->isEmpty(), 404, 'No hay empleados activos para imprimir en este periodo.');
+
+        $pendientesCaptura = $empleados
+            ->filter(fn (Empleado $empleado) => !$this->estadoCapturaAsistencia($empleado, $inicioSemana, $finSemana)['lista_para_nomina'])
+            ->count();
+
+        abort_if($pendientesCaptura > 0, 422, "{$pendientesCaptura} empleado(s) tienen asistencia pendiente de captura para este periodo.");
 
         $recibos = $empleados->map(function ($empleado) use ($inicioSemana, $finSemana) {
             $ajustes = $this->ajustesDesdeNomina(
@@ -144,11 +163,51 @@ class NominaController extends Controller
         return Excel::download(new ReporteSemanalExport($numeroSemana, $inicioSemana, $finSemana), $nombreArchivo);
     }
 
+    public function reporteDiferenciaImss(Request $request, $semana)
+    {
+        [$inicioSemana, $finSemana, $numeroSemana] = $this->resolverSemanaNomina($request);
+        $nombreArchivo = 'Diferencia_IMSS_Semana_' . $numeroSemana . '_' . $inicioSemana->format('Ymd') . '_' . $finSemana->format('Ymd') . '.xlsx';
+
+        return Excel::download(new DiferenciaImssExport($numeroSemana, $inicioSemana, $finSemana), $nombreArchivo);
+    }
+
+    public function actualizarDiferenciaImss(Request $request, $empleado_id)
+    {
+        $validated = $request->validate([
+            'fecha_corte' => 'nullable|date',
+            'deposito_imss' => 'nullable|numeric|min:0',
+        ]);
+
+        $empleado = Empleado::findOrFail($empleado_id);
+        [$inicioSemana, $finSemana] = $this->resolverSemanaNomina($request);
+        $estadoCaptura = $this->estadoCapturaAsistencia($empleado, $inicioSemana, $finSemana);
+
+        if (!$estadoCaptura['lista_para_nomina']) {
+            return back()->withErrors(['asistencia' => $estadoCaptura['mensaje']]);
+        }
+
+        $nomina = $this->buscarNominaPeriodo($empleado->id, $inicioSemana, $finSemana);
+
+        if (!$nomina) {
+            $ajustes = $this->ajustesPorDefecto($empleado);
+            $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
+            $nomina = $this->guardarNominaPeriodo($empleado, $inicioSemana, $finSemana, $desglose);
+        }
+
+        $nomina->forceFill([
+            'deposito_imss' => round((float) ($validated['deposito_imss'] ?? 0), 2),
+        ])->save();
+
+        return back()->with('success', 'Deposito IMSS guardado para esta semana.');
+    }
+
     public function descargar(Nomina $nomina)
     {
         $empleado = $nomina->empleado;
         $inicioSemana = Carbon::parse($nomina->fecha_inicio)->startOfDay();
         $finSemana = Carbon::parse($nomina->fecha_fin)->endOfDay();
+        $this->abortarSiAsistenciaPendiente($empleado, $inicioSemana, $finSemana);
+
         $ajustes = $this->ajustesDesdeNomina($nomina, $empleado);
         $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
 
@@ -279,6 +338,13 @@ class NominaController extends Controller
 
             $inicioSemana = Carbon::parse($nomina->fecha_inicio)->startOfDay();
             $finSemana = Carbon::parse($nomina->fecha_fin)->endOfDay();
+            $estadoCaptura = $this->estadoCapturaAsistencia($empleado, $inicioSemana, $finSemana);
+
+            if (!$estadoCaptura['lista_para_nomina']) {
+                throw ValidationException::withMessages([
+                    'asistencia' => $estadoCaptura['mensaje'],
+                ]);
+            }
 
             if ($this->requestTieneAjustesNomina($request)) {
                 $ajustes = $this->ajustesDesdeRequest($request, $empleado);
@@ -347,6 +413,62 @@ class NominaController extends Controller
         return SemanaNomina::desdeCorte($request->input('fecha_corte'));
     }
 
+    private function abortarSiAsistenciaPendiente(Empleado $empleado, Carbon $inicioSemana, Carbon $finSemana): void
+    {
+        $estadoCaptura = $this->estadoCapturaAsistencia($empleado, $inicioSemana, $finSemana);
+
+        abort_if(!$estadoCaptura['lista_para_nomina'], 422, $estadoCaptura['mensaje']);
+    }
+
+    private function estadoCapturaAsistencia(Empleado $empleado, Carbon $inicioSemana, Carbon $finSemana, ?Collection $asistencias = null): array
+    {
+        $asistencias ??= Asistencia::where('empleado_id', $empleado->id)
+            ->whereBetween('fecha', [
+                $inicioSemana->format('Y-m-d'),
+                $finSemana->format('Y-m-d'),
+            ])
+            ->get();
+
+        $fechasConRegistro = collect($asistencias
+            ->map(fn (Asistencia $asistencia) => Carbon::parse($asistencia->fecha)->format('Y-m-d'))
+            ->all())
+            ->unique()
+            ->values()
+            ->all();
+
+        return [
+            'lista_para_nomina' => count($fechasConRegistro) > 0,
+            'dias_requeridos' => $this->diasLaborablesNomina($empleado, $inicioSemana, $finSemana),
+            'dias_capturados' => count($fechasConRegistro),
+            'fechas_pendientes' => [],
+            'sin_registros' => $asistencias->isEmpty(),
+            'mensaje' => $asistencias->isEmpty()
+                ? 'Asistencia pendiente de captura. Registra al menos un dia del periodo o importa el reloj para generar faltas.'
+                : 'La asistencia del periodo esta lista para calcular nomina.',
+        ];
+    }
+
+    private function diasLaborablesNomina(Empleado $empleado, Carbon $inicioSemana, Carbon $finSemana): int
+    {
+        $dias = 0;
+        $cursor = $inicioSemana->copy()->startOfDay();
+        $limite = $finSemana->copy()->startOfDay();
+        $fechaIngreso = $empleado->fecha_ingreso ? Carbon::parse($empleado->fecha_ingreso)->startOfDay() : null;
+        $fechaBaja = $empleado->fecha_baja ? Carbon::parse($empleado->fecha_baja)->startOfDay() : null;
+
+        while ($cursor->lte($limite)) {
+            if (!$cursor->isWeekend()
+                && (!$fechaIngreso || $cursor->gte($fechaIngreso))
+                && (!$fechaBaja || $cursor->lte($fechaBaja))) {
+                $dias++;
+            }
+
+            $cursor->addDay();
+        }
+
+        return $dias;
+    }
+
     private function calcularDesgloseNomina(Empleado $empleado, Carbon $inicioSemana, Carbon $finSemana, array $ajustes = []): array
     {
         $ajustes = array_merge($this->ajustesPorDefecto($empleado), $ajustes);
@@ -356,6 +478,11 @@ class NominaController extends Controller
                 $finSemana->format('Y-m-d'),
             ])
             ->get();
+        $estadoCaptura = $this->estadoCapturaAsistencia($empleado, $inicioSemana, $finSemana, $asistencias);
+
+        if (!$estadoCaptura['lista_para_nomina']) {
+            return $this->desglosePendienteCaptura($empleado, $estadoCaptura);
+        }
 
         $horasNormales = (float) $asistencias->where('tipo_asistencia', 'Normal')->sum('horas_trabajadas');
         $horasExtraPeriodo = (float) $asistencias
@@ -525,6 +652,78 @@ class NominaController extends Controller
             'total_percepciones' => round($totalPercepciones, 2),
             'total_deducciones' => round($totalDeducciones, 2),
             'pago_neto' => round($pagoNeto, 2),
+            'asistencia_lista' => true,
+            'asistencia_pendiente_captura' => false,
+            'dias_requeridos_asistencia' => $estadoCaptura['dias_requeridos'],
+            'dias_capturados_asistencia' => $estadoCaptura['dias_capturados'],
+            'dias_pendientes_captura' => 0,
+            'fechas_pendientes_captura' => [],
+            'mensaje_captura_asistencia' => null,
+        ];
+    }
+
+    private function desglosePendienteCaptura(Empleado $empleado, array $estadoCaptura): array
+    {
+        $esEstudiante = $this->empleadoEsEstudiante($empleado);
+        $sueldoPorHora = (float) ($empleado->sueldo_por_hora ?? 0);
+        $sueldoSemanal = (float) ($empleado->sueldo_semanal ?? 0);
+
+        if (!$esEstudiante && $sueldoSemanal <= 0 && $sueldoPorHora > 0) {
+            $sueldoSemanal = $sueldoPorHora * self::HORAS_BASE_SEMANA;
+        }
+
+        return [
+            'es_estudiante' => $esEstudiante,
+            'pago_por_hora_topado' => ReglasNominaEmpleado::pagoPorHoraTopado($empleado),
+            'sueldo_semanal' => round($sueldoSemanal, 2),
+            'sueldo_por_hora' => round($sueldoPorHora, 2),
+            'tarifa_base_hora' => 0,
+            'pago_dia_planta' => 0,
+            'horas_normales' => 0,
+            'horas_extra' => 0,
+            'horas_extra_periodo' => 0,
+            'horas_extra_miercoles_anterior' => 0,
+            'horas_extra_pagadas' => 0,
+            'horas_adeudo_generadas' => 0,
+            'horas_adeudo_miercoles_anterior' => 0,
+            'horas_adeudo_descontadas' => 0,
+            'dias_falta' => 0,
+            'dias_falta_pagados' => 0,
+            'dias_falta_descontables' => 0,
+            'dias_incapacidad' => 0,
+            'dias_incapacidad_detectadas' => 0,
+            'dias_incapacidad_pagadas' => 0,
+            'faltas_cubiertas_vacaciones' => 0,
+            'faltas_cubiertas_incapacidad' => 0,
+            'dias_vacaciones' => 0,
+            'dias_vacaciones_detectadas' => 0,
+            'dias_vacaciones_adicionales' => 0,
+            'dias_vacaciones_pagadas' => 0,
+            'minutos_tarde_acumulados' => 0,
+            'minutos_tarde_descontables' => 0,
+            'pago_normal' => 0,
+            'pago_extra' => 0,
+            'pago_incapacidad' => 0,
+            'pago_vacaciones' => 0,
+            'prestamo_otorgado' => 0,
+            'descuento_faltas' => 0,
+            'descuento_retardos' => 0,
+            'prestamo_descuento' => 0,
+            'deduccion_prestamo' => 0,
+            'deduccion_manual' => 0,
+            'descuento_imss' => 0,
+            'descuento_isr' => 0,
+            'descuento_infonavit' => 0,
+            'total_percepciones' => 0,
+            'total_deducciones' => 0,
+            'pago_neto' => 0,
+            'asistencia_lista' => false,
+            'asistencia_pendiente_captura' => true,
+            'dias_requeridos_asistencia' => $estadoCaptura['dias_requeridos'],
+            'dias_capturados_asistencia' => $estadoCaptura['dias_capturados'],
+            'dias_pendientes_captura' => count($estadoCaptura['fechas_pendientes']),
+            'fechas_pendientes_captura' => $estadoCaptura['fechas_pendientes'],
+            'mensaje_captura_asistencia' => $estadoCaptura['mensaje'],
         ];
     }
 
@@ -558,6 +757,12 @@ class NominaController extends Controller
 
     private function guardarNominaPeriodo(Empleado $empleado, Carbon $inicioSemana, Carbon $finSemana, array $desglose): Nomina
     {
+        if (!($desglose['asistencia_lista'] ?? true)) {
+            throw ValidationException::withMessages([
+                'asistencia' => $desglose['mensaje_captura_asistencia'] ?? 'Asistencia pendiente de captura.',
+            ]);
+        }
+
         return DB::transaction(function () use ($empleado, $inicioSemana, $finSemana, $desglose) {
             $nomina = Nomina::where('empleado_id', $empleado->id)
                 ->whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
@@ -909,6 +1114,20 @@ class NominaController extends Controller
             'total_percepciones' => $desglose['total_percepciones'],
             'total_deducciones' => $desglose['total_deducciones'],
             'pago_neto' => $desglose['pago_neto'],
+            'deposito_imss' => round((float) ($nomina->deposito_imss ?? 0), 2),
+            'diferencia_imss' => $nomina && (float) ($nomina->deposito_imss ?? 0) > 0
+                ? round($desglose['pago_neto'] - (float) $nomina->deposito_imss, 2)
+                : 0,
+            'suma_total_depositos_imss' => $nomina && (float) ($nomina->deposito_imss ?? 0) > 0
+                ? round((float) $nomina->deposito_imss + ($desglose['pago_neto'] - (float) $nomina->deposito_imss), 2)
+                : 0,
+            'asistencia_lista' => $desglose['asistencia_lista'],
+            'asistencia_pendiente_captura' => $desglose['asistencia_pendiente_captura'],
+            'dias_requeridos_asistencia' => $desglose['dias_requeridos_asistencia'],
+            'dias_capturados_asistencia' => $desglose['dias_capturados_asistencia'],
+            'dias_pendientes_captura' => $desglose['dias_pendientes_captura'],
+            'fechas_pendientes_captura' => $desglose['fechas_pendientes_captura'],
+            'mensaje_captura_asistencia' => $desglose['mensaje_captura_asistencia'],
         ];
     }
 

@@ -23,6 +23,7 @@ const toastMessage = ref('');
 
 const ajustesNomina = ref({});
 const guardandoAjuste = ref(null);
+const guardandoImss = ref(null);
 const pagandoMasivo = ref(null);
 const selectedEmpleadoIds = ref([]);
 
@@ -191,6 +192,16 @@ const moneda = (valor) => numero(valor).toLocaleString('es-MX', {
     maximumFractionDigits: 2,
 });
 
+const monedaFirmada = (valor) => {
+    const monto = numero(valor);
+    const absoluto = Math.abs(monto).toLocaleString('es-MX', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+
+    return `${monto < 0 ? '-' : ''}$${absoluto}`;
+};
+
 const horas = (valor) => numero(valor).toFixed(1);
 
 const empleadosSinHorasExtra = new Set(['8', '9', '22']);
@@ -266,6 +277,7 @@ const inicializarAjustes = () => {
             faltas_cubiertas_incapacidad: valorDecimal(ajuste.faltas_cubiertas_incapacidad),
             horas_adeudo_descontadas: valorDecimal(ajuste.horas_adeudo_descontadas),
             dias_vacaciones_adicionales: valorDecimal(ajuste.dias_vacaciones_adicionales),
+            deposito_imss: valorDecimal(ajuste.deposito_imss),
         };
     });
 
@@ -274,13 +286,43 @@ const inicializarAjustes = () => {
 
 watch(() => props.empleados, inicializarAjustes, { immediate: true, deep: true });
 
+const ajustesCalculoEmpleado = (empleado) => {
+    const { deposito_imss, ...ajustesCalculo } = ajustesNomina.value[empleado.id] || {};
+
+    return ajustesCalculo;
+};
+
 const parametrosNomina = (empleado) => ({
     empleado_id: empleado.id,
     fecha_corte: selectedCorte.value,
-    ...(ajustesNomina.value[empleado.id] || {}),
+    ...ajustesCalculoEmpleado(empleado),
 });
 
 const resumenNomina = (empleado) => empleado.ajustes_nomina || {};
+const asistenciaPendiente = (empleado) => Boolean(resumenNomina(empleado).asistencia_pendiente_captura);
+const puedeCalcularNomina = (empleado) => !asistenciaPendiente(empleado);
+const mensajeCapturaAsistencia = (empleado) => {
+    const resumen = resumenNomina(empleado);
+    return resumen.mensaje_captura_asistencia || 'Asistencia pendiente de captura.';
+};
+
+const depositoImssActual = (empleado) => {
+    const ajuste = ajustesNomina.value[empleado.id] || {};
+
+    return numero(ajuste.deposito_imss ?? resumenNomina(empleado).deposito_imss);
+};
+
+const diferenciaImssPreview = (empleado) => {
+    const deposito = depositoImssActual(empleado);
+
+    return deposito > 0 ? numero(resumenNomina(empleado).pago_neto) - deposito : 0;
+};
+
+const sumaTotalDepositosImssPreview = (empleado) => {
+    const deposito = depositoImssActual(empleado);
+
+    return deposito > 0 ? deposito + diferenciaImssPreview(empleado) : 0;
+};
 
 const deudaDespues = (empleado) => {
     const ajuste = ajustesNomina.value[empleado.id] || {};
@@ -369,7 +411,7 @@ const pagoIncapacidadPreview = (empleado) => {
 
 const payloadAjustesEmpleado = (empleado) => ({
     fecha_corte: selectedCorte.value,
-    ...(ajustesNomina.value[empleado.id] || {}),
+    ...ajustesCalculoEmpleado(empleado),
 });
 
 const guardarAjustes = (empleado) => {
@@ -378,6 +420,21 @@ const guardarAjustes = (empleado) => {
         preserveScroll: true,
         onFinish: () => {
             guardandoAjuste.value = null;
+        },
+    });
+};
+
+const payloadDiferenciaImss = (empleado) => ({
+    fecha_corte: selectedCorte.value,
+    deposito_imss: depositoImssActual(empleado),
+});
+
+const guardarDiferenciaImss = (empleado) => {
+    guardandoImss.value = empleado.id;
+    router.put(route('nominas.diferencia-imss.update', empleado.id), payloadDiferenciaImss(empleado), {
+        preserveScroll: true,
+        onFinish: () => {
+            guardandoImss.value = null;
         },
     });
 };
@@ -434,10 +491,12 @@ const empleadosSeleccionados = computed(() => {
     const ids = new Set(selectedEmpleadoIds.value);
     return props.empleados.filter((empleado) => ids.has(empleado.id));
 });
-const seleccionadosConRecibo = computed(() => empleadosSeleccionados.value.filter((empleado) => empleado.nomina_generada));
+const seleccionadosPendientesCaptura = computed(() => empleadosSeleccionados.value.filter((empleado) => asistenciaPendiente(empleado)).length);
+const seleccionadosConRecibo = computed(() => empleadosSeleccionados.value.filter((empleado) => empleado.nomina_generada && puedeCalcularNomina(empleado)));
 const seleccionadosPendientes = computed(() => seleccionadosConRecibo.value.filter((empleado) => !empleado.pagado).length);
 const seleccionadosLiquidados = computed(() => seleccionadosConRecibo.value.filter((empleado) => empleado.pagado).length);
 const seleccionadosSinRecibo = computed(() => Math.max(0, seleccionadosCount.value - seleccionadosConRecibo.value.length));
+const empleadosConImss = computed(() => props.empleados.filter((empleado) => puedeCalcularNomina(empleado) && numero(resumenNomina(empleado).deposito_imss) > 0).length);
 const empleadoSeleccionado = (empleadoId) => selectedEmpleadoIds.value.includes(empleadoId);
 
 const toggleEmpleado = (empleadoId, checked) => {
@@ -508,6 +567,11 @@ const urlRecibosGrupo = (empleadosGrupo) => {
         empleado_ids: empleadosGrupo.map((empleado) => empleado.id),
     });
 };
+
+const urlDiferenciaImss = () => route('nominas.diferencia-imss', {
+    semana: numeroSemanaSeleccionada.value,
+    fecha_corte: selectedCorte.value,
+});
 
 watch(() => props.empleados, (empleados) => {
     const idsActuales = new Set(empleados.map((empleado) => empleado.id));
@@ -708,6 +772,11 @@ const cambiarPagosMasivos = (accion) => {
                             <a v-if="canExport" :href="route('nominas.reporte', { semana: numeroSemanaSeleccionada, fecha_corte: selectedCorte })" target="_blank" class="flex items-center gap-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-file-spreadsheet text-lg"></i> Excel Global
                             </a>
+
+                            <a v-if="canExport" :href="urlDiferenciaImss()" target="_blank" class="flex items-center gap-2 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                                <i class="ti ti-report-money text-lg"></i> Diferencia IMSS
+                                <span class="rounded-md bg-white px-1.5 py-0.5 text-[10px] text-cyan-600">{{ empleadosConImss }}</span>
+                            </a>
                             
                             <a v-if="canExport && seleccionadosCount > 0" :href="urlRecibosMasivos(false)" target="_blank" class="flex items-center gap-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-printer text-lg"></i> PDF Seleccionados ({{ seleccionadosCount }})
@@ -736,6 +805,7 @@ const cambiarPagosMasivos = (accion) => {
                                     <p class="text-sm font-black text-slate-900">{{ seleccionadosCount }} empleado(s) seleccionados</p>
                                     <p class="text-xs font-semibold text-slate-500">
                                         {{ seleccionadosPendientes }} pendiente(s) · {{ seleccionadosLiquidados }} liquidado(s)
+                                        <span v-if="seleccionadosPendientesCaptura > 0"> · {{ seleccionadosPendientesCaptura }} pendiente(s) de captura</span>
                                         <span v-if="seleccionadosSinRecibo > 0"> · {{ seleccionadosSinRecibo }} sin recibo</span>
                                     </p>
                                 </div>
@@ -831,7 +901,10 @@ const cambiarPagosMasivos = (accion) => {
                                         </div>
 
                                         <div class="flex flex-col items-end gap-2">
-                                            <div v-if="!empleado.nomina_generada" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 shadow-sm">
+                                            <div v-if="asistenciaPendiente(empleado)" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-700 shadow-sm">
+                                                <i class="ti ti-clipboard-list"></i> Pendiente captura
+                                            </div>
+                                            <div v-else-if="!empleado.nomina_generada" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 shadow-sm">
                                                 <i class="ti ti-clock-pause"></i> No generada
                                             </div>
                                             <div v-else class="flex flex-col items-end gap-1">
@@ -843,6 +916,9 @@ const cambiarPagosMasivos = (accion) => {
                                                     {{ empleado.pagado ? 'Revertir pago' : 'Marcar pagado y saldar' }}
                                                 </button>
                                             </div>
+                                            <button v-if="canPay && asistenciaPendiente(empleado) && empleado.pagado" @click="cambiarEstadoPago(empleado.nomina_id, empleado.pagado, empleado)" class="text-[9px] font-bold text-amber-600 hover:text-amber-700 underline underline-offset-2 transition-colors">
+                                                Revertir pago anterior
+                                            </button>
                                         </div>
                                     </div>
 
@@ -860,10 +936,17 @@ const cambiarPagosMasivos = (accion) => {
                                             </div>
 
                                             <div class="flex items-center gap-2 ml-auto">
-                                                <a v-if="canExport" :href="route('nominas.excel-individual', parametrosNomina(empleado))" class="flex h-9 w-9 items-center justify-center rounded-xl bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-all" title="Descargar Excel">
+                                                <button v-if="canExport && asistenciaPendiente(empleado)" type="button" disabled class="flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-300" title="Captura asistencia primero">
+                                                    <i class="ti ti-file-spreadsheet text-lg"></i>
+                                                </button>
+                                                <a v-else-if="canExport" :href="route('nominas.excel-individual', parametrosNomina(empleado))" class="flex h-9 w-9 items-center justify-center rounded-xl bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-all" title="Descargar Excel">
                                                     <i class="ti ti-file-spreadsheet text-lg"></i>
                                                 </a>
-                                                <a v-if="canManage" :href="route('nominas.generar', parametrosNomina(empleado))" target="_blank" @click="marcarComoGenerado(empleado)" :class="['flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider shadow-sm transition-all', empleado.nomina_generada ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100' : 'bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-md']">
+                                                <button v-if="canManage && asistenciaPendiente(empleado)" type="button" disabled class="flex cursor-not-allowed items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-wider text-amber-700 shadow-sm">
+                                                    <i class="ti ti-clipboard-list text-base"></i>
+                                                    Captura pendiente
+                                                </button>
+                                                <a v-else-if="canManage" :href="route('nominas.generar', parametrosNomina(empleado))" target="_blank" @click="marcarComoGenerado(empleado)" :class="['flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider shadow-sm transition-all', empleado.nomina_generada ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100' : 'bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-md']">
                                                     <i class="ti ti-printer text-base"></i>
                                                     {{ empleado.nomina_generada ? 'Regenerar' : 'Crear recibo' }}
                                                 </a>
@@ -871,11 +954,24 @@ const cambiarPagosMasivos = (accion) => {
                                         </div>
 
                                         <div v-if="ajustesNomina[empleado.id]" class="rounded-2xl border border-slate-100 bg-slate-50 p-4 flex-1">
+                                            <div v-if="asistenciaPendiente(empleado)" class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">
+                                                <div class="flex items-start gap-2">
+                                                    <i class="ti ti-alert-triangle mt-0.5 text-base"></i>
+                                                    <div>
+                                                        <p class="font-black uppercase tracking-wider">Nomina sin calcular</p>
+                                                        <p class="mt-1">{{ mensajeCapturaAsistencia(empleado) }}</p>
+                                                        <p class="mt-1 text-[10px] uppercase tracking-wider text-amber-700">
+                                                            Sin registros de asistencia en el periodo.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
                                             
                                             <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
                                                 <div class="rounded-xl border border-emerald-100 bg-white p-2.5 shadow-sm text-center">
                                                     <span class="block text-[9px] font-black uppercase tracking-wider text-emerald-500 mb-0.5">Pago Neto</span>
-                                                    <span class="text-sm font-black text-emerald-700">${{ moneda(resumenNomina(empleado).pago_neto) }}</span>
+                                                    <span v-if="asistenciaPendiente(empleado)" class="text-sm font-black text-amber-700">Pendiente</span>
+                                                    <span v-else class="text-sm font-black text-emerald-700">${{ moneda(resumenNomina(empleado).pago_neto) }}</span>
                                                 </div>
                                                 <div class="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm text-center">
                                                     <span class="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Deuda Actual</span>
@@ -924,13 +1020,49 @@ const cambiarPagosMasivos = (accion) => {
                                                     </div>
                                                 </section>
 
+                                                <section class="lg:col-span-2 rounded-xl border border-cyan-100 bg-cyan-50/50 p-3">
+                                                    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                                        <div class="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-cyan-800">
+                                                            <i class="ti ti-report-money text-base"></i> Diferencia IMSS
+                                                        </div>
+                                                        <span class="rounded-md bg-white border border-cyan-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-cyan-700 shadow-sm">
+                                                            Solo Excel
+                                                        </span>
+                                                    </div>
+
+                                                    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                                        <label class="block min-w-0">
+                                                            <span class="mb-1 block text-[9px] font-bold uppercase tracking-wider text-cyan-700">Depósito IMSS</span>
+                                                            <input v-model="ajustesNomina[empleado.id].deposito_imss" type="number" step="0.01" min="0" :disabled="!canManage || asistenciaPendiente(empleado)" class="w-full min-w-0 rounded-lg border border-cyan-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 shadow-sm transition-all focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 disabled:bg-slate-100 disabled:text-slate-400" />
+                                                        </label>
+                                                        <div class="min-w-0 rounded-lg border border-cyan-100 bg-white px-3 py-2.5 shadow-sm">
+                                                            <span class="block text-[9px] font-black uppercase tracking-wider text-cyan-500">Diferencia semana</span>
+                                                            <span class="block truncate text-base font-black leading-tight text-cyan-800">{{ monedaFirmada(diferenciaImssPreview(empleado)) }}</span>
+                                                        </div>
+                                                        <div class="min-w-0 rounded-lg border border-cyan-100 bg-white px-3 py-2.5 shadow-sm sm:col-span-2 xl:col-span-1">
+                                                            <span class="block text-[9px] font-black uppercase tracking-wider text-cyan-500">Suma total</span>
+                                                            <span class="block truncate text-base font-black leading-tight text-cyan-800">{{ monedaFirmada(sumaTotalDepositosImssPreview(empleado)) }}</span>
+                                                        </div>
+                                                        <button
+                                                            v-if="canManage"
+                                                            type="button"
+                                                            @click="guardarDiferenciaImss(empleado)"
+                                                            :disabled="guardandoImss === empleado.id || asistenciaPendiente(empleado)"
+                                                            class="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-700 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-cyan-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:translate-y-0 sm:col-span-2 xl:col-span-3"
+                                                        >
+                                                            <i class="ti ti-device-floppy text-base"></i>
+                                                            {{ guardandoImss === empleado.id ? 'Guardando...' : 'Guardar IMSS' }}
+                                                        </button>
+                                                    </div>
+                                                </section>
+
                                                 <section class="lg:col-span-2 rounded-xl border border-amber-100 bg-amber-50/40 p-3">
                                                     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                                                         <div class="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-800">
                                                             <i class="ti ti-calendar-exclamation text-base"></i> Faltas y forma de pago
                                                         </div>
-                                                        <span class="rounded-md bg-white border border-rose-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-rose-600 shadow-sm">
-                                                            Reloj detectó {{ resumenNomina(empleado).faltas_detectadas || 0 }} falta(s)
+                                                        <span :class="['rounded-md bg-white px-2.5 py-1 text-[9px] font-black uppercase tracking-wider shadow-sm border', asistenciaPendiente(empleado) ? 'border-amber-200 text-amber-700' : 'border-rose-100 text-rose-600']">
+                                                            {{ asistenciaPendiente(empleado) ? 'Sin registros en periodo' : `Reloj detectó ${resumenNomina(empleado).faltas_detectadas || 0} falta(s)` }}
                                                         </span>
                                                     </div>
 
@@ -976,9 +1108,9 @@ const cambiarPagosMasivos = (accion) => {
                                                 </section>
                                             </div>
 
-                                            <button v-if="canManage" type="button" @click="guardarAjustes(empleado)" class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-slate-900/20 transition-all hover:bg-slate-800 hover:-translate-y-0.5">
+                                            <button v-if="canManage" type="button" @click="guardarAjustes(empleado)" :disabled="asistenciaPendiente(empleado)" class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-slate-900/20 transition-all hover:bg-slate-800 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none disabled:hover:translate-y-0">
                                                 <i class="ti ti-device-floppy text-base"></i>
-                                                {{ guardandoAjuste === empleado.id ? 'Guardando cambios...' : 'Guardar y recalcular ajustes' }}
+                                                {{ asistenciaPendiente(empleado) ? 'Captura asistencia para calcular' : (guardandoAjuste === empleado.id ? 'Guardando cambios...' : 'Guardar y recalcular ajustes') }}
                                             </button>
                                         </div>
                                     </div>
