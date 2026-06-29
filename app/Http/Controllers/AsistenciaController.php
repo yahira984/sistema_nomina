@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exports\AsistenciasSemanalesExport;
 use App\Models\Asistencia;
+use App\Models\DiaFestivo;
 use App\Models\Empleado;
 use App\Services\FirebaseSyncService;
 use App\Support\ReglasNominaEmpleado;
@@ -11,6 +12,7 @@ use App\Support\SemanaNomina;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -681,9 +683,10 @@ class AsistenciaController extends Controller
         $dias = [];
         $cursor = $inicio->copy()->startOfDay();
         $limite = $fin->copy()->startOfDay();
+        $fechasFestivas = $this->fechasFestivasActivas($inicio, $fin);
 
         while ($cursor->lte($limite)) {
-            if (!$cursor->isWeekend()) {
+            if (!$cursor->isWeekend() && !in_array($cursor->format('Y-m-d'), $fechasFestivas, true)) {
                 $dias[] = $cursor->format('Y-m-d');
             }
 
@@ -691,6 +694,22 @@ class AsistenciaController extends Controller
         }
 
         return $dias;
+    }
+
+    private function fechasFestivasActivas(Carbon $inicio, Carbon $fin): array
+    {
+        if (!Schema::hasTable('dias_festivos')) {
+            return [];
+        }
+
+        return DiaFestivo::where('activo', true)
+            ->whereDate('fecha', '>=', $inicio->format('Y-m-d'))
+            ->whereDate('fecha', '<=', $fin->format('Y-m-d'))
+            ->pluck('fecha')
+            ->map(fn ($fecha) => Carbon::parse($fecha)->format('Y-m-d'))
+            ->unique()
+            ->values()
+            ->all();
     }
 
     private function claveAsistencia($empleadoId, string $fecha): string

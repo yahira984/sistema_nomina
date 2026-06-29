@@ -113,14 +113,14 @@ class DashboardController extends Controller
                 'datos' => $ultimos7Dias->pluck('horas')
             ],
             'retardosControl' => [
-                'semana' => $this->liderRetardos($inicioSemana, $finSemana, 'Semana ' . $semanaActual),
-                'mes' => $this->liderRetardos($hoy->copy()->startOfMonth(), $hoy->copy()->endOfMonth(), $hoy->locale('es')->isoFormat('MMMM YYYY')),
-                'anio' => $this->liderRetardos($hoy->copy()->startOfYear(), $hoy->copy()->endOfYear(), (string) $anioActual),
+                'semana' => $this->rankingImpuntuales($inicioSemana, $finSemana, 'Semana ' . $semanaActual),
+                'mes' => $this->rankingImpuntuales($hoy->copy()->startOfMonth(), $hoy->copy()->endOfMonth(), $hoy->locale('es')->isoFormat('MMMM YYYY')),
+                'anio' => $this->rankingImpuntuales($hoy->copy()->startOfYear(), $hoy->copy()->endOfYear(), (string) $anioActual),
             ],
             'tempranoControl' => [
-                'semana' => $this->liderLlegadasTempranas($inicioSemana, $finSemana, 'Semana ' . $semanaActual),
-                'mes' => $this->liderLlegadasTempranas($hoy->copy()->startOfMonth(), $hoy->copy()->endOfMonth(), $hoy->locale('es')->isoFormat('MMMM YYYY')),
-                'anio' => $this->liderLlegadasTempranas($hoy->copy()->startOfYear(), $hoy->copy()->endOfYear(), (string) $anioActual),
+                'semana' => $this->rankingPuntuales($inicioSemana, $finSemana, 'Semana ' . $semanaActual),
+                'mes' => $this->rankingPuntuales($hoy->copy()->startOfMonth(), $hoy->copy()->endOfMonth(), $hoy->locale('es')->isoFormat('MMMM YYYY')),
+                'anio' => $this->rankingPuntuales($hoy->copy()->startOfYear(), $hoy->copy()->endOfYear(), (string) $anioActual),
             ],
             'finanzasNomina' => [
                 'desgloseGasto' => $this->desgloseGastoSemanal($inicioSemana, $finSemana),
@@ -552,7 +552,7 @@ class DashboardController extends Controller
         });
     }
 
-    private function liderRetardos(Carbon $inicio, Carbon $fin, string $periodo): array
+    private function rankingImpuntuales(Carbon $inicio, Carbon $fin, string $periodo): array
     {
         $asistencias = Asistencia::with('empleado')
             ->whereBetween('fecha', [$inicio->format('Y-m-d'), $fin->format('Y-m-d')])
@@ -564,13 +564,7 @@ class DashboardController extends Controller
                     && $this->asistenciaTieneRetardoValido($asistencia);
             });
 
-        $retardosConUmbral = $asistencias
-            ->groupBy(fn ($asistencia) => $asistencia->empleado_id . '|' . $this->claveSemanaNomina($asistencia->fecha))
-            ->filter(fn ($registros) => (int) $registros->sum('minutos_tarde') >= self::UMBRAL_RETARDO_SEMANAL_MINUTOS)
-            ->flatMap(fn ($registros) => $registros)
-            ->values();
-
-        $lider = $retardosConUmbral
+        $ranking = $asistencias
             ->groupBy('empleado_id')
             ->map(function ($registros) {
                 $empleado = $registros->first()->empleado;
@@ -587,19 +581,26 @@ class DashboardController extends Controller
                     'fecha_peor_retardo' => $peor ? Carbon::parse($peor->fecha)->format('Y-m-d') : null,
                 ];
             })
-            ->sortByDesc('minutos')
+            ->sortBy([
+                ['minutos', 'desc'],
+                ['dias', 'desc'],
+                ['peor_retardo', 'desc'],
+                ['nombre_completo', 'asc'],
+            ])
+            ->take(3)
             ->values()
-            ->first();
+            ->all();
 
         return [
             'periodo' => $periodo,
             'inicio' => $inicio->format('Y-m-d'),
             'fin' => $fin->format('Y-m-d'),
-            'lider' => $lider,
+            'lider' => $ranking[0] ?? null,
+            'ranking' => $ranking,
         ];
     }
 
-    private function liderLlegadasTempranas(Carbon $inicio, Carbon $fin, string $periodo): array
+    private function rankingPuntuales(Carbon $inicio, Carbon $fin, string $periodo): array
     {
         $asistencias = Asistencia::with('empleado')
             ->whereBetween('fecha', [$inicio->format('Y-m-d'), $fin->format('Y-m-d')])
@@ -609,7 +610,8 @@ class DashboardController extends Controller
             ->filter(function ($asistencia) {
                 return $this->empleadoCuentaParaPuntualidad($asistencia->empleado)
                     && !$this->esFinDeSemana($asistencia->fecha)
-                    && $this->minutosAntesDeEntrada($asistencia->fecha, $asistencia->hora_entrada) > 0;
+                    && $this->asistenciaTieneJornadaValida($asistencia)
+                    && $this->esEntradaPuntual($asistencia->fecha, $asistencia->hora_entrada);
             })
             ->map(function ($asistencia) {
                 $asistencia->minutos_temprano = $this->minutosAntesDeEntrada($asistencia->fecha, $asistencia->hora_entrada);
@@ -617,7 +619,7 @@ class DashboardController extends Controller
                 return $asistencia;
             });
 
-        $lider = $asistencias
+        $ranking = $asistencias
             ->groupBy('empleado_id')
             ->map(function ($registros) {
                 $empleado = $registros->first()->empleado;
@@ -633,15 +635,22 @@ class DashboardController extends Controller
                     'fecha_mayor_anticipacion' => $mejor ? Carbon::parse($mejor->fecha)->format('Y-m-d') : null,
                 ];
             })
-            ->sortByDesc('minutos')
+            ->sortBy([
+                ['dias', 'desc'],
+                ['minutos', 'desc'],
+                ['mayor_anticipacion', 'desc'],
+                ['nombre_completo', 'asc'],
+            ])
+            ->take(3)
             ->values()
-            ->first();
+            ->all();
 
         return [
             'periodo' => $periodo,
             'inicio' => $inicio->format('Y-m-d'),
             'fin' => $fin->format('Y-m-d'),
-            'lider' => $lider,
+            'lider' => $ranking[0] ?? null,
+            'ranking' => $ranking,
         ];
     }
 
@@ -672,7 +681,7 @@ class DashboardController extends Controller
 
     private function asistenciaTieneRetardoValido(Asistencia $asistencia): bool
     {
-        if ($this->esFinDeSemana($asistencia->fecha) || !$asistencia->hora_entrada || !$asistencia->hora_salida) {
+        if ($this->esFinDeSemana($asistencia->fecha) || !$this->asistenciaTieneJornadaValida($asistencia)) {
             return false;
         }
 
@@ -685,6 +694,32 @@ class DashboardController extends Controller
         return $salida->greaterThan($entrada)
             && $entrada->greaterThan($horaOficial)
             && $entrada->lessThan($limiteMarcaSalida);
+    }
+
+    private function asistenciaTieneJornadaValida(Asistencia $asistencia): bool
+    {
+        if (!$asistencia->hora_entrada || !$asistencia->hora_salida) {
+            return false;
+        }
+
+        $fechaBase = Carbon::parse($asistencia->fecha)->format('Y-m-d');
+        $entrada = Carbon::parse($fechaBase . ' ' . $asistencia->hora_entrada);
+        $salida = Carbon::parse($fechaBase . ' ' . $asistencia->hora_salida);
+
+        return $salida->greaterThan($entrada);
+    }
+
+    private function esEntradaPuntual($fecha, $horaEntrada): bool
+    {
+        if (!$horaEntrada) {
+            return false;
+        }
+
+        $fechaBase = Carbon::parse($fecha)->format('Y-m-d');
+        $entrada = Carbon::parse($fechaBase . ' ' . $horaEntrada);
+        $horaOficial = Carbon::parse($fechaBase . ' 08:00:00');
+
+        return $entrada->lessThanOrEqualTo($horaOficial);
     }
 
     private function claveSemanaNomina($fecha): string

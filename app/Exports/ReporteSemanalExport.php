@@ -3,7 +3,9 @@
 namespace App\Exports;
 
 use App\Models\Nomina;
+use App\Models\DiaFestivo;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Schema;
 use Maatwebsite\Excel\Concerns\WithCustomValueBinder;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -22,7 +24,7 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class ReporteSemanalExport extends DefaultValueBinder implements FromCollection, WithHeadings, WithMapping, WithStyles, WithColumnFormatting, ShouldAutoSize, WithCustomValueBinder
 {
-    private const LAST_COLUMN = 'Z';
+    private const LAST_COLUMN = 'AC';
 
     protected int $semana;
     protected ?Carbon $inicioSemana;
@@ -79,6 +81,9 @@ class ReporteSemanalExport extends DefaultValueBinder implements FromCollection,
                 'FALTAS PAG.',
                 'DIAS VAC.',
                 'PAGO VAC.',
+                'DIAS FEST.',
+                'HRS FEST.',
+                'PAGO FEST.',
                 'COMPENSACION',
                 'ADEUDO',
                 'IMSS',
@@ -104,6 +109,9 @@ class ReporteSemanalExport extends DefaultValueBinder implements FromCollection,
         $saldoHoras = $this->saldoHorasHastaNomina($nomina);
         $diasVacaciones = (float) ($nomina->dias_vacaciones_pagadas ?? 0);
         $pagoVacaciones = $esEstudiante ? 0 : $sueldoDiario * 1.25 * $diasVacaciones;
+        $diasFestivos = (float) ($nomina->dias_festivos_trabajados ?? 0);
+        $horasFestivas = (float) ($nomina->horas_festivas_trabajadas ?? 0);
+        $pagoFestivo = (float) ($nomina->pago_festivo_trabajado ?? 0);
 
         return [
             $empleado?->numero_empleado ?? $empleado?->numero_empleado_baja ?? 'S/N',
@@ -123,6 +131,9 @@ class ReporteSemanalExport extends DefaultValueBinder implements FromCollection,
             (int) ($nomina->faltas_pagadas ?? 0),
             $diasVacaciones,
             $pagoVacaciones,
+            $diasFestivos,
+            $horasFestivas,
+            $pagoFestivo,
             (float) ($nomina->prestamo_otorgado ?? 0),
             (float) ($nomina->prestamo_descuento ?? 0),
             (float) ($empleado?->descuento_imss ?? 0),
@@ -148,8 +159,8 @@ class ReporteSemanalExport extends DefaultValueBinder implements FromCollection,
             'M' => '0.00',
             'P' => '0.00',
             'Q' => '"$"#,##0.00',
-            'R' => '"$"#,##0.00',
-            'S' => '"$"#,##0.00',
+            'R' => '0.00',
+            'S' => '0.00',
             'T' => '"$"#,##0.00',
             'U' => '"$"#,##0.00',
             'V' => '"$"#,##0.00',
@@ -157,6 +168,9 @@ class ReporteSemanalExport extends DefaultValueBinder implements FromCollection,
             'X' => '"$"#,##0.00',
             'Y' => '"$"#,##0.00',
             'Z' => '"$"#,##0.00',
+            'AA' => '"$"#,##0.00',
+            'AB' => '"$"#,##0.00',
+            'AC' => '"$"#,##0.00',
         ];
     }
 
@@ -226,14 +240,14 @@ class ReporteSemanalExport extends DefaultValueBinder implements FromCollection,
         ]);
 
         $sheet->getStyle("A{$primeraFilaDatos}:B{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("F{$primeraFilaDatos}:P{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("Q{$primeraFilaDatos}:" . self::LAST_COLUMN . "{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $sheet->getStyle("F{$primeraFilaDatos}:S{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("T{$primeraFilaDatos}:" . self::LAST_COLUMN . "{$ultimaFilaDatos}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
         $filaTotales = $ultimaFilaDatos + 1;
         $sheet->setCellValue("A{$filaTotales}", 'TOTALES');
         $sheet->mergeCells("A{$filaTotales}:F{$filaTotales}");
 
-        foreach (['J', 'K', 'L', 'M', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'] as $columna) {
+        foreach (['J', 'K', 'L', 'M', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC'] as $columna) {
             $sheet->setCellValue("{$columna}{$filaTotales}", "=SUM({$columna}{$primeraFilaDatos}:{$columna}{$ultimaFilaDatos})");
         }
 
@@ -282,9 +296,21 @@ class ReporteSemanalExport extends DefaultValueBinder implements FromCollection,
             ->whereBetween('fecha', [$this->inicioSemana->format('Y-m-d'), $this->finSemana->format('Y-m-d')])
             ->where('tipo_asistencia', 'Falta')
             ->get(['fecha'])
-            ->filter(fn ($asistencia) => !Carbon::parse($asistencia->fecha)->isWeekend())
+            ->filter(fn ($asistencia) => !Carbon::parse($asistencia->fecha)->isWeekend()
+                && !$this->esFechaFestiva($asistencia->fecha))
             ->count();
 
         return max(0, $faltas - (int) ($nomina->faltas_pagadas ?? 0));
+    }
+
+    private function esFechaFestiva($fecha): bool
+    {
+        if (!$this->inicioSemana || !$this->finSemana || !Schema::hasTable('dias_festivos')) {
+            return false;
+        }
+
+        return DiaFestivo::where('activo', true)
+            ->whereDate('fecha', Carbon::parse($fecha)->format('Y-m-d'))
+            ->exists();
     }
 }

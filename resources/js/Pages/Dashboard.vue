@@ -34,6 +34,15 @@ const periodosControl = [
   { key: 'mes', title: 'Mes', icon: 'ti-calendar-month' },
   { key: 'anio', title: 'Año', icon: 'ti-calendar-stats' },
 ]
+const controlVacio = () => ({ periodo: '', inicio: '', fin: '', lider: null, ranking: [] })
+const normalizarControl = (data) => {
+  const base = { ...controlVacio(), ...(data ?? {}) }
+  const ranking = Array.isArray(base.ranking) && base.ranking.length > 0
+    ? base.ranking
+    : (base.lider ? [base.lider] : [])
+
+  return { ...base, ranking }
+}
 const retardosControlData = computed(() => props.retardosControl ?? {})
 const tempranoControlData = computed(() => props.tempranoControl ?? {})
 const finanzasData = computed(() => props.finanzasNomina ?? {})
@@ -78,12 +87,12 @@ const antiguedadSeries = computed(() => [{ name: 'Empleados', data: antiguedadDa
 const retardosItems = computed(() => periodosControl.map(item => ({
   ...item,
   tone: 'border-amber-200 bg-amber-50 text-amber-800',
-  data: retardosControlData.value[item.key] ?? { periodo: '', inicio: '', fin: '', lider: null },
+  data: normalizarControl(retardosControlData.value[item.key]),
 })))
 const tempranoItems = computed(() => periodosControl.map(item => ({
   ...item,
   tone: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  data: tempranoControlData.value[item.key] ?? { periodo: '', inicio: '', fin: '', lider: null },
+  data: normalizarControl(tempranoControlData.value[item.key]),
 })))
 
 const formatoMinutos = (minutos) => {
@@ -691,7 +700,7 @@ const antiguedadOptions = computed(() => ({
             <i class="ti ti-clock-exclamation" aria-hidden="true"></i>
           </div>
           <div>
-            <h2 class="font-['Sora'] text-base font-bold text-slate-800">Control de retardos</h2>
+            <h2 class="font-['Sora'] text-base font-bold text-slate-800">Top 3 mas impuntuales</h2>
             <p class="text-xs font-semibold text-slate-500">Sin estudiantes, sin sabados y sin empleados exentos</p>
           </div>
         </div>
@@ -707,25 +716,28 @@ const antiguedadOptions = computed(() => ({
             <span class="text-[11px] font-bold text-slate-400">{{ item.data.inicio }} - {{ item.data.fin }}</span>
           </div>
 
-          <div v-if="item.data.lider" class="space-y-3">
-            <div>
-              <p class="text-xs font-bold uppercase text-slate-400">Mas tarde</p>
-              <p class="mt-1 truncate text-sm font-black text-slate-900">
-                #{{ item.data.lider.numero_empleado || 'S/N' }} - {{ item.data.lider.nombre_completo }}
-              </p>
-            </div>
-            <div class="grid grid-cols-3 gap-2 text-center">
-              <div class="rounded-lg bg-slate-50 px-2 py-2">
-                <p class="text-[10px] font-bold uppercase text-slate-400">Total tarde</p>
-                <p class="text-sm font-black text-rose-700">{{ formatoMinutos(item.data.lider.minutos) }}</p>
+          <div v-if="item.data.ranking.length" class="space-y-2">
+            <div v-for="(empleado, index) in item.data.ranking" :key="empleado.empleado_id" class="rounded-xl border border-amber-100 bg-amber-50/45 px-3 py-3">
+              <div class="flex items-start gap-3">
+                <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-xs font-black text-amber-700 shadow-sm">{{ index + 1 }}</span>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-black text-slate-900">#{{ empleado.numero_empleado || 'S/N' }} - {{ empleado.nombre_completo }}</p>
+                  <p class="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{{ empleado.dias }} dia(s) con retardo</p>
+                </div>
+                <div class="shrink-0 text-right">
+                  <p class="text-sm font-black text-rose-700">{{ formatoMinutos(empleado.minutos) }}</p>
+                  <p class="text-[10px] font-bold uppercase text-slate-400">Total tarde</p>
+                </div>
               </div>
-              <div class="rounded-lg bg-slate-50 px-2 py-2">
-                <p class="text-[10px] font-bold uppercase text-slate-400">Dias</p>
-                <p class="text-sm font-black text-slate-800">{{ item.data.lider.dias }}</p>
-              </div>
-              <div class="rounded-lg bg-slate-50 px-2 py-2">
-                <p class="text-[10px] font-bold uppercase text-slate-400">Mayor retardo</p>
-                <p class="text-sm font-black text-amber-700">{{ formatoMinutos(item.data.lider.peor_retardo) }}</p>
+              <div class="mt-3 grid grid-cols-2 gap-2 text-center">
+                <div class="rounded-lg bg-white px-2 py-2">
+                  <p class="text-[10px] font-bold uppercase text-slate-400">Mayor retardo</p>
+                  <p class="text-sm font-black text-amber-700">{{ formatoMinutos(empleado.peor_retardo) }}</p>
+                </div>
+                <div class="rounded-lg bg-white px-2 py-2">
+                  <p class="text-[10px] font-bold uppercase text-slate-400">Fecha</p>
+                  <p class="truncate text-sm font-black text-slate-800">{{ empleado.fecha_peor_retardo || 'S/F' }}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -745,8 +757,8 @@ const antiguedadOptions = computed(() => ({
             <i class="ti ti-clock-check" aria-hidden="true"></i>
           </div>
           <div>
-            <h2 class="font-['Sora'] text-base font-bold text-slate-800">Llegadas tempranas</h2>
-            <p class="text-xs font-semibold text-slate-500">Antes de las 08:00, sin estudiantes ni empleados exentos</p>
+            <h2 class="font-['Sora'] text-base font-bold text-slate-800">Top 3 mas puntuales</h2>
+            <p class="text-xs font-semibold text-slate-500">A las 08:00 o antes, sin estudiantes, sin sabados y sin exentos</p>
           </div>
         </div>
       </div>
@@ -761,32 +773,35 @@ const antiguedadOptions = computed(() => ({
             <span class="text-[11px] font-bold text-slate-400">{{ item.data.inicio }} - {{ item.data.fin }}</span>
           </div>
 
-          <div v-if="item.data.lider" class="space-y-3">
-            <div>
-              <p class="text-xs font-bold uppercase text-slate-400">Mas temprano</p>
-              <p class="mt-1 truncate text-sm font-black text-slate-900">
-                #{{ item.data.lider.numero_empleado || 'S/N' }} - {{ item.data.lider.nombre_completo }}
-              </p>
-            </div>
-            <div class="grid grid-cols-3 gap-2 text-center">
-              <div class="rounded-lg bg-slate-50 px-2 py-2">
-                <p class="text-[10px] font-bold uppercase text-slate-400">Total antes</p>
-                <p class="text-sm font-black text-emerald-700">{{ formatoMinutos(item.data.lider.minutos) }}</p>
+          <div v-if="item.data.ranking.length" class="space-y-2">
+            <div v-for="(empleado, index) in item.data.ranking" :key="empleado.empleado_id" class="rounded-xl border border-emerald-100 bg-emerald-50/45 px-3 py-3">
+              <div class="flex items-start gap-3">
+                <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-xs font-black text-emerald-700 shadow-sm">{{ index + 1 }}</span>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-black text-slate-900">#{{ empleado.numero_empleado || 'S/N' }} - {{ empleado.nombre_completo }}</p>
+                  <p class="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{{ empleado.dias }} dia(s) puntual(es)</p>
+                </div>
+                <div class="shrink-0 text-right">
+                  <p class="text-sm font-black text-emerald-700">{{ formatoMinutos(empleado.minutos) }}</p>
+                  <p class="text-[10px] font-bold uppercase text-slate-400">Total antes</p>
+                </div>
               </div>
-              <div class="rounded-lg bg-slate-50 px-2 py-2">
-                <p class="text-[10px] font-bold uppercase text-slate-400">Dias</p>
-                <p class="text-sm font-black text-slate-800">{{ item.data.lider.dias }}</p>
-              </div>
-              <div class="rounded-lg bg-slate-50 px-2 py-2">
-                <p class="text-[10px] font-bold uppercase text-slate-400">Mayor antic.</p>
-                <p class="text-sm font-black text-teal-700">{{ formatoMinutos(item.data.lider.mayor_anticipacion) }}</p>
+              <div class="mt-3 grid grid-cols-2 gap-2 text-center">
+                <div class="rounded-lg bg-white px-2 py-2">
+                  <p class="text-[10px] font-bold uppercase text-slate-400">Mayor antic.</p>
+                  <p class="text-sm font-black text-teal-700">{{ formatoMinutos(empleado.mayor_anticipacion) }}</p>
+                </div>
+                <div class="rounded-lg bg-white px-2 py-2">
+                  <p class="text-[10px] font-bold uppercase text-slate-400">Fecha</p>
+                  <p class="truncate text-sm font-black text-slate-800">{{ empleado.fecha_mayor_anticipacion || 'S/F' }}</p>
+                </div>
               </div>
             </div>
           </div>
 
           <div v-else class="flex min-h-28 flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-center">
             <i class="ti ti-clock-off text-2xl text-slate-400" aria-hidden="true"></i>
-            <p class="mt-2 text-sm font-bold text-slate-600">Sin llegadas tempranas</p>
+            <p class="mt-2 text-sm font-bold text-slate-600">Sin registros puntuales</p>
           </div>
         </article>
       </div>
