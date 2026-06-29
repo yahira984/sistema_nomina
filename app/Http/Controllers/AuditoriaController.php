@@ -301,6 +301,7 @@ class AuditoriaController extends Controller
             'hora_salida' => 'Hora de salida',
             'pagado' => 'Pagado',
             'pago_neto' => 'Pago neto',
+            'deposito_imss' => 'Deposito IMSS',
             'saldo_prestamo' => 'Saldo de prestamo',
             'estatus' => 'Estatus',
             'method' => 'Metodo',
