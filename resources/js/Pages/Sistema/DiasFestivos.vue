@@ -69,6 +69,8 @@ const editarDia = (dia) => {
     form.activo = Boolean(dia.activo);
 };
 
+const esManual = (dia) => dia.origen === 'manual';
+
 const guardarDia = () => {
     const opciones = {
         preserveScroll: true,
@@ -83,8 +85,10 @@ const guardarDia = () => {
     form.post(route('dias-festivos.store'), opciones);
 };
 
-const desactivarDia = (dia) => {
-    if (!confirm(`¿Desactivar ${dia.nombre}?`)) {
+const quitarDia = (dia) => {
+    const accion = esManual(dia) ? 'borrar definitivamente' : 'desactivar';
+
+    if (!confirm(`¿${accion} ${dia.nombre}?`)) {
         return;
     }
 
@@ -318,8 +322,14 @@ const etiquetaTipo = (dia) => {
                                                     <button type="button" @click="editarDia(dia)" class="icon-button" title="Editar">
                                                         <i class="ti ti-pencil" aria-hidden="true"></i>
                                                     </button>
-                                                    <button v-if="dia.activo" type="button" @click="desactivarDia(dia)" class="icon-button-danger" title="Desactivar">
-                                                        <i class="ti ti-ban" aria-hidden="true"></i>
+                                                    <button
+                                                        v-if="dia.activo || esManual(dia)"
+                                                        type="button"
+                                                        @click="quitarDia(dia)"
+                                                        class="icon-button-danger"
+                                                        :title="esManual(dia) ? 'Borrar' : 'Desactivar'"
+                                                    >
+                                                        <i :class="esManual(dia) ? 'ti ti-trash' : 'ti ti-ban'" aria-hidden="true"></i>
                                                     </button>
                                                 </div>
                                             </td>
