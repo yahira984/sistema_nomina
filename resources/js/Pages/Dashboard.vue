@@ -1,9 +1,11 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
-import { Head, Link } from '@inertiajs/vue3'
+import { Head, Link, usePage } from '@inertiajs/vue3'
 import { computed, defineAsyncComponent } from 'vue'
 
 const VueApexCharts = defineAsyncComponent(() => import('vue3-apexcharts'))
+const page = usePage()
+const can = computed(() => page.props.auth?.can ?? {})
 
 const props = defineProps({
   totalEmpleados:    { type: Number, default: 0 },
@@ -110,10 +112,11 @@ const textoDiasRestantes = (dias) => {
 }
 
 const modules = [
-  { name: 'Directorio de personal', desc: 'Alta, edición y consulta', route: 'empleados.index', icon: 'ti-address-book', tone: 'bg-blue-50 text-blue-600 border-blue-100' },
-  { name: 'Control de asistencias', desc: 'Captura entradas y salidas', route: 'asistencias.index', icon: 'ti-clock-check', tone: 'bg-teal-50 text-teal-600 border-teal-100' },
-  { name: 'Generar nóminas', desc: 'Calcula pagos y recibos', route: 'nominas.index', icon: 'ti-file-invoice', tone: 'bg-amber-50 text-amber-600 border-amber-100' },
+  { name: 'Directorio de personal', desc: 'Alta, edición y consulta', route: 'empleados.index', icon: 'ti-address-book', tone: 'bg-blue-50 text-blue-600 border-blue-100', permission: 'empleados.view' },
+  { name: 'Control de asistencias', desc: 'Captura entradas y salidas', route: 'asistencias.index', icon: 'ti-clock-check', tone: 'bg-teal-50 text-teal-600 border-teal-100', permission: 'asistencias.view' },
+  { name: 'Generar nóminas', desc: 'Calcula pagos y recibos', route: 'nominas.index', icon: 'ti-file-invoice', tone: 'bg-amber-50 text-amber-600 border-amber-100', permission: 'nominas.view' },
 ]
+const visibleModules = computed(() => modules.filter(mod => can.value[mod.permission]))
 
 // Configuración ApexCharts (Light Theme Corporativo)
 const donutOptions = {
@@ -310,7 +313,7 @@ const antiguedadOptions = computed(() => ({
             </div>
           </div>
 
-          <Link :href="route('dias-festivos.index')" class="mt-5 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-700 shadow-sm transition hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700">
+          <Link v-if="can['sistema.dias_festivos']" :href="route('dias-festivos.index')" class="mt-5 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-700 shadow-sm transition hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700">
             <i class="ti ti-settings" aria-hidden="true"></i>
             Editar calendario
           </Link>
@@ -630,7 +633,7 @@ const antiguedadOptions = computed(() => ({
           <p class="text-xs text-slate-500 mt-0.5">Accesos directos de operación</p>
         </div>
         <div class="p-2">
-          <Link v-for="mod in modules" :key="mod.route" :href="route(mod.route)" class="flex items-center gap-4 p-4 rounded-xl hover:bg-slate-50 transition-colors group">
+          <Link v-for="mod in visibleModules" :key="mod.route" :href="route(mod.route)" class="flex items-center gap-4 p-4 rounded-xl hover:bg-slate-50 transition-colors group">
             <div :class="['h-12 w-12 rounded-xl flex items-center justify-center text-xl shrink-0 border', mod.tone]">
               <i :class="['ti', mod.icon]"></i>
             </div>
@@ -668,11 +671,11 @@ const antiguedadOptions = computed(() => ({
             </div>
           </div>
           <div class="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row">
-            <Link :href="route('nominas.index')" class="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-2.5 rounded-lg text-center transition-colors shadow-sm">
+            <Link v-if="can['nominas.view']" :href="route('nominas.index')" class="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-2.5 rounded-lg text-center transition-colors shadow-sm">
               <i class="ti ti-file-plus mr-1" aria-hidden="true"></i>
               Nueva nómina
             </Link>
-            <Link :href="route('empleados.index')" class="flex-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold py-2.5 rounded-lg text-center transition-colors shadow-sm">
+            <Link v-if="can['empleados.view']" :href="route('empleados.index')" class="flex-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold py-2.5 rounded-lg text-center transition-colors shadow-sm">
               <i class="ti ti-user-plus mr-1" aria-hidden="true"></i>
               Nuevo empleado
             </Link>

@@ -1,6 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, useForm, router, Link } from '@inertiajs/vue3';
+import { Head, useForm, router, Link, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch, nextTick } from 'vue';
 
 const props = defineProps({
@@ -17,6 +17,10 @@ const props = defineProps({
         default: null,
     },
 });
+const page = usePage();
+const canManage = computed(() => page.props.auth?.can?.['asistencias.manage'] ?? false);
+const canImport = computed(() => page.props.auth?.can?.['asistencias.import'] ?? false);
+const canExport = computed(() => page.props.auth?.can?.['asistencias.export'] ?? false);
 
 const fechaActualLocal = () => {
     const hoy = new Date();
@@ -28,7 +32,10 @@ const fechaActualLocal = () => {
 };
 
 const tiposAsistencia = ['Normal', 'Falta', 'Incapacidad', 'Vacaciones'];
-const tabActiva = ref(props.previewImportacion ? 'revision' : 'captura');
+const tabActiva = ref(props.previewImportacion && canImport.value
+    ? 'revision'
+    : ((canManage.value || canImport.value) ? 'captura' : 'vacaciones')
+);
 const busquedaGlobal = ref('');
 const busquedaEmpleadoManual = ref('');
 const busquedaRevision = ref('');
@@ -988,6 +995,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
             <div class="content-wrap space-y-7">
                 <div class="tab-strip sm:grid-cols-2 md:grid-cols-5">
                     <button
+                        v-if="canManage || canImport"
                         @click="tabActiva = 'captura'"
                         :class="tabActiva === 'captura' ? 'bg-gradient-to-br from-white to-teal-50 text-teal-700 shadow-sm ring-1 ring-teal-200/70 font-black' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
                         class="tab-button"
@@ -997,6 +1005,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                         Captura y Reloj
                     </button>
                     <button
+                        v-if="canImport"
                         @click="tabActiva = 'revision'"
                         :class="tabActiva === 'revision' ? 'bg-gradient-to-br from-white to-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200/70 font-black' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
                         class="tab-button"
@@ -1035,8 +1044,8 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                     </Link>
                 </div>
 
-                <div v-if="tabActiva === 'captura'" class="space-y-8 animate-fade-in">
-                    <section class="app-panel upload-panel">
+                <div v-if="tabActiva === 'captura' && (canManage || canImport)" class="space-y-8 animate-fade-in">
+                    <section v-if="canImport" class="app-panel upload-panel">
                         <form @submit.prevent="subirArchivo" class="grid gap-4 p-5 sm:p-6 lg:grid-cols-[auto_1.5fr_1fr_1fr_auto] lg:items-end">
                             <div class="hidden h-14 w-14 items-center justify-center rounded-xl border border-emerald-200 bg-white text-2xl text-emerald-600 shadow-sm lg:flex">
                                 <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
@@ -1080,7 +1089,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                         </form>
                     </section>
 
-                    <section class="app-panel" :class="editando ? 'ring-2 ring-amber-400/70' : ''">
+                    <section v-if="canManage" class="app-panel" :class="editando ? 'ring-2 ring-amber-400/70' : ''">
                         <div class="panel-header border-b border-slate-100">
                             <div class="flex items-start gap-3">
                                 <div :class="editando ? 'soft-icon-amber' : 'soft-icon-blue'">
@@ -1262,7 +1271,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                             <i class="ti ti-chevron-right" aria-hidden="true"></i>
                                         </button>
                                     </div>
-                                    <a :href="exportarSemanaUrl" class="btn-accent h-11 w-full justify-center text-xs sm:w-auto">
+                                    <a v-if="canExport" :href="exportarSemanaUrl" class="btn-accent h-11 w-full justify-center text-xs sm:w-auto">
                                         <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
                                         Exportar Excel
                                     </a>
@@ -1368,10 +1377,10 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                                     <span>Ret. {{ Number(dia.asistencia.minutos_tarde || 0) }}</span>
                                                 </div>
                                                 <div class="cell-actions">
-                                                    <button @click="editarAsistencia(dia.asistencia)" type="button" title="Editar">
+                                                    <button v-if="canManage" @click="editarAsistencia(dia.asistencia)" type="button" title="Editar">
                                                         <i class="ti ti-pencil" aria-hidden="true"></i>
                                                     </button>
-                                                    <button @click="eliminarAsistencia(dia.asistencia.id)" type="button" title="Eliminar">
+                                                    <button v-if="canManage" @click="eliminarAsistencia(dia.asistencia.id)" type="button" title="Eliminar">
                                                         <i class="ti ti-trash" aria-hidden="true"></i>
                                                     </button>
                                                 </div>
@@ -1419,7 +1428,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                     </section>
                 </div>
 
-                <div v-if="tabActiva === 'revision'" class="space-y-6 animate-fade-in">
+                <div v-if="tabActiva === 'revision' && canImport" class="space-y-6 animate-fade-in">
                     <section class="app-panel">
                         <div class="panel-header">
                             <div class="flex items-start gap-3">

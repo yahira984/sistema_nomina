@@ -1,10 +1,12 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, useForm, router, Link } from '@inertiajs/vue3';
+import { Head, useForm, router, Link, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import { clavesFotoEmpleado, fotoEmpleadoSrc, mostrarFotoEmpleado, probarSiguienteFotoEmpleado } from '@/Utils/employeePhotos';
 
 const props = defineProps({ empleados: Array });
+const page = usePage();
+const canManage = computed(() => page.props.auth?.can?.['empleados.manage'] ?? false);
 
 const editando = ref(false);
 const empleadoId = ref(null);
@@ -127,7 +129,7 @@ const restaurarEmpleado = (id, nombre) => { if (confirm(`¿Restaurar a ${nombre}
 
         <div class="space-y-8">
             <!-- Formulario Bento Box -->
-            <section :class="['relative overflow-hidden rounded-3xl bg-white border shadow-sm transition-all duration-300', editando ? 'border-amber-300 shadow-amber-500/10 shadow-xl' : 'border-slate-200/60']">
+            <section v-if="canManage" :class="['relative overflow-hidden rounded-3xl bg-white border shadow-sm transition-all duration-300', editando ? 'border-amber-300 shadow-amber-500/10 shadow-xl' : 'border-slate-200/60']">
                 <div :class="['absolute top-0 left-0 w-1.5 h-full', editando ? 'bg-amber-400' : 'bg-blue-600']"></div>
                 
                 <div class="border-b border-slate-100 px-6 py-5 sm:px-8 flex items-center justify-between bg-slate-50/50">
@@ -425,13 +427,13 @@ const restaurarEmpleado = (id, nombre) => { if (confirm(`¿Restaurar a ${nombre}
                                         <Link :href="route('empleados.show', empleado.id)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-blue-600 border border-slate-200 transition-all" title="Ver perfil">
                                             <i class="ti ti-eye"></i>
                                         </Link>
-                                        <button @click="editarEmpleado(empleado)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600 border border-slate-200 transition-all" title="Editar">
+                                        <button v-if="canManage" @click="editarEmpleado(empleado)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600 border border-slate-200 transition-all" title="Editar">
                                             <i class="ti ti-pencil"></i>
                                         </button>
-                                        <button v-if="Boolean(Number(empleado.estatus ?? 0))" @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 transition-all" title="Dar baja">
+                                        <button v-if="canManage && Boolean(Number(empleado.estatus ?? 0))" @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 transition-all" title="Dar baja">
                                             <i class="ti ti-trash"></i>
                                         </button>
-                                        <button v-else @click="restaurarEmpleado(empleado.id, empleado.nombre_completo)" class="flex h-8 items-center justify-center rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-700 transition-all">
+                                        <button v-else-if="canManage" @click="restaurarEmpleado(empleado.id, empleado.nombre_completo)" class="flex h-8 items-center justify-center rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-700 transition-all">
                                             Restaurar
                                         </button>
                                     </div>

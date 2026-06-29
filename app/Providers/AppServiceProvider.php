@@ -2,6 +2,12 @@
 
 namespace App\Providers;
 
+use App\Models\Asistencia;
+use App\Models\DiaFestivo;
+use App\Models\Empleado;
+use App\Models\Nomina;
+use App\Models\User;
+use App\Observers\AuditObserver;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 
@@ -20,6 +26,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        foreach ([Empleado::class, Asistencia::class, Nomina::class, DiaFestivo::class, User::class] as $model) {
+            $model::observe(AuditObserver::class);
+        }
+
         Vite::prefetch(concurrency: 3);
     }
 }

@@ -62,6 +62,7 @@ const form = useForm({
                     v-model="form.email"
                     required
                     autocomplete="username"
+                    :disabled="user.is_recovery_admin"
                 />
 
                 <InputError class="mt-2" :message="form.errors.email" />

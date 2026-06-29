@@ -17,7 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
 
-        //
+        $middleware->alias([
+            'approved' => \App\Http\Middleware\EnsureUserIsApproved::class,
+            'permission' => \App\Http\Middleware\EnsureUserHasPermission::class,
+            'audit' => \App\Http\Middleware\AuditHttpRequest::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

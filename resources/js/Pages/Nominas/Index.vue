@@ -1,6 +1,6 @@
 ﻿<script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 
 const props = defineProps({
@@ -10,6 +10,10 @@ const props = defineProps({
     semanasDisponibles: Array,
     fechaCorteActual: String
 });
+const page = usePage();
+const canManage = computed(() => page.props.auth?.can?.['nominas.manage'] ?? false);
+const canPay = computed(() => page.props.auth?.can?.['nominas.pay'] ?? false);
+const canExport = computed(() => page.props.auth?.can?.['nominas.export'] ?? false);
 
 const searchQuery = ref('');
 const historialSearch = ref('');
@@ -701,14 +705,14 @@ const cambiarPagosMasivos = (accion) => {
                         </div>
 
                         <div class="flex flex-wrap gap-2 sm:gap-3">
-                            <a :href="route('nominas.reporte', { semana: numeroSemanaSeleccionada, fecha_corte: selectedCorte })" target="_blank" class="flex items-center gap-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                            <a v-if="canExport" :href="route('nominas.reporte', { semana: numeroSemanaSeleccionada, fecha_corte: selectedCorte })" target="_blank" class="flex items-center gap-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-file-spreadsheet text-lg"></i> Excel Global
                             </a>
                             
-                            <a v-if="seleccionadosCount > 0" :href="urlRecibosMasivos(false)" target="_blank" class="flex items-center gap-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                            <a v-if="canExport && seleccionadosCount > 0" :href="urlRecibosMasivos(false)" target="_blank" class="flex items-center gap-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-printer text-lg"></i> PDF Seleccionados ({{ seleccionadosCount }})
                             </a>
-                            <button v-else disabled class="flex items-center gap-2 rounded-xl bg-slate-50 text-slate-400 border border-slate-200 px-4 py-2.5 text-xs font-black uppercase tracking-wider cursor-not-allowed">
+                            <button v-else-if="canExport" disabled class="flex items-center gap-2 rounded-xl bg-slate-50 text-slate-400 border border-slate-200 px-4 py-2.5 text-xs font-black uppercase tracking-wider cursor-not-allowed">
                                 <i class="ti ti-printer text-lg"></i> PDF Seleccionados
                             </button>
 
@@ -716,7 +720,7 @@ const cambiarPagosMasivos = (accion) => {
                                 <i class="ti ti-square-x text-lg"></i> Limpiar seleccion
                             </button>
 
-                            <a :href="urlRecibosMasivos(true)" target="_blank" class="flex items-center gap-2 rounded-xl bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-lg hover:shadow-slate-900/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                            <a v-if="canExport" :href="urlRecibosMasivos(true)" target="_blank" class="flex items-center gap-2 rounded-xl bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-lg hover:shadow-slate-900/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-printer text-lg"></i> PDF Todos
                             </a>
                         </div>
@@ -739,6 +743,7 @@ const cambiarPagosMasivos = (accion) => {
 
                             <div class="flex flex-wrap gap-2">
                                 <button
+                                    v-if="canPay"
                                     type="button"
                                     @click="cambiarPagosMasivos('pagar')"
                                     :disabled="seleccionadosPendientes <= 0 || pagandoMasivo"
@@ -748,6 +753,7 @@ const cambiarPagosMasivos = (accion) => {
                                     {{ pagandoMasivo === 'pagar' ? 'Liquidando...' : 'Liquidar selección' }}
                                 </button>
                                 <button
+                                    v-if="canPay"
                                     type="button"
                                     @click="cambiarPagosMasivos('revertir')"
                                     :disabled="seleccionadosLiquidados <= 0 || pagandoMasivo"
@@ -791,7 +797,7 @@ const cambiarPagosMasivos = (accion) => {
                                             <i :class="['ti text-base', empleadosGrupoSeleccionados(empleadosBanco) ? 'ti-square-x' : 'ti-checks']"></i>
                                             {{ empleadosGrupoSeleccionados(empleadosBanco) ? 'Quitar grupo' : 'Seleccionar grupo' }}
                                         </button>
-                                        <a :href="urlRecibosGrupo(empleadosBanco)" target="_blank" :class="['flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all hover:-translate-y-0.5', temaBanco(nombreBanco).pdf]">
+                                        <a v-if="canExport" :href="urlRecibosGrupo(empleadosBanco)" target="_blank" :class="['flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all hover:-translate-y-0.5', temaBanco(nombreBanco).pdf]">
                                             <i class="ti ti-printer text-base"></i> PDF Grupo
                                         </a>
                                     </div>
@@ -833,7 +839,7 @@ const cambiarPagosMasivos = (accion) => {
                                                     <i :class="empleado.pagado ? 'ti ti-circle-check' : 'ti ti-clock-dollar'"></i>
                                                     {{ empleado.pagado ? 'Liquidado' : 'Pendiente' }}
                                                 </span>
-                                                <button @click="cambiarEstadoPago(empleado.nomina_id, empleado.pagado, empleado)" class="text-[9px] font-bold text-slate-400 hover:text-blue-600 underline underline-offset-2 transition-colors">
+                                                <button v-if="canPay" @click="cambiarEstadoPago(empleado.nomina_id, empleado.pagado, empleado)" class="text-[9px] font-bold text-slate-400 hover:text-blue-600 underline underline-offset-2 transition-colors">
                                                     {{ empleado.pagado ? 'Revertir pago' : 'Marcar pagado y saldar' }}
                                                 </button>
                                             </div>
@@ -854,10 +860,10 @@ const cambiarPagosMasivos = (accion) => {
                                             </div>
 
                                             <div class="flex items-center gap-2 ml-auto">
-                                                <a :href="route('nominas.excel-individual', parametrosNomina(empleado))" class="flex h-9 w-9 items-center justify-center rounded-xl bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-all" title="Descargar Excel">
+                                                <a v-if="canExport" :href="route('nominas.excel-individual', parametrosNomina(empleado))" class="flex h-9 w-9 items-center justify-center rounded-xl bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-all" title="Descargar Excel">
                                                     <i class="ti ti-file-spreadsheet text-lg"></i>
                                                 </a>
-                                                <a :href="route('nominas.generar', parametrosNomina(empleado))" target="_blank" @click="marcarComoGenerado(empleado)" :class="['flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider shadow-sm transition-all', empleado.nomina_generada ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100' : 'bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-md']">
+                                                <a v-if="canManage" :href="route('nominas.generar', parametrosNomina(empleado))" target="_blank" @click="marcarComoGenerado(empleado)" :class="['flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider shadow-sm transition-all', empleado.nomina_generada ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100' : 'bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-md']">
                                                     <i class="ti ti-printer text-base"></i>
                                                     {{ empleado.nomina_generada ? 'Regenerar' : 'Crear recibo' }}
                                                 </a>
@@ -970,7 +976,7 @@ const cambiarPagosMasivos = (accion) => {
                                                 </section>
                                             </div>
 
-                                            <button type="button" @click="guardarAjustes(empleado)" class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-slate-900/20 transition-all hover:bg-slate-800 hover:-translate-y-0.5">
+                                            <button v-if="canManage" type="button" @click="guardarAjustes(empleado)" class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-slate-900/20 transition-all hover:bg-slate-800 hover:-translate-y-0.5">
                                                 <i class="ti ti-device-floppy text-base"></i>
                                                 {{ guardandoAjuste === empleado.id ? 'Guardando cambios...' : 'Guardar y recalcular ajustes' }}
                                             </button>
@@ -1027,7 +1033,7 @@ const cambiarPagosMasivos = (accion) => {
                                             <i :class="registro.pagado ? 'ti ti-circle-check' : 'ti ti-clock-dollar'"></i>
                                             {{ registro.pagado ? 'Liquidado' : 'Pendiente' }}
                                         </span>
-                                        <button @click="cambiarEstadoPago(registro.id, registro.pagado)" class="text-[9px] font-bold text-slate-400 hover:text-indigo-600 underline underline-offset-2 transition-colors" type="button">
+                                        <button v-if="canPay" @click="cambiarEstadoPago(registro.id, registro.pagado)" class="text-[9px] font-bold text-slate-400 hover:text-indigo-600 underline underline-offset-2 transition-colors" type="button">
                                             {{ registro.pagado ? 'Revertir pago' : 'Marcar pagado' }}
                                         </button>
                                     </div>
@@ -1038,7 +1044,7 @@ const cambiarPagosMasivos = (accion) => {
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 text-right">
-                                    <a :href="route('nominas.descargar', registro.id)" target="_blank" class="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 shadow-sm transition-all hover:bg-rose-100 hover:border-rose-300">
+                                    <a v-if="canExport" :href="route('nominas.descargar', registro.id)" target="_blank" class="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 shadow-sm transition-all hover:bg-rose-100 hover:border-rose-300">
                                         <i class="ti ti-file-type-pdf text-lg"></i> Recibo
                                     </a>
                                 </td>

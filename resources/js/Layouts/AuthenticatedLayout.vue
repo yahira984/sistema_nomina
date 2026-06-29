@@ -4,6 +4,7 @@ import { Link, usePage } from '@inertiajs/vue3'
 
 const page = usePage()
 const user = computed(() => page.props.auth.user)
+const can = computed(() => page.props.auth.can ?? {})
 
 // Estados del menú
 const isSidebarOpenMobile = ref(false)
@@ -13,9 +14,9 @@ const navItems = [
   {
     label: 'Principal',
     links: [
-      { name: 'Panel',        route: 'dashboard',         icon: 'ti-layout-dashboard' },
-      { name: 'Empleados',    route: 'empleados.index',   icon: 'ti-users' },
-      { name: 'Asistencias',  route: 'asistencias.index', icon: 'ti-calendar-check' },
+      { name: 'Panel',        route: 'dashboard',         icon: 'ti-layout-dashboard', permission: 'dashboard.view' },
+      { name: 'Empleados',    route: 'empleados.index',   icon: 'ti-users', permission: 'empleados.view' },
+      { name: 'Asistencias',  route: 'asistencias.index', icon: 'ti-calendar-check', permission: 'asistencias.view' },
       { name: 'Nóminas',      route: 'nominas.index',     icon: 'ti-report-money' },
     ]
   },
@@ -26,8 +27,38 @@ const navItems = [
       { name: 'Dias festivos', route: 'dias-festivos.index', icon: 'ti-calendar-event' },
       { name: 'Base de datos', route: 'base-datos.index', icon: 'ti-database' },
     ]
+  },
+  {
+    label: 'Seguridad',
+    links: [
+      { name: 'Usuarios', route: 'seguridad.usuarios.index', icon: 'ti-user-shield' },
+      { name: 'Auditoria', route: 'seguridad.auditoria.index', icon: 'ti-clipboard-list' },
+    ]
   }
 ]
+
+const routePermissions = {
+  dashboard: 'dashboard.view',
+  'empleados.index': 'empleados.view',
+  'asistencias.index': 'asistencias.view',
+  'nominas.index': 'nominas.view',
+  'dias-festivos.index': 'sistema.dias_festivos',
+  'base-datos.index': 'sistema.backups',
+  'seguridad.usuarios.index': 'sistema.users',
+  'seguridad.auditoria.index': 'sistema.audit',
+}
+
+const visibleNavItems = computed(() => navItems
+  .map(group => ({
+    ...group,
+    links: group.links.filter(item => {
+      const permission = item.permission || routePermissions[item.route]
+
+      return !permission || can.value[permission]
+    }),
+  }))
+  .filter(group => group.links.length > 0)
+)
 
 function isActive(routeName) {
   return route().current(routeName) || route().current(routeName + '.*')
@@ -67,7 +98,7 @@ function toggleSidebar() {
 
       <!-- Navigation -->
       <nav class="flex-1 overflow-y-auto overflow-x-hidden p-4 custom-scrollbar">
-        <template v-for="group in navItems" :key="group.label">
+        <template v-for="group in visibleNavItems" :key="group.label">
           <p v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="mb-2 mt-6 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">{{ group.label }}</p>
           <div v-show="isSidebarCollapsedDesktop && !isSidebarOpenMobile" class="my-4 h-px w-full bg-slate-100"></div>
 
@@ -102,7 +133,7 @@ function toggleSidebar() {
           <div class="flex items-center gap-3">
             <div class="hidden text-right sm:block">
               <p class="text-sm font-bold text-slate-900">{{ user?.name }}</p>
-              <p class="text-[11px] font-semibold text-slate-400">{{ user?.email }}</p>
+              <p class="text-[11px] font-semibold text-slate-400">{{ user?.role_label || user?.email }}</p>
             </div>
             <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 text-sm font-black text-white shadow-md shadow-indigo-500/20">
               {{ user?.name?.charAt(0)?.toUpperCase() ?? 'U' }}
