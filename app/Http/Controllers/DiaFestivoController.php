@@ -68,12 +68,21 @@ class DiaFestivoController extends Controller
 
     public function destroy(DiaFestivo $diaFestivo)
     {
+        if ($diaFestivo->origen === 'manual') {
+            $diaFestivo->delete();
+
+            return back()->with('success', 'Dia festivo manual borrado correctamente.');
+        }
+
+        if (!$diaFestivo->activo) {
+            return back()->with('success', 'El dia festivo oficial ya estaba desactivado.');
+        }
+
         $diaFestivo->forceFill([
             'activo' => false,
-            'origen' => 'manual',
         ])->save();
 
-        return back()->with('success', 'Dia festivo desactivado. Puedes volver a activarlo editandolo.');
+        return back()->with('success', 'Dia festivo oficial desactivado. Puedes volver a activarlo editandolo.');
     }
 
     public function generar(Request $request, DiasFestivosMexicoService $festivosMexico)
