@@ -7,6 +7,7 @@ use App\Services\FirebaseSyncService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Schema;
 
 class EmpleadoController extends Controller
 {
@@ -33,6 +34,49 @@ class EmpleadoController extends Controller
         ]);
     }
 
+    public function actualizarFechaBaja(Request $request, Empleado $empleado)
+{
+    $data = $request->validate([
+        'fecha_baja' => ['required', 'date', 'before_or_equal:today'],
+    ], [
+        'fecha_baja.required' => 'La fecha de baja es obligatoria.',
+        'fecha_baja.date' => 'La fecha de baja no es válida.',
+        'fecha_baja.before_or_equal' => 'La fecha de baja no puede ser futura.',
+    ]);
+
+    if ($empleado->estatus) {
+        return back()->withErrors([
+            'fecha_baja' => 'Este empleado sigue activo. Primero debes darlo de baja.',
+        ]);
+    }
+
+    if ($empleado->fecha_ingreso) {
+        $fechaIngreso = Carbon::parse($empleado->fecha_ingreso);
+        $fechaBaja = Carbon::parse($data['fecha_baja']);
+
+        if ($fechaBaja->lt($fechaIngreso)) {
+            return back()->withErrors([
+                'fecha_baja' => 'La fecha de baja no puede ser menor a la fecha de ingreso.',
+            ]);
+        }
+    }
+
+    $empleado->fecha_baja = $data['fecha_baja'];
+
+    if (
+        $empleado->fecha_ingreso &&
+        Schema::hasColumn('empleados', 'dias_laborados')
+    ) {
+        $fechaIngreso = Carbon::parse($empleado->fecha_ingreso);
+        $fechaBaja = Carbon::parse($data['fecha_baja']);
+
+        $empleado->dias_laborados = $fechaIngreso->diffInDays($fechaBaja) + 1;
+    }
+
+    $empleado->save();
+
+    return back()->with('success', 'Fecha de baja actualizada correctamente.');
+}
 
     public function store(Request $request)
     {

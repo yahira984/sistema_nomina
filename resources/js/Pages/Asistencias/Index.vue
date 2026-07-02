@@ -56,6 +56,9 @@ const editando = ref(false);
 const asistenciaId = ref(null);
 const archivoInput = ref(null);
 
+// ✅ NUEVO: Año seleccionado para el desglose de faltas por año
+const anioFaltasSeleccionado = ref(new Date().getFullYear());
+
 const REGISTROS_POR_PAGINA = 25;
 const DIAS_SEMANA_NOMINA = ['JUEVES', 'VIERNES', 'SABADO', 'DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES'];
 const DIAS_SEMANA_CORTOS = ['JUE', 'VIE', 'SAB', 'DOM', 'LUN', 'MAR', 'MIE'];
@@ -576,7 +579,6 @@ const formatoHora = (hora) => {
     return hora ? hora.substring(0, 5) : '--';
 };
 
-// --- AQUI REGRESAMOS LAS CLASES ORIGINALES PARA LA TABLA ---
 const claseCeldaAsistencia = (registro) => {
     if (!registro) return 'asistencia-cell-empty';
     if (registro.tipo_asistencia === 'Falta') return 'asistencia-cell-falta';
@@ -957,10 +959,24 @@ const descartarRevision = () => {
 };
 
 const toggleDetalleFaltas = (empleadoId) => {
+    // ✅ NUEVO: Al cerrar el desglose, no reseteamos el año seleccionado
     empleadoFaltasExpandido.value = empleadoFaltasExpandido.value === empleadoId ? null : empleadoId;
 };
 
 const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
+
+// ✅ NUEVO: Extrae todos los años únicos de las fechas de faltas de un empleado
+const aniosFaltasEmpleado = (empleado) => {
+    const fechas = fechasFaltasEmpleado(empleado);
+    const anios = [...new Set(fechas.map((fecha) => String(fecha).substring(0, 4)))].sort((a, b) => b - a);
+    return anios;
+};
+
+// ✅ NUEVO: Filtra las fechas de faltas del empleado por el año seleccionado globalmente
+const fechasFaltasEmpleadoPorAnio = (empleado) => {
+    const fechas = fechasFaltasEmpleado(empleado);
+    return fechas.filter((fecha) => String(fecha).substring(0, 4) === String(anioFaltasSeleccionado.value));
+};
 </script>
 
 <template>
@@ -1329,7 +1345,6 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                             <span class="text-xs text-slate-500">Página {{ paginaUltimosRegistros }} de {{ totalPaginasUltimosRegistros }}</span>
                         </div>
 
-                        <!-- TABLA ORIGINAL RESTAURADA -->
                         <div class="overflow-x-auto custom-scrollbar">
                             <table class="asistencia-week-table">
                                 <thead>
@@ -1519,7 +1534,6 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                 Vista semanal del CSV: <span class="text-blue-700">{{ rangoSemanaRevision }}</span>
                             </div>
 
-                            <!-- TABLA ORIGINAL RESTAURADA (REVISION) -->
                             <div class="overflow-x-auto custom-scrollbar rounded-2xl border border-slate-200/80 bg-white">
                                 <table class="asistencia-week-table revision-week-table">
                                     <thead>
@@ -1757,6 +1771,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                     </section>
                 </div>
 
+                <!-- ✅ TAB FALTAS: Solo se modificó la columna "Faltas Totales" y la fila expandida -->
                 <div v-if="tabActiva === 'faltas'" class="space-y-6 animate-fade-in">
                     <section class="app-panel">
                         <div class="panel-header border-b-rose-100">
@@ -1793,7 +1808,25 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                         <th>Num</th>
                                         <th>Nombre del Trabajador</th>
                                         <th class="text-center">Estatus</th>
-                                        <th class="text-right text-rose-700">Faltas Totales</th>
+                                        <!-- ✅ NUEVO: Columna de faltas totales ahora incluye selector de año -->
+                                        <th class="text-right text-rose-700">
+                                            <div class="flex items-center justify-end gap-2">
+                                                <span>Faltas</span>
+                                                <select
+                                                    v-model="anioFaltasSeleccionado"
+                                                    class="rounded-lg border border-rose-200 bg-white px-2 py-1 text-xs font-black text-rose-700 focus:border-rose-400 focus:outline-none focus:ring-1 focus:ring-rose-400/30"
+                                                    @click.stop
+                                                >
+                                                    <option
+                                                        v-for="anio in [...new Set(empleadosFiltradosGlobal.flatMap(e => aniosFaltasEmpleado(e)))].sort((a, b) => b - a)"
+                                                        :key="anio"
+                                                        :value="Number(anio)"
+                                                    >
+                                                        {{ anio }}
+                                                    </option>
+                                                </select>
+                                            </div>
+                                        </th>
                                         <th class="text-right">Detalle</th>
                                     </tr>
                                 </thead>
@@ -1807,10 +1840,16 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                                 <span v-else-if="empleado.dias_faltas_totales < 3" class="status-pill status-warning">Alerta Minima</span>
                                                 <span v-else class="status-pill border-rose-200 bg-rose-50 text-rose-700">Problema de Ausentismo</span>
                                             </td>
+                                            <!-- ✅ NUEVO: Muestra faltas filtradas por año seleccionado con flechita de desglose -->
                                             <td class="whitespace-nowrap text-right">
-                                                <span class="inline-flex items-center justify-center text-lg font-black" :class="empleado.dias_faltas_totales > 0 ? 'text-rose-600' : 'text-slate-300'">
-                                                    {{ empleado.dias_faltas_totales }}
-                                                </span>
+                                                <div class="flex items-center justify-end gap-2">
+                                                    <span
+                                                        class="inline-flex items-center justify-center text-lg font-black"
+                                                        :class="fechasFaltasEmpleadoPorAnio(empleado).length > 0 ? 'text-rose-600' : 'text-slate-300'"
+                                                    >
+                                                        {{ fechasFaltasEmpleadoPorAnio(empleado).length }}
+                                                    </span>
+                                                </div>
                                             </td>
                                             <td class="whitespace-nowrap text-right">
                                                 <button
@@ -1824,16 +1863,35 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                                 </button>
                                             </td>
                                         </tr>
+                                        <!-- ✅ NUEVO: Fila de desglose muestra fechas filtradas por año seleccionado -->
                                         <tr v-if="empleadoFaltasExpandido === empleado.id" class="bg-rose-50/40">
                                             <td colspan="5" class="px-6 py-4">
                                                 <div class="rounded-lg border border-rose-100 bg-white p-4">
-                                                    <div class="mb-3 flex items-center gap-2 text-sm font-black text-rose-800">
-                                                        <i class="ti ti-calendar-x" aria-hidden="true"></i>
-                                                        Fechas con falta de {{ empleado.nombre_completo }}
+                                                    <div class="mb-3 flex flex-wrap items-center gap-3">
+                                                        <div class="flex items-center gap-2 text-sm font-black text-rose-800">
+                                                            <i class="ti ti-calendar-x" aria-hidden="true"></i>
+                                                            Faltas de {{ empleado.nombre_completo }} —
+                                                        </div>
+                                                        <!-- ✅ NUEVO: Tabs/botones de año dentro del desglose -->
+                                                        <div class="flex flex-wrap gap-1">
+                                                            <button
+                                                                v-for="anio in aniosFaltasEmpleado(empleado)"
+                                                                :key="anio"
+                                                                type="button"
+                                                                @click="anioFaltasSeleccionado = Number(anio)"
+                                                                class="rounded-full border px-3 py-1 text-xs font-black transition"
+                                                                :class="anioFaltasSeleccionado === Number(anio)
+                                                                    ? 'border-rose-400 bg-rose-500 text-white shadow-sm'
+                                                                    : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'"
+                                                            >
+                                                                {{ anio }}
+                                                                <span class="ml-1 opacity-75">({{ fechasFaltasEmpleado(empleado).filter(f => String(f).substring(0,4) === String(anio)).length }})</span>
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                    <div v-if="fechasFaltasEmpleado(empleado).length" class="flex flex-wrap gap-2">
+                                                    <div v-if="fechasFaltasEmpleadoPorAnio(empleado).length" class="flex flex-wrap gap-2">
                                                         <span
-                                                            v-for="fecha in fechasFaltasEmpleado(empleado)"
+                                                            v-for="fecha in fechasFaltasEmpleadoPorAnio(empleado)"
                                                             :key="fecha"
                                                             class="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700"
                                                         >
@@ -1841,7 +1899,7 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
                                                         </span>
                                                     </div>
                                                     <p v-else class="text-sm font-semibold text-slate-500">
-                                                        Sin fechas registradas.
+                                                        Sin faltas registradas en {{ anioFaltasSeleccionado }}.
                                                     </p>
                                                 </div>
                                             </td>
@@ -1877,7 +1935,6 @@ const fechasFaltasEmpleado = (empleado) => empleado.fechas_faltas || [];
     padding-right: 0;
 }
 
-/* ESTILOS ORIGINALES RESTAURADOS DE LA TABLA */
 .asistencia-week-table {
     min-width: 1420px;
     width: 100%;
