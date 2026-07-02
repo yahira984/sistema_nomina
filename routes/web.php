@@ -72,6 +72,7 @@ Route::middleware(['auth', 'approved', 'audit'])->group(function () {
     Route::put('/empleados/{empleado}/restaurar', [EmpleadoController::class, 'restaurar'])->middleware('permission:empleados.manage')->name('empleados.restaurar');
     Route::post('/empleados/{empleado}/acceso-app', [EmpleadoController::class, 'guardarAccesoApp'])->middleware('permission:empleados.manage')->name('empleados.acceso-app.guardar');
     Route::delete('/empleados/{empleado}/acceso-app', [EmpleadoController::class, 'desactivarAccesoApp'])->middleware('permission:empleados.manage')->name('empleados.acceso-app.desactivar');
+    Route::patch('/empleados/{empleado}/fecha-baja', [EmpleadoController::class, 'actualizarFechaBaja'])->name('empleados.fecha-baja.actualizar');
     Route::get('/empleados/fotos/{empleado}', function (Empleado $empleado) {
         $limpiarClave = fn ($valor) => preg_replace('/[^A-Za-z0-9_-]/', '', (string) ($valor ?? ''));
         $clavesId = collect([
