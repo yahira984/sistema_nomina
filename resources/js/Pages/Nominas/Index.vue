@@ -6,6 +6,14 @@ import { ref, computed, watch } from 'vue';
 const props = defineProps({
     empleados: Array,
     historial: Array,
+    historialMeta: {
+        type: Object,
+        default: () => ({}),
+    },
+    filtros: {
+        type: Object,
+        default: () => ({}),
+    },
     semanaActual: Number,
     semanasDisponibles: Array,
     fechaCorteActual: String
@@ -16,7 +24,7 @@ const canPay = computed(() => page.props.auth?.can?.['nominas.pay'] ?? false);
 const canExport = computed(() => page.props.auth?.can?.['nominas.export'] ?? false);
 
 const searchQuery = ref('');
-const historialSearch = ref('');
+const historialSearch = ref(props.filtros?.historial_busqueda || '');
 const showToast = ref(false);
 const toastTitle = ref('');
 const toastMessage = ref('');
@@ -181,8 +189,40 @@ const numeroSemanaSeleccionada = computed(() => {
 });
 
 watch(selectedCorte, (newDate) => {
-    router.get(route('nominas.index'), { fecha_corte: newDate }, { preserveState: true, preserveScroll: true });
+    router.get(route('nominas.index'), {
+        fecha_corte: newDate,
+        historial_busqueda: historialSearch.value || undefined,
+    }, { preserveState: true, preserveScroll: true });
 });
+
+let historialSearchTimer = null;
+
+const cargarHistorial = (page = 1) => {
+    router.get(route('nominas.index'), {
+        fecha_corte: selectedCorte.value,
+        historial_busqueda: historialSearch.value || undefined,
+        historial_page: page,
+    }, {
+        only: ['historial', 'historialMeta', 'filtros'],
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+    });
+};
+
+watch(historialSearch, () => {
+    clearTimeout(historialSearchTimer);
+    historialSearchTimer = setTimeout(() => cargarHistorial(1), 350);
+});
+
+const cambiarPaginaHistorial = (page) => {
+    const meta = props.historialMeta || {};
+    const destino = Math.min(Math.max(Number(page) || 1, 1), Number(meta.last_page || 1));
+
+    if (destino !== Number(meta.current_page || 1)) {
+        cargarHistorial(destino);
+    }
+};
 
 const numero = (valor) => Number(valor ?? 0) || 0;
 const valorDecimal = (valor) => Number(valor ?? 0).toFixed(2);
@@ -595,20 +635,7 @@ const empleadosAgrupados = computed(() => {
 });
 
 const historialFiltrado = computed(() => {
-    const term = historialSearch.value.toLowerCase().trim();
-
-    if (!term) {
-        return props.historial;
-    }
-
-    return props.historial.filter((registro) => {
-        const empleado = registro.empleado || {};
-        return String(empleado.nombre_completo || '').toLowerCase().includes(term)
-            || String(empleado.numero_empleado || '').toLowerCase().includes(term)
-            || String(registro.numero_semana || '').toLowerCase().includes(term)
-            || String(registro.fecha_inicio || '').toLowerCase().includes(term)
-            || String(registro.fecha_fin || '').toLowerCase().includes(term);
-    });
+    return props.historial || [];
 });
 
 const copiarTextoSeguro = async (texto) => {
@@ -1227,6 +1254,36 @@ const cambiarPagosMasivos = (accion) => {
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <div
+                    v-if="Number(historialMeta?.total || 0) > 0"
+                    class="flex flex-col gap-3 border-t border-slate-100 px-6 py-4 text-sm font-semibold text-slate-600 sm:flex-row sm:items-center sm:justify-between"
+                >
+                    <span>
+                        Mostrando {{ historialMeta.from || 0 }}-{{ historialMeta.to || 0 }} de {{ historialMeta.total || 0 }}
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <button
+                            type="button"
+                            class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-wider text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            :disabled="Number(historialMeta.current_page || 1) <= 1"
+                            @click="cambiarPaginaHistorial(Number(historialMeta.current_page || 1) - 1)"
+                        >
+                            Anterior
+                        </button>
+                        <span class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700">
+                            Pagina {{ historialMeta.current_page || 1 }} de {{ historialMeta.last_page || 1 }}
+                        </span>
+                        <button
+                            type="button"
+                            class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-wider text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            :disabled="Number(historialMeta.current_page || 1) >= Number(historialMeta.last_page || 1)"
+                            @click="cambiarPaginaHistorial(Number(historialMeta.current_page || 1) + 1)"
+                        >
+                            Siguiente
+                        </button>
+                    </div>
                 </div>
             </section>
         </div>

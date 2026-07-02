@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Empleado;
 use App\Services\FirebaseSyncService;
+use App\Support\DiasLaborados;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -70,7 +71,11 @@ class EmpleadoController extends Controller
         $fechaIngreso = Carbon::parse($empleado->fecha_ingreso);
         $fechaBaja = Carbon::parse($data['fecha_baja']);
 
-        $empleado->dias_laborados = $fechaIngreso->diffInDays($fechaBaja) + 1;
+        $empleado->dias_laborados = DiasLaborados::contarSinDomingos($fechaIngreso, $fechaBaja);
+
+        if (Schema::hasColumn('empleados', 'dias_laborados_anio_baja')) {
+            $empleado->dias_laborados_anio_baja = DiasLaborados::contarAnioDeBaja($fechaIngreso, $fechaBaja);
+        }
     }
 
     $empleado->save();
@@ -205,17 +210,24 @@ class EmpleadoController extends Controller
     {
         $fechaBaja = Carbon::now()->startOfDay();
         $fechaIngreso = $empleado->fecha_ingreso ? Carbon::parse($empleado->fecha_ingreso)->startOfDay() : null;
-        $diasLaborados = $fechaIngreso ? $fechaIngreso->diffInDays($fechaBaja) + 1 : 0;
+        $diasLaborados = $fechaIngreso ? DiasLaborados::contarSinDomingos($fechaIngreso, $fechaBaja) : 0;
+        $diasLaboradosAnioBaja = $fechaIngreso ? DiasLaborados::contarAnioDeBaja($fechaIngreso, $fechaBaja) : 0;
         $this->moverFotoEmpleadoABajas($empleado);
 
-        $empleado->update([
+        $datosBaja = [
             'estatus' => false,
             'numero_empleado_baja' => $empleado->numero_empleado_baja ?: $empleado->numero_empleado,
             'numero_empleado' => null,
             'fecha_baja' => $fechaBaja->format('Y-m-d'),
             'dias_laborados' => $diasLaborados,
             'motivo_baja' => request('motivo_baja'),
-        ]);
+        ];
+
+        if (Schema::hasColumn('empleados', 'dias_laborados_anio_baja')) {
+            $datosBaja['dias_laborados_anio_baja'] = $diasLaboradosAnioBaja;
+        }
+
+        $empleado->update($datosBaja);
 
         FirebaseSyncService::desactivarAccesoApp($empleado);
         FirebaseSyncService::sincronizarEmpleado($empleado);
@@ -225,12 +237,18 @@ class EmpleadoController extends Controller
 
     public function restaurar(Empleado $empleado)
     {
-        $empleado->update([
+        $datosRestaurar = [
             'estatus' => true,
             'fecha_baja' => null,
             'dias_laborados' => 0,
             'motivo_baja' => null,
-        ]);
+        ];
+
+        if (Schema::hasColumn('empleados', 'dias_laborados_anio_baja')) {
+            $datosRestaurar['dias_laborados_anio_baja'] = 0;
+        }
+
+        $empleado->update($datosRestaurar);
 
         FirebaseSyncService::sincronizarEmpleado($empleado);
 

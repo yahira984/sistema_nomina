@@ -392,7 +392,15 @@ const restaurarEmpleado = (id, nombre) => { if (confirm(`¿Restaurar a ${nombre}
                                 <td class="px-6 py-4">
                                     <div class="font-bold text-slate-700">{{ empleado.puesto || 'No asignado' }}</div>
                                     <div v-if="Boolean(Number(empleado.estatus ?? 0))" class="text-xs font-semibold text-emerald-600">{{ empleado.antiguedad_anios }} año(s) activos</div>
-                                    <div v-else class="text-xs font-semibold text-rose-500">Baja: {{ empleado.fecha_baja || 'S/F' }}</div>
+                                    <div v-else class="text-xs font-semibold text-rose-500">
+                                        Baja: {{ empleado.fecha_baja || 'S/F' }}
+                                        <span class="block text-[10px] font-bold text-rose-400">
+                                            {{ empleado.dias_laborados || 0 }} d total
+                                            <template v-if="empleado.fecha_baja">
+                                                - {{ empleado.dias_laborados_anio_baja || 0 }} d en {{ String(empleado.fecha_baja).substring(0, 4) }}
+                                            </template>
+                                        </span>
+                                    </div>
                                 </td>
                                 <td class="px-6 py-4">
                                     <span class="inline-flex rounded-lg bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 border border-emerald-100">
