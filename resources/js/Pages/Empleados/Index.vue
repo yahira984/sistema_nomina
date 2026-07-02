@@ -61,6 +61,13 @@ const empleadosFiltrados = computed(() => {
             (emp.numero_empleado_baja && emp.numero_empleado_baja.toLowerCase().includes(query))
         );
     }
+    if (filtroEstado.value === 'prestamo') {
+        return [...resultado].sort((a, b) => {
+            const deudaA = Number(a.saldo_prestamo ?? 0);
+            const deudaB = Number(b.saldo_prestamo ?? 0);
+            return deudaB - deudaA;
+        });
+    }
     return ordenarEmpleadosDirectorio(resultado);
 });
 
