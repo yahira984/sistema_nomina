@@ -34,28 +34,53 @@ class NominaController extends Controller
     {
         [$inicioSemana, $finSemana, $semanaActual] = $this->resolverSemanaNomina($request);
         $semanasDisponibles = SemanaNomina::disponibles(SemanaNomina::corteActual(), 12);
+        $empleadosBase = $this->empleadosBaseNomina();
+        $empleadoIds = $empleadosBase->pluck('id')->all();
+        $nominasPeriodo = $this->nominasPeriodoPorEmpleado($empleadoIds, $inicioSemana, $finSemana);
+        $asistenciasPeriodo = $this->asistenciasPeriodoPorEmpleado($empleadoIds, $inicioSemana, $finSemana);
+        $asistenciasMiercolesAnterior = $this->asistenciasMiercolesAnteriorPorEmpleado($empleadoIds, $inicioSemana);
+        $saldosHorasAdeudo = $this->saldosHorasAdeudoPorEmpleado($empleadoIds, $inicioSemana);
+        $historialPayload = $this->historialNominas($request);
 
-        $empleados = Empleado::where('estatus', true)->orderBy('banco')->get()->map(function ($empleado) use ($inicioSemana, $finSemana) {
-            $nomina = $this->buscarNominaPeriodo($empleado->id, $inicioSemana, $finSemana);
+        $empleados = $empleadosBase->map(function (Empleado $empleado) use (
+            $inicioSemana,
+            $finSemana,
+            $nominasPeriodo,
+            $asistenciasPeriodo,
+            $asistenciasMiercolesAnterior,
+            $saldosHorasAdeudo
+        ) {
+            $nomina = $nominasPeriodo->get($empleado->id);
             $ajustes = $this->ajustesDesdeNomina($nomina, $empleado);
-            $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
+            $desglose = $this->calcularDesgloseNomina(
+                $empleado,
+                $inicioSemana,
+                $finSemana,
+                $ajustes,
+                $asistenciasPeriodo->get($empleado->id, collect()),
+                $asistenciasMiercolesAnterior->get($empleado->id),
+                true
+            );
 
-            $empleado->nomina_generada = (bool) $nomina;
-            $empleado->nomina_id = $nomina ? $nomina->id : null;
-            $empleado->pagado = $nomina ? $nomina->pagado : false;
-            $empleado->ajustes_nomina = $this->resumenAjustesNomina($empleado, $nomina, $desglose, $inicioSemana);
-
-            return $empleado;
+            return array_merge($this->empleadoNominaPayload($empleado), [
+                'nomina_generada' => (bool) $nomina,
+                'nomina_id' => $nomina ? $nomina->id : null,
+                'pagado' => $nomina ? (bool) $nomina->pagado : false,
+                'ajustes_nomina' => $this->resumenAjustesNomina(
+                    $empleado,
+                    $nomina,
+                    $desglose,
+                    $inicioSemana,
+                    (float) ($saldosHorasAdeudo[$empleado->id] ?? 0)
+                ),
+            ]);
         });
-
-        $historial = Nomina::with('empleado')
-            ->orderBy('fecha_inicio', 'desc')
-            ->orderBy('id', 'desc')
-            ->get();
 
         return Inertia::render('Nominas/Index', [
             'empleados' => $empleados,
-            'historial' => $historial,
+            'historial' => $historialPayload['data'],
+            'historialMeta' => $historialPayload['meta'],
+            'filtros' => $historialPayload['filtros'],
             'semanaActual' => $semanaActual,
             'semanasDisponibles' => $semanasDisponibles,
             'fechaCorteActual' => $finSemana->format('Y-m-d'),
@@ -414,6 +439,188 @@ class NominaController extends Controller
         return SemanaNomina::desdeCorte($request->input('fecha_corte'));
     }
 
+    private function empleadosBaseNomina(): Collection
+    {
+        return Empleado::query()
+            ->select([
+                'id',
+                'numero_empleado',
+                'numero_empleado_baja',
+                'nombre_completo',
+                'banco',
+                'numero_cuenta',
+                'saldo_prestamo',
+                'cuota_prestamo',
+                'sueldo_por_hora',
+                'sueldo_semanal',
+                'es_estudiante',
+                'descuento_imss',
+                'descuento_isr',
+                'descuento_infonavit',
+                'fecha_ingreso',
+                'fecha_baja',
+                'estatus',
+            ])
+            ->where('estatus', true)
+            ->orderBy('banco')
+            ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), NULLIF(numero_empleado_baja, ''), id) AS UNSIGNED) ASC")
+            ->orderBy('nombre_completo')
+            ->get();
+    }
+
+    private function empleadoNominaPayload(Empleado $empleado): array
+    {
+        return [
+            'id' => $empleado->id,
+            'numero_empleado' => $empleado->numero_empleado,
+            'numero_empleado_baja' => $empleado->numero_empleado_baja,
+            'nombre_completo' => $empleado->nombre_completo,
+            'banco' => $empleado->banco,
+            'numero_cuenta' => $empleado->numero_cuenta,
+            'saldo_prestamo' => (float) ($empleado->saldo_prestamo ?? 0),
+            'cuota_prestamo' => (float) ($empleado->cuota_prestamo ?? 0),
+            'sueldo_por_hora' => (float) ($empleado->sueldo_por_hora ?? 0),
+            'sueldo_semanal' => (float) ($empleado->sueldo_semanal ?? 0),
+            'es_estudiante' => (bool) ($empleado->es_estudiante ?? false),
+            'descuento_imss' => (float) ($empleado->descuento_imss ?? 0),
+            'descuento_isr' => (float) ($empleado->descuento_isr ?? 0),
+            'descuento_infonavit' => (float) ($empleado->descuento_infonavit ?? 0),
+            'fecha_ingreso' => $empleado->fecha_ingreso,
+            'fecha_baja' => $empleado->fecha_baja,
+            'estatus' => (bool) $empleado->estatus,
+        ];
+    }
+
+    private function nominasPeriodoPorEmpleado(array $empleadoIds, Carbon $inicioSemana, Carbon $finSemana): Collection
+    {
+        if (count($empleadoIds) === 0) {
+            return collect();
+        }
+
+        return Nomina::query()
+            ->whereIn('empleado_id', $empleadoIds)
+            ->whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
+            ->whereDate('fecha_fin', $finSemana->format('Y-m-d'))
+            ->get()
+            ->keyBy('empleado_id');
+    }
+
+    private function asistenciasPeriodoPorEmpleado(array $empleadoIds, Carbon $inicioSemana, Carbon $finSemana): Collection
+    {
+        if (count($empleadoIds) === 0) {
+            return collect();
+        }
+
+        return Asistencia::query()
+            ->whereIn('empleado_id', $empleadoIds)
+            ->whereBetween('fecha', [
+                $inicioSemana->format('Y-m-d'),
+                $finSemana->format('Y-m-d'),
+            ])
+            ->get()
+            ->groupBy('empleado_id');
+    }
+
+    private function asistenciasMiercolesAnteriorPorEmpleado(array $empleadoIds, Carbon $inicioSemana): Collection
+    {
+        if (count($empleadoIds) === 0) {
+            return collect();
+        }
+
+        $miercolesAnterior = $inicioSemana->copy()->subDay();
+
+        if (!$miercolesAnterior->isWednesday()) {
+            return collect();
+        }
+
+        return Asistencia::query()
+            ->whereIn('empleado_id', $empleadoIds)
+            ->whereDate('fecha', $miercolesAnterior->format('Y-m-d'))
+            ->where('tipo_asistencia', 'Normal')
+            ->get()
+            ->keyBy('empleado_id');
+    }
+
+    private function saldosHorasAdeudoPorEmpleado(array $empleadoIds, Carbon $inicioSemana): Collection
+    {
+        if (count($empleadoIds) === 0) {
+            return collect();
+        }
+
+        return Nomina::query()
+            ->whereIn('empleado_id', $empleadoIds)
+            ->whereDate('fecha_inicio', '<', $inicioSemana->format('Y-m-d'))
+            ->selectRaw('empleado_id, COALESCE(SUM(horas_adeudo_generadas), 0) - COALESCE(SUM(horas_adeudo_descontadas), 0) as saldo')
+            ->groupBy('empleado_id')
+            ->pluck('saldo', 'empleado_id')
+            ->map(fn ($saldo) => max(0, round((float) $saldo, 2)));
+    }
+
+    private function historialNominas(Request $request): array
+    {
+        $busqueda = trim((string) $request->input('historial_busqueda', ''));
+        $historial = Nomina::query()
+            ->select([
+                'id',
+                'empleado_id',
+                'numero_semana',
+                'fecha_inicio',
+                'fecha_fin',
+                'pago_neto',
+                'pagado',
+            ])
+            ->with(['empleado' => fn ($query) => $query->select([
+                'id',
+                'nombre_completo',
+                'numero_empleado',
+                'numero_empleado_baja',
+            ])])
+            ->when($busqueda !== '', function ($query) use ($busqueda) {
+                $query->where(function ($query) use ($busqueda) {
+                    $query->where('numero_semana', 'like', "%{$busqueda}%")
+                        ->orWhere('fecha_inicio', 'like', "%{$busqueda}%")
+                        ->orWhere('fecha_fin', 'like', "%{$busqueda}%")
+                        ->orWhereHas('empleado', function ($query) use ($busqueda) {
+                            $query->where('nombre_completo', 'like', "%{$busqueda}%")
+                                ->orWhere('numero_empleado', 'like', "%{$busqueda}%")
+                                ->orWhere('numero_empleado_baja', 'like', "%{$busqueda}%");
+                        });
+                });
+            })
+            ->orderBy('fecha_inicio', 'desc')
+            ->orderBy('id', 'desc')
+            ->paginate(50, ['*'], 'historial_page')
+            ->withQueryString();
+
+        return [
+            'data' => $historial->getCollection()->map(fn (Nomina $nomina) => [
+                'id' => $nomina->id,
+                'numero_semana' => $nomina->numero_semana,
+                'fecha_inicio' => $nomina->fecha_inicio,
+                'fecha_fin' => $nomina->fecha_fin,
+                'pago_neto' => (float) ($nomina->pago_neto ?? 0),
+                'pagado' => (bool) $nomina->pagado,
+                'empleado' => $nomina->empleado ? [
+                    'id' => $nomina->empleado->id,
+                    'nombre_completo' => $nomina->empleado->nombre_completo,
+                    'numero_empleado' => $nomina->empleado->numero_empleado,
+                    'numero_empleado_baja' => $nomina->empleado->numero_empleado_baja,
+                ] : null,
+            ])->values(),
+            'meta' => [
+                'current_page' => $historial->currentPage(),
+                'last_page' => $historial->lastPage(),
+                'per_page' => $historial->perPage(),
+                'total' => $historial->total(),
+                'from' => $historial->firstItem(),
+                'to' => $historial->lastItem(),
+            ],
+            'filtros' => [
+                'historial_busqueda' => $busqueda,
+            ],
+        ];
+    }
+
     private function abortarSiAsistenciaPendiente(Empleado $empleado, Carbon $inicioSemana, Carbon $finSemana): void
     {
         $estadoCaptura = $this->estadoCapturaAsistencia($empleado, $inicioSemana, $finSemana);
@@ -470,10 +677,18 @@ class NominaController extends Controller
         return $dias;
     }
 
-    private function calcularDesgloseNomina(Empleado $empleado, Carbon $inicioSemana, Carbon $finSemana, array $ajustes = []): array
+    private function calcularDesgloseNomina(
+        Empleado $empleado,
+        Carbon $inicioSemana,
+        Carbon $finSemana,
+        array $ajustes = [],
+        ?Collection $asistenciasPrecargadas = null,
+        ?Asistencia $asistenciaMiercolesAnterior = null,
+        bool $miercolesAnteriorPrecargado = false
+    ): array
     {
         $ajustes = array_merge($this->ajustesPorDefecto($empleado), $ajustes);
-        $asistencias = Asistencia::where('empleado_id', $empleado->id)
+        $asistencias = $asistenciasPrecargadas ?? Asistencia::where('empleado_id', $empleado->id)
             ->whereBetween('fecha', [
                 $inicioSemana->format('Y-m-d'),
                 $finSemana->format('Y-m-d'),
@@ -490,9 +705,19 @@ class NominaController extends Controller
             ->where('tipo_asistencia', 'Normal')
             ->reject(fn ($asistencia) => $this->esMiercolesDeCorte($asistencia, $finSemana))
             ->sum(fn ($asistencia) => $this->horasExtraRedondeadas($asistencia));
-        $horasExtraMiercolesAnterior = $this->horasExtraMiercolesAnterior($empleado, $inicioSemana);
+        $horasExtraMiercolesAnterior = $this->horasExtraMiercolesAnterior(
+            $empleado,
+            $inicioSemana,
+            $asistenciaMiercolesAnterior,
+            $miercolesAnteriorPrecargado
+        );
         $horasExtra = $horasExtraPeriodo + $horasExtraMiercolesAnterior;
-        $horasAdeudoMiercolesAnterior = $this->horasAdeudoMiercolesAnterior($empleado, $inicioSemana);
+        $horasAdeudoMiercolesAnterior = $this->horasAdeudoMiercolesAnterior(
+            $empleado,
+            $inicioSemana,
+            $asistenciaMiercolesAnterior,
+            $miercolesAnteriorPrecargado
+        );
         $esEstudiante = $this->empleadoEsEstudiante($empleado);
 
         if (ReglasNominaEmpleado::sinHorasExtra($empleado)) {
@@ -895,7 +1120,12 @@ class NominaController extends Controller
         $empleado->refresh();
     }
 
-    private function horasExtraMiercolesAnterior(Empleado $empleado, Carbon $inicioSemana): float
+    private function horasExtraMiercolesAnterior(
+        Empleado $empleado,
+        Carbon $inicioSemana,
+        ?Asistencia $asistenciaPrecargada = null,
+        bool $precargada = false
+    ): float
     {
         $miercolesAnterior = $inicioSemana->copy()->subDay();
 
@@ -903,15 +1133,22 @@ class NominaController extends Controller
             return 0;
         }
 
-        $asistencia = Asistencia::where('empleado_id', $empleado->id)
-            ->whereDate('fecha', $miercolesAnterior->format('Y-m-d'))
-            ->where('tipo_asistencia', 'Normal')
-            ->first();
+        $asistencia = $precargada
+            ? $asistenciaPrecargada
+            : Asistencia::where('empleado_id', $empleado->id)
+                ->whereDate('fecha', $miercolesAnterior->format('Y-m-d'))
+                ->where('tipo_asistencia', 'Normal')
+                ->first();
 
         return $asistencia ? $this->horasExtraRedondeadas($asistencia) : 0;
     }
 
-    private function horasAdeudoMiercolesAnterior(Empleado $empleado, Carbon $inicioSemana): float
+    private function horasAdeudoMiercolesAnterior(
+        Empleado $empleado,
+        Carbon $inicioSemana,
+        ?Asistencia $asistenciaPrecargada = null,
+        bool $precargada = false
+    ): float
     {
         $miercolesAnterior = $inicioSemana->copy()->subDay();
 
@@ -919,10 +1156,12 @@ class NominaController extends Controller
             return 0;
         }
 
-        $asistencia = Asistencia::where('empleado_id', $empleado->id)
-            ->whereDate('fecha', $miercolesAnterior->format('Y-m-d'))
-            ->where('tipo_asistencia', 'Normal')
-            ->first();
+        $asistencia = $precargada
+            ? $asistenciaPrecargada
+            : Asistencia::where('empleado_id', $empleado->id)
+                ->whereDate('fecha', $miercolesAnterior->format('Y-m-d'))
+                ->where('tipo_asistencia', 'Normal')
+                ->first();
 
         if (!$asistencia || !$asistencia->hora_salida) {
             return 0;
@@ -1161,9 +1400,15 @@ class NominaController extends Controller
         ];
     }
 
-    private function resumenAjustesNomina(Empleado $empleado, ?Nomina $nomina, array $desglose, Carbon $inicioSemana): array
+    private function resumenAjustesNomina(
+        Empleado $empleado,
+        ?Nomina $nomina,
+        array $desglose,
+        Carbon $inicioSemana,
+        ?float $saldoHorasAdeudoPrecargado = null
+    ): array
     {
-        $saldoAnterior = $this->saldoHorasAdeudo($empleado->id, $inicioSemana);
+        $saldoAnterior = $saldoHorasAdeudoPrecargado ?? $this->saldoHorasAdeudo($empleado->id, $inicioSemana);
         $saldoFinal = max(0, $saldoAnterior + $desglose['horas_adeudo_generadas'] - $desglose['horas_adeudo_descontadas']);
         [$prestamoOtorgadoGuardado, $prestamoDescuentoGuardado] = $this->prestamoAplicadoAnterior(
             $nomina,

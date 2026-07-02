@@ -6,6 +6,7 @@ use App\Exports\AsistenciasSemanalesExport;
 use App\Models\Asistencia;
 use App\Models\DiaFestivo;
 use App\Models\Empleado;
+use App\Models\Nomina;
 use App\Services\FirebaseSyncService;
 use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
@@ -22,17 +23,154 @@ class AsistenciaController extends Controller
 
     public function index(Request $request)
     {
-        $empleados = Empleado::where('estatus', true)
+        $fechaReferencia = $this->fechaReferenciaAsistencias($request);
+        $inicioSemana = $this->inicioSemanaNomina($fechaReferencia);
+        $finSemana = $inicioSemana->copy()->addDays(6);
+        $empleadosBase = Empleado::where('estatus', true)
             ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), NULLIF(numero_empleado_baja, ''), id) AS UNSIGNED) ASC")
             ->orderBy('nombre_completo', 'asc')
             ->get();
-        $asistencias = Asistencia::with('empleado')->orderBy('fecha', 'desc')->get();
+        $empleadoIds = $empleadosBase->pluck('id')->all();
+        $asistencias = Asistencia::query()
+            ->select([
+                'id',
+                'empleado_id',
+                'fecha',
+                'tipo_asistencia',
+                'minutos_tarde',
+                'hora_entrada',
+                'hora_salida',
+                'horas_trabajadas',
+                'horas_extra',
+            ])
+            ->whereIn('empleado_id', $empleadoIds)
+            ->whereBetween('fecha', [
+                $inicioSemana->format('Y-m-d'),
+                $finSemana->format('Y-m-d'),
+            ])
+            ->orderBy('fecha', 'desc')
+            ->orderBy('empleado_id')
+            ->get()
+            ->map(fn (Asistencia $asistencia) => $this->asistenciaPayload($asistencia))
+            ->values();
 
         return Inertia::render('Asistencias/Index', [
-            'empleados' => $empleados,
+            'empleados' => $this->empleadosPantallaAsistencias($empleadosBase, $empleadoIds),
             'asistencias' => $asistencias,
+            'fechaSemana' => $fechaReferencia,
+            'fechaInicioSemana' => $inicioSemana->format('Y-m-d'),
+            'fechaFinSemana' => $finSemana->format('Y-m-d'),
             'previewImportacion' => $request->session()->get(self::PREVIEW_SESSION_KEY),
         ]);
+    }
+
+    private function fechaReferenciaAsistencias(Request $request): string
+    {
+        try {
+            return Carbon::parse($request->input('fecha', now()->format('Y-m-d')))->format('Y-m-d');
+        } catch (\Throwable $exception) {
+            return now()->format('Y-m-d');
+        }
+    }
+
+    private function empleadosPantallaAsistencias($empleados, array $empleadoIds)
+    {
+        $vacacionesCapturadas = Asistencia::query()
+            ->whereIn('empleado_id', $empleadoIds)
+            ->where('tipo_asistencia', 'Vacaciones')
+            ->selectRaw('empleado_id, COUNT(*) as total')
+            ->groupBy('empleado_id')
+            ->pluck('total', 'empleado_id');
+
+        $vacacionesPagadas = Nomina::query()
+            ->whereIn('empleado_id', $empleadoIds)
+            ->where('pagado', true)
+            ->selectRaw('empleado_id, COALESCE(SUM(dias_vacaciones_pagadas), 0) as total')
+            ->groupBy('empleado_id')
+            ->pluck('total', 'empleado_id');
+
+        $fechasFaltas = Asistencia::query()
+            ->whereIn('empleado_id', $empleadoIds)
+            ->where('tipo_asistencia', 'Falta')
+            ->orderBy('fecha', 'desc')
+            ->get(['empleado_id', 'fecha'])
+            ->filter(fn (Asistencia $asistencia) => !Carbon::parse($asistencia->fecha)->isWeekend())
+            ->groupBy('empleado_id')
+            ->map(fn ($items) => $items
+                ->map(fn (Asistencia $asistencia) => Carbon::parse($asistencia->fecha)->format('Y-m-d'))
+                ->values());
+
+        return $empleados->map(function (Empleado $empleado) use ($vacacionesCapturadas, $vacacionesPagadas, $fechasFaltas) {
+            $antiguedad = $this->antiguedadAniosEmpleado($empleado);
+            $vacacionesTotales = $this->diasVacacionesLey($antiguedad);
+            $vacacionesTomadas = round(max(
+                (float) ($vacacionesCapturadas[$empleado->id] ?? 0),
+                (float) ($vacacionesPagadas[$empleado->id] ?? 0)
+            ), 2);
+            $faltas = $fechasFaltas->get($empleado->id, collect())->values();
+
+            return [
+                'id' => $empleado->id,
+                'numero_empleado' => $empleado->numero_empleado,
+                'numero_empleado_baja' => $empleado->numero_empleado_baja,
+                'nombre_completo' => $empleado->nombre_completo,
+                'estatus' => $empleado->estatus,
+                'fecha_ingreso' => $empleado->fecha_ingreso,
+                'fecha_baja' => $empleado->fecha_baja,
+                'ajuste_vacaciones' => (float) ($empleado->ajuste_vacaciones ?? 0),
+                'es_estudiante' => (bool) ($empleado->es_estudiante ?? false),
+                'antiguedad_anios' => $antiguedad,
+                'dias_vacaciones_totales' => $vacacionesTotales,
+                'dias_vacaciones_tomados' => $vacacionesTomadas,
+                'dias_vacaciones_restantes' => ($vacacionesTotales - $vacacionesTomadas) + (float) ($empleado->ajuste_vacaciones ?? 0),
+                'dias_faltas_totales' => $faltas->count(),
+                'fechas_faltas' => $faltas,
+            ];
+        })->values();
+    }
+
+    private function asistenciaPayload(Asistencia $asistencia): array
+    {
+        return [
+            'id' => $asistencia->id,
+            'empleado_id' => $asistencia->empleado_id,
+            'fecha' => Carbon::parse($asistencia->fecha)->format('Y-m-d'),
+            'tipo_asistencia' => $asistencia->tipo_asistencia,
+            'minutos_tarde' => (int) ($asistencia->minutos_tarde ?? 0),
+            'hora_entrada' => $asistencia->hora_entrada ? substr((string) $asistencia->hora_entrada, 0, 5) : null,
+            'hora_salida' => $asistencia->hora_salida ? substr((string) $asistencia->hora_salida, 0, 5) : null,
+            'horas_trabajadas' => (float) ($asistencia->horas_trabajadas ?? 0),
+            'horas_extra' => (float) ($asistencia->horas_extra ?? 0),
+        ];
+    }
+
+    private function antiguedadAniosEmpleado(Empleado $empleado): int
+    {
+        if (!$empleado->fecha_ingreso) {
+            return 0;
+        }
+
+        $inicio = Carbon::parse($empleado->fecha_ingreso)->startOfDay();
+        $fin = $empleado->fecha_baja ? Carbon::parse($empleado->fecha_baja)->startOfDay() : now()->startOfDay();
+
+        if ($fin->lt($inicio)) {
+            return 0;
+        }
+
+        return (int) floor($inicio->diffInYears($fin));
+    }
+
+    private function diasVacacionesLey(int $anios): int
+    {
+        if ($anios < 1) {
+            return 0;
+        }
+
+        if ($anios <= 5) {
+            return 10 + ($anios * 2);
+        }
+
+        return 20 + ((int) ceil(($anios - 5) / 5) * 2);
     }
 
     public function exportarSemana(Request $request)
@@ -129,7 +267,9 @@ class AsistenciaController extends Controller
 
         FirebaseSyncService::sincronizarAsistencia($asistencia);
 
-        return redirect()->back()->with('success', 'Asistencia registrada con exito.');
+        return redirect()
+            ->route('asistencias.index', ['fecha' => $request->fecha])
+            ->with('success', 'Asistencia registrada con exito.');
     }
 
     public function update(Request $request, $id)
@@ -151,7 +291,9 @@ class AsistenciaController extends Controller
 
         FirebaseSyncService::sincronizarAsistencia($asistencia->fresh('empleado'));
 
-        return redirect()->back()->with('success', 'Asistencia actualizada.');
+        return redirect()
+            ->route('asistencias.index', ['fecha' => $request->fecha])
+            ->with('success', 'Asistencia actualizada.');
     }
 
     public function destroy($id)

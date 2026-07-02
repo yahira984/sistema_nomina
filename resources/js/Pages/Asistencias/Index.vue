@@ -12,6 +12,18 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    fechaSemana: {
+        type: String,
+        default: '',
+    },
+    fechaInicioSemana: {
+        type: String,
+        default: '',
+    },
+    fechaFinSemana: {
+        type: String,
+        default: '',
+    },
     previewImportacion: {
         type: Object,
         default: null,
@@ -44,7 +56,7 @@ const empleadoRegistrosId = ref('');
 const ordenUltimosRegistros = ref('fecha_desc');
 const ordenControlEmpleados = ref('num_asc');
 const empleadoFaltasExpandido = ref(null);
-const fechaSemanaReferencia = ref(props.asistencias?.[0]?.fecha || fechaActualLocal());
+const fechaSemanaReferencia = ref(props.fechaSemana || props.asistencias?.[0]?.fecha || fechaActualLocal());
 const fechaRevisionReferencia = ref(
     props.previewImportacion?.resumen?.fecha_inicio
     || props.previewImportacion?.filas?.[0]?.fecha
@@ -81,6 +93,41 @@ const formUpload = useForm({
 
 const formRevision = useForm({
     filas: [],
+});
+
+let cargaSemanaTimer = null;
+let sincronizandoFechaServidor = false;
+
+const cargarSemanaRegistros = (fecha) => {
+    if (!fecha || sincronizandoFechaServidor) {
+        return;
+    }
+
+    clearTimeout(cargaSemanaTimer);
+    cargaSemanaTimer = setTimeout(() => {
+        router.get(route('asistencias.index'), { fecha }, {
+            only: ['asistencias', 'fechaSemana', 'fechaInicioSemana', 'fechaFinSemana'],
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, 250);
+};
+
+watch(() => props.fechaSemana, (fecha) => {
+    if (!fecha || fecha === fechaSemanaReferencia.value) {
+        return;
+    }
+
+    sincronizandoFechaServidor = true;
+    fechaSemanaReferencia.value = fecha;
+    nextTick(() => {
+        sincronizandoFechaServidor = false;
+    });
+});
+
+watch(fechaSemanaReferencia, (fecha) => {
+    cargarSemanaRegistros(fecha);
 });
 
 const crearUid = (fila, index) => {

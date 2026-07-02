@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
+use App\Support\DiasLaborados;
 
 class Empleado extends Model
 {
@@ -20,7 +21,8 @@ class Empleado extends Model
         'dias_vacaciones_restantes',
         'dias_faltas_totales',
         'fechas_faltas',
-        'dias_laborados'
+        'dias_laborados',
+        'dias_laborados_anio_baja',
     ];
 
     public function asistencias()
@@ -102,21 +104,19 @@ class Empleado extends Model
 
     public function getDiasLaboradosAttribute($value)
     {
-        if ((int) $value > 0) {
-            return (int) $value;
-        }
-
         if (!$this->fecha_ingreso || !$this->fecha_baja) {
-            return 0;
+            return (int) ($value ?? 0);
         }
 
-        $inicio = Carbon::parse($this->fecha_ingreso)->startOfDay();
-        $fin = Carbon::parse($this->fecha_baja)->startOfDay();
+        return DiasLaborados::contarSinDomingos($this->fecha_ingreso, $this->fecha_baja);
+    }
 
-        if ($fin->lt($inicio)) {
-            return 0;
+    public function getDiasLaboradosAnioBajaAttribute($value)
+    {
+        if (!$this->fecha_ingreso || !$this->fecha_baja) {
+            return (int) ($value ?? 0);
         }
 
-        return (int) $inicio->diffInDays($fin) + 1;
+        return DiasLaborados::contarAnioDeBaja($this->fecha_ingreso, $this->fecha_baja);
     }
 }

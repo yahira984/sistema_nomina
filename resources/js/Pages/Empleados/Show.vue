@@ -66,6 +66,7 @@ const numeroEmpleado = computed(() => props.empleado.numero_empleado || props.em
 const accesoActivo = computed(() => Boolean(props.accesoApp?.activo));
 const accesoUsuario = computed(() => props.accesoApp?.login_usuario || '');
 const accesoEmail = computed(() => props.accesoApp?.email_login || '');
+const anioBaja = computed(() => props.empleado.fecha_baja ? String(props.empleado.fecha_baja).substring(0, 4) : '');
 
 const accesoForm = useForm({
     usuario: accesoUsuario.value || String(numeroEmpleado.value || ''),
@@ -179,6 +180,10 @@ const desactivarAccesoApp = () => {
                                 <span>
                                     Baja registrada el {{ empleado.fecha_baja || 'sin fecha' }}
                                     · {{ empleado.dias_laborados || 0 }} días laborados
+                                </span>
+
+                                <span v-if="anioBaja" class="text-xs font-bold text-rose-500">
+                                    {{ empleado.dias_laborados_anio_baja || 0 }} dias laborados en {{ anioBaja }}
                                 </span>
 
                                 <button
