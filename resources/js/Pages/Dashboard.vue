@@ -721,7 +721,7 @@ const antiguedadOptions = computed(() => ({
               <div class="flex items-start gap-3">
                 <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-xs font-black text-amber-700 shadow-sm">{{ index + 1 }}</span>
                 <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm font-black text-slate-900">#{{ empleado.numero_empleado || 'S/N' }} - {{ empleado.nombre_completo }}</p>
+                  <p class="text-sm font-black leading-snug text-slate-900 break-words">#{{ empleado.numero_empleado || 'S/N' }} - {{ empleado.nombre_completo }}</p>
                   <p class="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{{ empleado.dias }} dia(s) con retardo</p>
                 </div>
                 <div class="shrink-0 text-right">
@@ -778,7 +778,7 @@ const antiguedadOptions = computed(() => ({
               <div class="flex items-start gap-3">
                 <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-xs font-black text-emerald-700 shadow-sm">{{ index + 1 }}</span>
                 <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm font-black text-slate-900">#{{ empleado.numero_empleado || 'S/N' }} - {{ empleado.nombre_completo }}</p>
+                  <p class="text-sm font-black leading-snug text-slate-900 break-words">#{{ empleado.numero_empleado || 'S/N' }} - {{ empleado.nombre_completo }}</p>
                   <p class="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{{ empleado.dias }} dia(s) puntual(es)</p>
                 </div>
                 <div class="shrink-0 text-right">

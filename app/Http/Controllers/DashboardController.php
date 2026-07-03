@@ -46,11 +46,12 @@ class DashboardController extends Controller
             ->whereDate('fecha_fin', $finSemana->format('Y-m-d'))
             ->where('pagado', false)
             ->count();
-        $faltasMes = $this->asistenciasDashboard()
+        $asistenciasMes = $this->asistenciasDashboard()
+            ->whereBetween('fecha', [$hoy->copy()->startOfMonth()->format('Y-m-d'), $hoy->copy()->endOfMonth()->format('Y-m-d')])
+            ->get(['fecha', 'tipo_asistencia', 'horas_extra']);
+
+        $faltasMes = $asistenciasMes
             ->where('tipo_asistencia', 'Falta')
-            ->whereMonth('fecha', $mesActual)
-            ->whereYear('fecha', $anioActual)
-            ->get(['fecha'])
             ->filter(fn ($asistencia) => !$this->esFinDeSemana($asistencia->fecha))
             ->count();
 
@@ -80,17 +81,24 @@ class DashboardController extends Controller
 
         // 4. DATOS GRÁFICA DE PASTEL (Estatus)
         $graficaAsistencia = [
-            $this->asistenciasDashboard()->whereMonth('fecha', $mesActual)->whereYear('fecha', $anioActual)->where('tipo_asistencia', 'Normal')->count(),
+            $asistenciasMes->where('tipo_asistencia', 'Normal')->count(),
             $faltasMes,
-            $this->asistenciasDashboard()->whereMonth('fecha', $mesActual)->whereYear('fecha', $anioActual)->where('tipo_asistencia', 'Vacaciones')->count(),
-            $this->asistenciasDashboard()->whereMonth('fecha', $mesActual)->whereYear('fecha', $anioActual)->where('tipo_asistencia', 'Incapacidad')->count(),
+            $asistenciasMes->where('tipo_asistencia', 'Vacaciones')->count(),
+            $asistenciasMes->where('tipo_asistencia', 'Incapacidad')->count(),
         ];
 
         // 5. DATOS GRÁFICA DE BARRAS (Horas Extra últimos 7 días)
+        $inicioUltimos7Dias = $hoy->copy()->subDays(6)->format('Y-m-d');
+        $finUltimos7Dias = $hoy->format('Y-m-d');
+        $horasExtraPorFecha = $this->asistenciasDashboard()
+            ->whereBetween('fecha', [$inicioUltimos7Dias, $finUltimos7Dias])
+            ->selectRaw('fecha, SUM(horas_extra) as total_horas')
+            ->groupBy('fecha')
+            ->pluck('total_horas', 'fecha');
         $ultimos7Dias = collect();
         for ($i = 6; $i >= 0; $i--) {
             $fecha = $hoy->copy()->subDays($i)->format('Y-m-d');
-            $horas = $this->asistenciasDashboard()->where('fecha', $fecha)->sum('horas_extra');
+            $horas = (float) ($horasExtraPorFecha[$fecha] ?? 0);
             $ultimos7Dias->push([
                 'fecha' => Carbon::parse($fecha)->format('d M'),
                 'horas' => round($horas, 2)
@@ -453,10 +461,8 @@ class DashboardController extends Controller
             ->filter(fn ($empleado) => $this->empleadoCuentaParaPuntualidad($empleado))
             ->values();
 
-        $total = $empleados->count();
-
-        if ($total === 0) {
-            return ['porcentaje' => 100, 'perfectos' => 0, 'evaluados' => 0];
+        if ($empleados->isEmpty()) {
+            return ['porcentaje' => 0, 'perfectos' => 0, 'evaluados' => 0];
         }
 
         $asistencias = Asistencia::with('empleado')
@@ -464,12 +470,22 @@ class DashboardController extends Controller
             ->whereBetween('fecha', [$inicioSemana->format('Y-m-d'), $finSemana->format('Y-m-d')])
             ->get();
 
-        $empleadosConFalta = $asistencias
+        $asistenciasEvaluadas = $asistencias
+            ->filter(fn ($asistencia) => !$this->esFinDeSemana($asistencia->fecha))
+            ->values();
+
+        $totalEvaluados = $asistenciasEvaluadas->pluck('empleado_id')->unique()->count();
+
+        if ($totalEvaluados === 0) {
+            return ['porcentaje' => 0, 'perfectos' => 0, 'evaluados' => 0];
+        }
+
+        $empleadosConFalta = $asistenciasEvaluadas
             ->where('tipo_asistencia', 'Falta')
             ->pluck('empleado_id')
             ->unique();
 
-        $empleadosConRetardoDescontable = $asistencias
+        $empleadosConRetardoDescontable = $asistenciasEvaluadas
             ->where('tipo_asistencia', 'Normal')
             ->filter(fn ($asistencia) => $this->asistenciaTieneRetardoValido($asistencia))
             ->groupBy('empleado_id')
@@ -477,12 +493,12 @@ class DashboardController extends Controller
             ->keys();
 
         $conIncidencia = $empleadosConFalta->merge($empleadosConRetardoDescontable)->unique()->count();
-        $perfectos = max(0, $total - $conIncidencia);
+        $perfectos = max(0, $totalEvaluados - $conIncidencia);
 
         return [
-            'porcentaje' => round(($perfectos / $total) * 100, 1),
+            'porcentaje' => round(($perfectos / $totalEvaluados) * 100, 1),
             'perfectos' => $perfectos,
-            'evaluados' => $total,
+            'evaluados' => $totalEvaluados,
         ];
     }
 

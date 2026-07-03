@@ -21,6 +21,9 @@ class NominaDiasFestivosTest extends TestCase
 
         $this->crearDiaFestivo('2026-09-16');
         $this->crearAsistencia($empleado, '2026-09-10');
+        $this->crearAsistencia($empleado, '2026-09-11');
+        $this->crearAsistencia($empleado, '2026-09-14');
+        $this->crearAsistencia($empleado, '2026-09-15');
         $this->crearFalta($empleado, '2026-09-16');
 
         $this->actingAs($admin)
@@ -47,6 +50,9 @@ class NominaDiasFestivosTest extends TestCase
 
         $this->crearDiaFestivo('2026-09-16');
         $this->crearAsistencia($empleado, '2026-09-10');
+        $this->crearAsistencia($empleado, '2026-09-11');
+        $this->crearAsistencia($empleado, '2026-09-14');
+        $this->crearAsistencia($empleado, '2026-09-15');
         $this->crearAsistencia($empleado, '2026-09-16', '08:00', '17:30', 9.5);
 
         $this->actingAs($admin)

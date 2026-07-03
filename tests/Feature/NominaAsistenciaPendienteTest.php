@@ -76,7 +76,7 @@ class NominaAsistenciaPendienteTest extends TestCase
         ]);
     }
 
-    public function test_nomina_can_be_generated_with_at_least_one_attendance_record_in_week(): void
+    public function test_nomina_with_partial_attendance_only_pays_captured_base_days(): void
     {
         $admin = User::factory()->create();
         $empleado = $this->crearEmpleado([
@@ -105,7 +105,8 @@ class NominaAsistenciaPendienteTest extends TestCase
             'empleado_id' => $empleado->id,
             'fecha_inicio' => '2026-06-18',
             'fecha_fin' => '2026-06-24',
-            'pago_neto' => 2200,
+            'total_percepciones' => 314.29,
+            'pago_neto' => 314.29,
         ]);
     }
 
