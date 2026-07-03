@@ -78,22 +78,25 @@ Route::middleware(['auth', 'approved', 'audit'])->group(function () {
         $clavesId = collect([
             "id-{$empleado->id}",
             "empleado-{$empleado->id}",
-            (string) $empleado->id,
         ])
             ->map($limpiarClave)
             ->filter()
             ->unique()
             ->values();
 
-        $numerosEmpleado = collect([$empleado->numero_empleado, $empleado->numero_empleado_baja])
+        $variantesNumero = fn ($valor) => collect([$valor])
             ->map($limpiarClave)
             ->filter()
             ->flatMap(fn ($clave) => [$clave, ltrim($clave, '0') ?: $clave])
             ->unique()
             ->values();
+        $numerosActuales = $variantesNumero($empleado->numero_empleado);
+        $numerosLegados = $empleado->estatus
+            ? $numerosActuales
+            : $numerosActuales->merge($variantesNumero($empleado->numero_empleado_baja))->unique()->values();
 
         $numeroUsadoPorActivo = false;
-        foreach ($numerosEmpleado as $numero) {
+        foreach ($numerosLegados as $numero) {
             $variantes = collect([$numero, ltrim($numero, '0') ?: $numero])->unique()->values()->all();
             if (Empleado::query()
                 ->whereKeyNot($empleado->id)
@@ -109,18 +112,22 @@ Route::middleware(['auth', 'approved', 'audit'])->group(function () {
         $directorioBajas = $directorioActivo . DIRECTORY_SEPARATOR . 'bajas';
         $busquedas = [];
 
-        if (!$empleado->estatus) {
-            $busquedas[] = [$directorioBajas, $clavesId->merge($numerosEmpleado)->unique()->values()];
-        }
-
-        $busquedas[] = [$directorioActivo, $clavesId];
-
-        if ($empleado->estatus || !$numeroUsadoPorActivo) {
-            $busquedas[] = [$directorioActivo, $numerosEmpleado];
-        }
-
         if ($empleado->estatus) {
+            $busquedas[] = [$directorioActivo, $numerosActuales];
+            $busquedas[] = [$directorioActivo, $clavesId];
             $busquedas[] = [$directorioBajas, $clavesId];
+        } else {
+            $busquedas[] = [$directorioBajas, $clavesId];
+
+            if (!$numeroUsadoPorActivo) {
+                $busquedas[] = [$directorioBajas, $numerosLegados];
+            }
+
+            $busquedas[] = [$directorioActivo, $clavesId];
+
+            if (!$numeroUsadoPorActivo) {
+                $busquedas[] = [$directorioActivo, $numerosLegados];
+            }
         }
 
         foreach ($busquedas as [$directorio, $claves]) {

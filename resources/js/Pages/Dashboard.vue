@@ -121,11 +121,58 @@ const textoDiasRestantes = (dias) => {
 }
 
 const modules = [
-  { name: 'Directorio de personal', desc: 'Alta, edición y consulta', route: 'empleados.index', icon: 'ti-address-book', tone: 'bg-blue-50 text-blue-600 border-blue-100', permission: 'empleados.view' },
-  { name: 'Control de asistencias', desc: 'Captura entradas y salidas', route: 'asistencias.index', icon: 'ti-clock-check', tone: 'bg-teal-50 text-teal-600 border-teal-100', permission: 'asistencias.view' },
-  { name: 'Generar nóminas', desc: 'Calcula pagos y recibos', route: 'nominas.index', icon: 'ti-file-invoice', tone: 'bg-amber-50 text-amber-600 border-amber-100', permission: 'nominas.view' },
+  { name: 'Directorio de personal', desc: 'Alta, edición y consulta', route: 'empleados.index', icon: 'ti-address-book', tone: 'bg-blue-50 text-blue-700 border-blue-100', accent: 'bg-blue-600', permission: 'empleados.view' },
+  { name: 'Control de asistencias', desc: 'Captura entradas, salidas e incidencias', route: 'asistencias.index', icon: 'ti-clock-check', tone: 'bg-teal-50 text-teal-700 border-teal-100', accent: 'bg-teal-600', permission: 'asistencias.view' },
+  { name: 'Generar nóminas', desc: 'Calcula pagos, recibos y diferencias', route: 'nominas.index', icon: 'ti-file-invoice', tone: 'bg-amber-50 text-amber-700 border-amber-100', accent: 'bg-amber-500', permission: 'nominas.view' },
 ]
 const visibleModules = computed(() => modules.filter(mod => can.value[mod.permission]))
+const saludOperativa = computed(() => {
+  if (Number(kpisDashboard.value.faltas || 0) > 0) return { label: 'Atención requerida', tone: 'border-rose-200 bg-rose-50 text-rose-700', icon: 'ti-alert-triangle' }
+  if (Number(props.nominasPendientes || 0) > 0) return { label: 'Pagos pendientes', tone: 'border-amber-200 bg-amber-50 text-amber-700', icon: 'ti-clock-dollar' }
+  return { label: 'Operación estable', tone: 'border-emerald-200 bg-emerald-50 text-emerald-700', icon: 'ti-shield-check' }
+})
+const metricCards = computed(() => [
+  {
+    label: 'Personal activo',
+    value: formatoNumero(props.totalEmpleados),
+    note: 'Colaboradores disponibles',
+    icon: 'ti-users',
+    surface: 'border-blue-100 bg-blue-50/70',
+    iconClass: 'border-blue-200 bg-white text-blue-700',
+    valueClass: 'text-blue-950',
+    rail: 'bg-blue-600',
+  },
+  {
+    label: 'Semana contable',
+    value: `No. ${props.semanaContable}`,
+    note: props.corteSemana,
+    icon: 'ti-calendar-stats',
+    surface: 'border-teal-100 bg-teal-50/70',
+    iconClass: 'border-teal-200 bg-white text-teal-700',
+    valueClass: 'text-teal-950',
+    rail: 'bg-teal-600',
+  },
+  {
+    label: 'Gasto semanal',
+    value: `$${props.gastoSemanal}`,
+    note: 'Nómina marcada como pagada',
+    icon: 'ti-cash',
+    surface: 'border-amber-100 bg-amber-50/80',
+    iconClass: 'border-amber-200 bg-white text-amber-700',
+    valueClass: 'text-amber-950',
+    rail: 'bg-amber-500',
+  },
+  {
+    label: 'Pendientes de pago',
+    value: formatoNumero(props.nominasPendientes),
+    note: props.nominasPendientes > 0 ? 'Requieren seguimiento' : 'Todo al día',
+    icon: props.nominasPendientes > 0 ? 'ti-clock-dollar' : 'ti-circle-check',
+    surface: props.nominasPendientes > 0 ? 'border-orange-100 bg-orange-50/80' : 'border-emerald-100 bg-emerald-50/80',
+    iconClass: props.nominasPendientes > 0 ? 'border-orange-200 bg-white text-orange-700' : 'border-emerald-200 bg-white text-emerald-700',
+    valueClass: props.nominasPendientes > 0 ? 'text-orange-950' : 'text-emerald-950',
+    rail: props.nominasPendientes > 0 ? 'bg-orange-500' : 'bg-emerald-600',
+  },
+])
 
 // Configuración ApexCharts (Light Theme Corporativo)
 const donutOptions = {
@@ -271,39 +318,74 @@ const antiguedadOptions = computed(() => ({
 
   <AuthenticatedLayout>
 
-    <div class="mb-6 flex flex-col justify-between gap-4 md:mb-8 md:flex-row md:items-center">
-      <div>
-        <h1 class="font-['Sora'] text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">Resumen Operativo</h1>
-        <p class="text-sm font-medium text-slate-500 mt-1">Sistema PROMATEC-LUGARTH · Semana {{ semanaContable }}</p>
-      </div>
-      <div class="flex w-full items-center justify-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 shadow-sm sm:w-auto">
-        <i class="ti ti-calendar text-blue-600 text-lg"></i>
-        <span class="text-sm font-bold text-blue-700">Corte: {{ corteSemana }}</span>
-      </div>
-    </div>
+    <section class="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:mb-8">
+      <div class="grid gap-0 xl:grid-cols-12">
+        <div class="relative overflow-hidden border-b border-slate-100 bg-slate-950 p-6 text-white sm:p-8 xl:col-span-7 xl:border-b-0 xl:border-r">
+          <div class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-teal-400 via-blue-500 to-amber-400"></div>
+          <div class="relative z-10">
+            <div class="mb-5 flex flex-wrap items-center gap-2">
+              <span :class="['inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-black uppercase', saludOperativa.tone]">
+                <i :class="['ti', saludOperativa.icon]" aria-hidden="true"></i>
+                {{ saludOperativa.label }}
+              </span>
+              <span class="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-black uppercase text-slate-100">
+                <i class="ti ti-calendar-week" aria-hidden="true"></i>
+                Semana {{ semanaContable }}
+              </span>
+            </div>
 
-    <div class="mb-6 grid grid-cols-1 gap-4 md:mb-8 md:grid-cols-3 md:gap-6">
-      <div class="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md sm:p-6">
-        <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform"><i class="ti ti-users text-6xl text-blue-600"></i></div>
-        <div class="h-12 w-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl mb-4 border border-blue-100"><i class="ti ti-users"></i></div>
-        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Personal activo</p>
-        <p class="font-['Sora'] text-2xl font-extrabold text-slate-800 sm:text-3xl">{{ totalEmpleados }}</p>
-      </div>
+            <h1 class="font-['Sora'] text-3xl font-black leading-tight tracking-tight sm:text-4xl">
+              Centro de control PROMATEC LUGARTH
+            </h1>
+            <p class="mt-3 max-w-2xl text-sm font-semibold leading-6 text-slate-300">
+              Operación, nómina, asistencias y recursos humanos en una vista lista para decidir rápido.
+            </p>
 
-      <div class="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md sm:p-6">
-        <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform"><i class="ti ti-calendar-stats text-6xl text-teal-600"></i></div>
-        <div class="h-12 w-12 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-2xl mb-4 border border-teal-100"><i class="ti ti-calendar-stats"></i></div>
-        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Semana contable</p>
-        <p class="font-['Sora'] text-2xl font-extrabold text-slate-800 sm:text-3xl">No. {{ semanaContable }}</p>
-      </div>
+            <div class="mt-6 grid gap-3 sm:grid-cols-3">
+              <div class="rounded-xl border border-white/10 bg-white/10 p-3">
+                <p class="text-[10px] font-black uppercase text-slate-400">Corte</p>
+                <p class="mt-1 text-sm font-black text-white">{{ corteSemana }}</p>
+              </div>
+              <div class="rounded-xl border border-white/10 bg-white/10 p-3">
+                <p class="text-[10px] font-black uppercase text-slate-400">Puntualidad</p>
+                <p class="mt-1 text-sm font-black text-emerald-300">{{ formatoNumero(puntualidadData.porcentaje) }}%</p>
+              </div>
+              <div class="rounded-xl border border-white/10 bg-white/10 p-3">
+                <p class="text-[10px] font-black uppercase text-slate-400">Faltas del mes</p>
+                <p class="mt-1 text-sm font-black text-rose-300">{{ kpisDashboard.faltas }}</p>
+              </div>
+            </div>
 
-      <div class="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md sm:p-6">
-        <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform"><i class="ti ti-cash text-6xl text-amber-500"></i></div>
-        <div class="h-12 w-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-2xl mb-4 border border-amber-100"><i class="ti ti-cash"></i></div>
-        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Gasto semanal</p>
-        <p class="break-words font-['Sora'] text-2xl font-extrabold text-slate-800 sm:text-3xl">${{ gastoSemanal }}</p>
+            <div class="mt-6 flex flex-wrap gap-3">
+              <Link v-if="can['asistencias.view']" :href="route('asistencias.index')" class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-black uppercase text-slate-950 shadow-sm transition hover:bg-teal-50">
+                <i class="ti ti-clock-check text-lg" aria-hidden="true"></i>
+                Ver asistencias
+              </Link>
+              <Link v-if="can['nominas.view']" :href="route('nominas.index')" class="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-xs font-black uppercase text-white transition hover:bg-white/15">
+                <i class="ti ti-file-invoice text-lg" aria-hidden="true"></i>
+                Ir a nóminas
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid gap-3 bg-slate-50 p-5 sm:grid-cols-2 sm:p-6 xl:col-span-5">
+          <article v-for="card in metricCards" :key="card.label" :class="['relative overflow-hidden rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md', card.surface]">
+            <div :class="['absolute left-0 top-0 h-full w-1', card.rail]"></div>
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">{{ card.label }}</p>
+                <p :class="['mt-2 break-words font-black leading-tight', card.valueClass]" class="font-['Sora'] text-2xl">{{ card.value }}</p>
+              </div>
+              <div :class="['flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border text-xl shadow-sm', card.iconClass]">
+                <i :class="['ti', card.icon]" aria-hidden="true"></i>
+              </div>
+            </div>
+            <p class="mt-3 text-xs font-bold text-slate-500">{{ card.note }}</p>
+          </article>
+        </div>
       </div>
-    </div>
+    </section>
 
     <section class="mb-8 overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-teal-50 shadow-sm">
       <div class="grid gap-0 lg:grid-cols-12">
@@ -634,64 +716,87 @@ const antiguedadOptions = computed(() => ({
       </div>
     </section>
 
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-8">
-
-      <div class="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div class="px-6 py-5 border-b border-slate-100 bg-slate-50/50">
-          <h2 class="font-['Sora'] text-base font-bold text-slate-800">Módulos principales</h2>
-          <p class="text-xs text-slate-500 mt-0.5">Accesos directos de operación</p>
+    <section class="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-5">
+      <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:col-span-3">
+        <div class="flex flex-col gap-3 border-b border-slate-100 bg-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div>
+            <p class="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-blue-700">
+              <i class="ti ti-bolt" aria-hidden="true"></i>
+              Operación diaria
+            </p>
+            <h2 class="mt-3 font-['Sora'] text-lg font-black text-slate-950">Módulos principales</h2>
+            <p class="text-sm font-semibold text-slate-500">Accesos directos para resolver lo más importante.</p>
+          </div>
+          <span class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black uppercase text-slate-500">
+            {{ visibleModules.length }} disponible(s)
+          </span>
         </div>
-        <div class="p-2">
-          <Link v-for="mod in visibleModules" :key="mod.route" :href="route(mod.route)" class="flex items-center gap-4 p-4 rounded-xl hover:bg-slate-50 transition-colors group">
-            <div :class="['h-12 w-12 rounded-xl flex items-center justify-center text-xl shrink-0 border', mod.tone]">
-              <i :class="['ti', mod.icon]"></i>
+
+        <div class="grid gap-3 p-4 sm:p-5 md:grid-cols-3">
+          <Link v-for="mod in visibleModules" :key="mod.route" :href="route(mod.route)" class="group relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md">
+            <div :class="['absolute inset-x-0 top-0 h-1', mod.accent]"></div>
+            <div :class="['mb-4 flex h-12 w-12 items-center justify-center rounded-xl border text-xl shadow-sm', mod.tone]">
+              <i :class="['ti', mod.icon]" aria-hidden="true"></i>
             </div>
-            <div class="flex-1">
-              <p class="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition-colors">{{ mod.name }}</p>
-              <p class="text-xs font-medium text-slate-500 mt-0.5">{{ mod.desc }}</p>
+            <p class="text-sm font-black leading-snug text-slate-900 transition group-hover:text-blue-700">{{ mod.name }}</p>
+            <p class="mt-2 text-xs font-semibold leading-5 text-slate-500">{{ mod.desc }}</p>
+            <div class="mt-4 inline-flex items-center gap-1 text-xs font-black uppercase text-slate-400 transition group-hover:text-blue-600">
+              Abrir
+              <i class="ti ti-arrow-right text-base transition group-hover:translate-x-1" aria-hidden="true"></i>
             </div>
-            <i class="ti ti-chevron-right text-slate-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all"></i>
           </Link>
         </div>
       </div>
 
-      <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col">
-        <div class="px-6 py-5 border-b border-slate-100 bg-slate-50/50">
-          <h2 class="font-['Sora'] text-base font-bold text-slate-800">Estado del sistema</h2>
-          <p class="text-xs text-slate-500 mt-0.5">Indicadores en tiempo real</p>
-        </div>
-        <div class="flex flex-1 flex-col p-5 sm:p-6">
-          <div class="space-y-4 flex-1">
-            <div class="flex items-center justify-between pb-4 border-b border-slate-100">
-              <span class="text-sm font-semibold text-slate-600">Faltas del mes</span>
-              <span :class="['px-3 py-1 rounded-full text-xs font-bold border', kpisDashboard.faltas > 0 ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200']">
-                {{ kpisDashboard.faltas }} faltas
-              </span>
+      <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:col-span-2">
+        <div class="border-b border-slate-100 bg-slate-50 px-5 py-5 sm:px-6">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <h2 class="font-['Sora'] text-lg font-black text-slate-950">Estado del sistema</h2>
+              <p class="text-sm font-semibold text-slate-500">Señales rápidas para operar sin ruido.</p>
             </div>
-            <div class="flex items-center justify-between pb-4 border-b border-slate-100">
-              <span class="text-sm font-semibold text-slate-600">Estatus nóminas</span>
-              <span class="px-3 py-1 rounded-full text-xs font-bold border bg-emerald-50 text-emerald-600 border-emerald-200">Al día</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-sm font-semibold text-slate-600">Pendientes de pago</span>
-              <span :class="['px-3 py-1 rounded-full text-xs font-bold border', nominasPendientes > 0 ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200']">
-                {{ nominasPendientes }} pendiente(s)
-              </span>
+            <div :class="['flex h-12 w-12 items-center justify-center rounded-xl border text-xl', saludOperativa.tone]">
+              <i :class="['ti', saludOperativa.icon]" aria-hidden="true"></i>
             </div>
           </div>
-          <div class="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row">
-            <Link v-if="can['nominas.view']" :href="route('nominas.index')" class="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-2.5 rounded-lg text-center transition-colors shadow-sm">
-              <i class="ti ti-file-plus mr-1" aria-hidden="true"></i>
-              Nueva nómina
+        </div>
+
+        <div class="space-y-3 p-5 sm:p-6">
+          <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-sm font-black text-slate-800">Faltas del mes</span>
+              <span :class="['rounded-full border px-3 py-1 text-xs font-black', kpisDashboard.faltas > 0 ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200']">
+                {{ kpisDashboard.faltas }}
+              </span>
+            </div>
+            <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+              <div :class="['h-full rounded-full', kpisDashboard.faltas > 0 ? 'bg-rose-500' : 'bg-emerald-500']" :style="{ width: kpisDashboard.faltas > 0 ? '66%' : '100%' }"></div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-sm font-black text-slate-800">Pendientes de pago</span>
+              <span :class="['rounded-full border px-3 py-1 text-xs font-black', nominasPendientes > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200']">
+                {{ nominasPendientes }}
+              </span>
+            </div>
+            <p class="mt-2 text-xs font-semibold text-slate-500">{{ nominasPendientes > 0 ? 'Hay pagos por cerrar.' : 'Nóminas al día.' }}</p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 pt-2">
+            <Link v-if="can['nominas.view']" :href="route('nominas.index')" class="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 py-3 text-xs font-black uppercase text-white shadow-sm transition hover:bg-slate-800">
+              <i class="ti ti-file-plus text-lg" aria-hidden="true"></i>
+              Nómina
             </Link>
-            <Link v-if="can['empleados.view']" :href="route('empleados.index')" class="flex-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold py-2.5 rounded-lg text-center transition-colors shadow-sm">
-              <i class="ti ti-user-plus mr-1" aria-hidden="true"></i>
-              Nuevo empleado
+            <Link v-if="can['empleados.view']" :href="route('empleados.index')" class="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs font-black uppercase text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
+              <i class="ti ti-user-plus text-lg" aria-hidden="true"></i>
+              Empleado
             </Link>
           </div>
         </div>
       </div>
-    </div>
+    </section>
 
     <section class="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div class="border-b border-slate-100 bg-slate-50/60 px-5 py-4 sm:px-6">
@@ -807,49 +912,78 @@ const antiguedadOptions = computed(() => ({
       </div>
     </section>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <h2 class="font-['Sora'] text-sm font-bold text-slate-800 mb-1">Tipos de Asistencia</h2>
-        <p class="text-xs text-slate-500 mb-6">Distribución del mes actual</p>
-        <div class="flex justify-center"><VueApexCharts width="100%" height="280" :options="donutOptions" :series="graficaAsistencia" /></div>
-      </div>
-
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <h2 class="font-['Sora'] text-sm font-bold text-slate-800 mb-1">Tendencia de Horas Extra</h2>
-        <p class="text-xs text-slate-500 mb-4">Histórico general últimos 7 días</p>
-        <VueApexCharts width="100%" height="280" :options="barOptions" :series="barSeries" />
-      </div>
-
-      <div class="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-purple-50 p-5 shadow-sm sm:p-6">
-        <i class="ti ti-confetti absolute -right-4 -bottom-4 text-8xl text-indigo-500/10"></i>
-        <div class="relative z-10">
-          <div class="flex items-center gap-2 mb-1">
-            <i class="ti ti-cake text-indigo-600 text-xl"></i>
-            <h2 class="font-['Sora'] text-sm font-bold text-indigo-950">Próximos Cumpleaños</h2>
+    <section class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <article class="overflow-hidden rounded-2xl border border-teal-100 bg-white shadow-sm">
+        <div class="border-b border-teal-100 bg-teal-50 px-5 py-4 sm:px-6">
+          <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl border border-teal-200 bg-white text-xl text-teal-700">
+              <i class="ti ti-chart-donut" aria-hidden="true"></i>
+            </div>
+            <div>
+              <h2 class="font-['Sora'] text-sm font-black text-teal-950">Tipos de asistencia</h2>
+              <p class="text-xs font-semibold text-teal-700/70">Distribución del mes actual</p>
+            </div>
           </div>
-          <p class="text-xs text-indigo-600/70 font-medium mb-6">Colaboradores de este mes</p>
+        </div>
+        <div class="p-5 sm:p-6">
+          <VueApexCharts width="100%" height="280" :options="donutOptions" :series="graficaAsistencia" />
+        </div>
+      </article>
 
-          <div v-if="cumpleanerosMes.length > 0" class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-            <div v-for="emp in cumpleanerosMes" :key="emp.id" class="bg-white/60 backdrop-blur-sm border border-white/80 p-3 rounded-xl flex items-center justify-between shadow-sm">
-              <div class="min-w-0 pr-3">
-                <p class="text-sm font-bold text-indigo-950 truncate">{{ emp.nombre_completo }}</p>
-                <p class="text-[10px] font-semibold text-indigo-400 mt-0.5 uppercase tracking-wider">ID: {{ emp.numero_empleado || emp.id }}</p>
+      <article class="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
+        <div class="border-b border-blue-100 bg-blue-50 px-5 py-4 sm:px-6">
+          <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-200 bg-white text-xl text-blue-700">
+              <i class="ti ti-chart-bar" aria-hidden="true"></i>
+            </div>
+            <div>
+              <h2 class="font-['Sora'] text-sm font-black text-blue-950">Horas extra</h2>
+              <p class="text-xs font-semibold text-blue-700/70">Histórico general últimos 7 días</p>
+            </div>
+          </div>
+        </div>
+        <div class="p-5 sm:p-6">
+          <VueApexCharts width="100%" height="280" :options="barOptions" :series="barSeries" />
+        </div>
+      </article>
+
+      <article class="overflow-hidden rounded-2xl border border-indigo-100 bg-white shadow-sm">
+        <div class="border-b border-indigo-100 bg-indigo-50 px-5 py-4 sm:px-6">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <div class="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-200 bg-white text-xl text-indigo-700">
+                <i class="ti ti-cake" aria-hidden="true"></i>
               </div>
-              <span :class="['px-2.5 py-1 rounded-md text-xs font-bold border whitespace-nowrap', emp.es_hoy ? 'bg-indigo-600 text-white border-indigo-700 shadow-md animate-pulse' : 'bg-indigo-100 text-indigo-700 border-indigo-200']">
-                {{ emp.es_hoy ? '¡Es hoy!' : `Día ${emp.dia}` }}
+              <div>
+                <h2 class="font-['Sora'] text-sm font-black text-indigo-950">Cumpleaños</h2>
+                <p class="text-xs font-semibold text-indigo-700/70">Colaboradores de este mes</p>
+              </div>
+            </div>
+            <span class="rounded-full border border-indigo-200 bg-white px-3 py-1 text-[10px] font-black uppercase text-indigo-700">{{ cumpleanerosMes.length }}</span>
+          </div>
+        </div>
+
+        <div class="p-5 sm:p-6">
+          <div v-if="cumpleanerosMes.length > 0" class="max-h-72 space-y-3 overflow-y-auto pr-2 custom-scrollbar">
+            <div v-for="emp in cumpleanerosMes" :key="emp.id" class="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 shadow-sm">
+              <div class="min-w-0">
+                <p class="truncate text-sm font-black text-indigo-950">{{ emp.nombre_completo }}</p>
+                <p class="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-500">#{{ emp.numero_empleado || emp.id }}</p>
+              </div>
+              <span :class="['shrink-0 rounded-lg border px-2.5 py-1 text-xs font-black whitespace-nowrap', emp.es_hoy ? 'bg-indigo-700 text-white border-indigo-800 shadow-sm' : 'bg-white text-indigo-700 border-indigo-200']">
+                {{ emp.es_hoy ? 'Hoy' : `Día ${emp.dia}` }}
               </span>
             </div>
           </div>
 
-          <div v-else class="flex flex-col items-center justify-center py-10 opacity-60">
-            <i class="ti ti-mood-sad text-4xl text-indigo-300 mb-2"></i>
-            <p class="text-sm font-semibold text-indigo-800">No hay pasteles este mes</p>
+          <div v-else class="flex min-h-44 flex-col items-center justify-center rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 text-center">
+            <i class="ti ti-calendar-heart text-4xl text-indigo-300" aria-hidden="true"></i>
+            <p class="mt-2 text-sm font-black text-indigo-900">Sin cumpleaños este mes</p>
+            <p class="mt-1 text-xs font-semibold text-indigo-500">La agenda está libre por ahora.</p>
           </div>
         </div>
-      </div>
-
-    </div>
+      </article>
+    </section>
 
   </AuthenticatedLayout>
 </template>

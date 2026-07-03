@@ -1,7 +1,7 @@
-const PHOTO_VERSION = '20260622-2';
+const PHOTO_VERSION = '20260703-photo-key-fix';
 
 export const clavesFotoEmpleado = (empleado) => {
-    const raw = String(empleado?.id || empleado?.numero_empleado || empleado?.numero_empleado_baja || '').trim();
+    const raw = String(empleado?.id || '').trim();
     if (!raw) return [];
 
     return [raw];

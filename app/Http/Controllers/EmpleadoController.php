@@ -320,11 +320,10 @@ class EmpleadoController extends Controller
 
         $numero = $this->limpiarClaveFoto($empleado->numero_empleado ?: $empleado->numero_empleado_baja);
         $claves = collect([
-            "id-{$empleado->id}",
-            "empleado-{$empleado->id}",
-            (string) $empleado->id,
             $numero,
             ltrim($numero, '0') ?: $numero,
+            "id-{$empleado->id}",
+            "empleado-{$empleado->id}",
         ])->filter()->unique();
 
         foreach ($claves as $clave) {
@@ -357,14 +356,19 @@ class EmpleadoController extends Controller
             mkdir($directorioActivo, 0755, true);
         }
 
-        $numero = $this->limpiarClaveFoto($empleado->numero_empleado ?: $empleado->numero_empleado_baja);
+        $numeroActual = $this->limpiarClaveFoto($empleado->numero_empleado);
+        $numeros = collect([$empleado->numero_empleado, $empleado->numero_empleado_baja])
+            ->map(fn ($numero) => $this->limpiarClaveFoto($numero))
+            ->filter()
+            ->flatMap(fn ($numero) => [$numero, ltrim($numero, '0') ?: $numero]);
         $claves = collect([
             "id-{$empleado->id}",
             "empleado-{$empleado->id}",
-            (string) $empleado->id,
-            $numero,
-            ltrim($numero, '0') ?: $numero,
-        ])->filter()->unique();
+        ])
+            ->merge($numeros)
+            ->filter()
+            ->unique();
+        $claveDestino = $numeroActual ?: "id-{$empleado->id}";
 
         foreach ($claves as $clave) {
             foreach ($this->extensionesFotoEmpleado() as $extension) {
@@ -374,7 +378,7 @@ class EmpleadoController extends Controller
                     continue;
                 }
 
-                $destino = $directorioActivo . DIRECTORY_SEPARATOR . "id-{$empleado->id}.{$extension}";
+                $destino = $directorioActivo . DIRECTORY_SEPARATOR . "{$claveDestino}.{$extension}";
 
                 if (is_file($destino)) {
                     if (@copy($origen, $destino)) {

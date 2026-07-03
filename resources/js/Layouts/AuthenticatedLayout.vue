@@ -74,7 +74,7 @@ function toggleSidebar() {
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-[#f4f7f9] font-['DM_Sans'] text-slate-800">
+  <div class="flex min-h-screen bg-slate-50 font-['DM_Sans'] text-slate-800">
     
     <!-- Overlay Mobile -->
     <div v-if="isSidebarOpenMobile" class="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm lg:hidden" @click="isSidebarOpenMobile = false"></div>
@@ -119,7 +119,7 @@ function toggleSidebar() {
     <!-- Main Wrapper -->
     <div class="flex min-w-0 flex-1 flex-col">
       <!-- Topbar Glassmorphism -->
-      <header class="sticky top-0 z-30 flex h-20 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/80 px-4 backdrop-blur-lg sm:px-8">
+      <header class="sticky top-0 z-30 flex h-20 shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/90 px-4 shadow-sm shadow-slate-200/40 backdrop-blur-lg sm:px-8">
         <div class="flex items-center gap-4">
           <button @click="toggleSidebar" class="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:bg-slate-50 hover:text-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-500/10">
             <i class="ti ti-menu-2 text-xl"></i>
@@ -148,8 +148,8 @@ function toggleSidebar() {
       </header>
 
       <!-- Page Content -->
-      <main class="flex-1 overflow-x-hidden p-4 sm:p-8">
-        <div class="mx-auto max-w-7xl">
+      <main class="flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">
+        <div class="mx-auto max-w-[1500px]">
           <section v-if="$slots.header" class="mb-6 rounded-3xl border border-slate-200/60 bg-white p-6 shadow-sm sm:mb-8 sm:p-8">
             <slot name="header" />
           </section>
