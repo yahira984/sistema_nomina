@@ -78,6 +78,7 @@ Route::middleware(['auth', 'approved', 'audit'])->group(function () {
         $clavesId = collect([
             "id-{$empleado->id}",
             "empleado-{$empleado->id}",
+            (string) $empleado->id,
         ])
             ->map($limpiarClave)
             ->filter()
@@ -164,6 +165,7 @@ Route::middleware(['auth', 'approved', 'audit'])->group(function () {
     Route::get('/nominas/excel-individual/{empleado_id}', [NominaController::class, 'exportarExcelIndividual'])->middleware('permission:nominas.export')->name('nominas.excel-individual');
     Route::get('/nominas/recibos-masivos', [NominaController::class, 'generarRecibosMasivos'])->middleware('permission:nominas.export')->name('nominas.recibos-masivos');
     Route::get('/nominas/diferencia-imss/{semana}', [NominaController::class, 'reporteDiferenciaImss'])->middleware('permission:nominas.export')->name('nominas.diferencia-imss');
+    Route::get('/nominas/diferencia-imss/{semana}/recibos', [NominaController::class, 'recibosDiferenciaImss'])->middleware('permission:nominas.export')->name('nominas.diferencia-imss.recibos');
     Route::get('/nominas/descargar/{nomina}', [NominaController::class, 'descargar'])->middleware('permission:nominas.export')->name('nominas.descargar');
     Route::put('/nominas/ajustes/{empleado_id}', [NominaController::class, 'actualizarAjustes'])->middleware('permission:nominas.manage')->name('nominas.ajustes');
     Route::put('/nominas/diferencia-imss/{empleado_id}', [NominaController::class, 'actualizarDiferenciaImss'])->middleware('permission:nominas.manage')->name('nominas.diferencia-imss.update');

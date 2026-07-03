@@ -149,6 +149,7 @@
                         $fechaIngreso = $empleado->fecha_ingreso
                             ? \Carbon\Carbon::parse($empleado->fecha_ingreso)->format('d/m/Y')
                             : '';
+                        $numeroEmpleado = $empleado->numero_empleado ?? $empleado->numero_empleado_baja ?? 'S/N';
                         $horasCumplirTexto = $horasCumplir !== '' && $horasCumplir !== null
                             ? rtrim(rtrim(number_format((float) $horasCumplir, 2, '.', ''), '0'), '.')
                             : '';
@@ -162,7 +163,7 @@
                             <table class="meta">
                                 <tr>
                                     <td class="label">Nombre del prestante:</td>
-                                    <td class="line" colspan="3">{{ strtoupper($empleado->nombre_completo ?? '') }}</td>
+                                    <td class="line" colspan="3">#{{ $numeroEmpleado }} - {{ strtoupper($empleado->nombre_completo ?? '') }}</td>
                                 </tr>
                                 <tr>
                                     <td class="label">Universidad:</td>

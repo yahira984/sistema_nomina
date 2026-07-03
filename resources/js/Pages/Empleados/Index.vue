@@ -19,8 +19,16 @@ const normalizarNumeroEmpleado = (numero) => {
     return texto.replace(/^0+/, '') || texto || '';
 };
 
+const empleadoActivo = (empleado) => Boolean(Number(empleado.estatus ?? 0));
+
+const numeroDirectorio = (empleado) => {
+    if (empleadoActivo(empleado)) return empleado.numero_empleado || '';
+
+    return empleado.numero_empleado || empleado.numero_empleado_baja || '';
+};
+
 const valorNumeroEmpleado = (empleado) => {
-    const valor = parseInt(normalizarNumeroEmpleado(empleado.numero_empleado || empleado.numero_empleado_baja), 10);
+    const valor = parseInt(normalizarNumeroEmpleado(numeroDirectorio(empleado)), 10);
     return Number.isFinite(valor) ? valor : Number.MAX_SAFE_INTEGER;
 };
 
@@ -47,9 +55,9 @@ const form = useForm({
 
 const empleadosFiltrados = computed(() => {
     let resultado = props.empleados.filter(emp => {
-        if (filtroEstado.value === 'activos') return Boolean(Number(emp.estatus ?? 0));
-        if (filtroEstado.value === 'prestamo') return Boolean(Number(emp.estatus ?? 0)) && Number(emp.saldo_prestamo ?? 0) > 0;
-        if (filtroEstado.value === 'papelera') return !Boolean(Number(emp.estatus ?? 0));
+        if (filtroEstado.value === 'activos') return empleadoActivo(emp);
+        if (filtroEstado.value === 'prestamo') return empleadoActivo(emp) && Number(emp.saldo_prestamo ?? 0) > 0;
+        if (filtroEstado.value === 'papelera') return !empleadoActivo(emp);
         return true;
     });
 
@@ -71,7 +79,7 @@ const empleadosFiltrados = computed(() => {
     return ordenarEmpleadosDirectorio(resultado);
 });
 
-const empleadosActivos = computed(() => props.empleados.filter(emp => Boolean(Number(emp.estatus ?? 0))).length);
+const empleadosActivos = computed(() => props.empleados.filter(emp => empleadoActivo(emp)).length);
 const empleadosBaja = computed(() => props.empleados.length - empleadosActivos.value);
 const tituloDirectorio = computed(() => {
     if (filtroEstado.value === 'papelera') return 'Papelera de bajas';
@@ -91,7 +99,7 @@ const sueldoSemanalEmpleado = (empleado) => {
 const moneda = (valor) => Number(valor ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const saldoPrestamoEmpleado = (empleado) => Number(empleado.saldo_prestamo ?? 0);
 const tieneDeuda = (empleado) => saldoPrestamoEmpleado(empleado) > 0;
-const empleadosConDeuda = computed(() => props.empleados.filter(emp => Boolean(Number(emp.estatus ?? 0)) && tieneDeuda(emp)).length);
+const empleadosConDeuda = computed(() => props.empleados.filter(emp => empleadoActivo(emp) && tieneDeuda(emp)).length);
 
 const submitForm = () => {
     if (Number(form.saldo_prestamo || 0) <= 0) form.cuota_prestamo = 0;
@@ -114,8 +122,32 @@ const editarEmpleado = (empleado) => {
 };
 
 const cancelarEdicion = () => { editando.value = false; empleadoId.value = null; form.reset(); };
-const eliminarEmpleado = (id, nombre) => { if (confirm(`¿Dar de baja a ${nombre}?`)) router.delete(route('empleados.destroy', id)); };
-const restaurarEmpleado = (id, nombre) => { if (confirm(`¿Restaurar a ${nombre}?`)) router.put(route('empleados.restaurar', id)); };
+const recargarEmpleados = () => router.reload({ only: ['empleados'], preserveScroll: true, preserveState: false });
+const eliminarEmpleado = (id, nombre) => {
+    if (!confirm(`¿Dar de baja a ${nombre}?`)) return;
+
+    router.delete(route('empleados.destroy', id), {
+        preserveScroll: true,
+        preserveState: false,
+        onSuccess: () => {
+            filtroEstado.value = 'papelera';
+            recargarEmpleados();
+        },
+    });
+};
+const restaurarEmpleado = (id, nombre) => {
+    if (!confirm(`¿Restaurar a ${nombre}?`)) return;
+
+    router.put(route('empleados.restaurar', id), {}, {
+        preserveScroll: true,
+        preserveState: false,
+        onSuccess: (pageResponse) => {
+            const mensaje = pageResponse.props.flash?.success;
+            if (mensaje) window.alert(mensaje);
+            recargarEmpleados();
+        },
+    });
+};
 </script>
 
 <template>
@@ -365,10 +397,10 @@ const restaurarEmpleado = (id, nombre) => { if (confirm(`¿Restaurar a ${nombre}
                                 <td class="px-6 py-4">
                                     <div class="flex items-center gap-3">
                                         <div class="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-blue-100 bg-blue-50 text-xs font-black text-blue-600 shadow-sm">
-                                            <span>{{ empleado.numero_empleado || empleado.numero_empleado_baja || 'S/N' }}</span>
+                                            <span>{{ numeroDirectorio(empleado) || 'S/N' }}</span>
                                             <img
                                                 v-if="clavesFotoEmpleado(empleado).length"
-                                                :key="`foto-${empleado.id}-${empleado.numero_empleado || empleado.numero_empleado_baja || empleado.id}`"
+                                                :key="`foto-${empleado.id}-${numeroDirectorio(empleado) || empleado.id}`"
                                                 :src="fotoEmpleadoSrc(empleado)"
                                                 :alt="`Foto de ${empleado.nombre_completo}`"
                                                 loading="lazy"
@@ -381,17 +413,18 @@ const restaurarEmpleado = (id, nombre) => { if (confirm(`¿Restaurar a ${nombre}
                                         <div>
                                             <div class="flex items-center gap-2">
                                                 <span class="font-bold text-slate-900">{{ empleado.nombre_completo }}</span>
-                                                <span v-if="!Boolean(Number(empleado.estatus ?? 0))" class="rounded-md bg-rose-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-600 border border-rose-200">Inactivo</span>
+                                                <span v-if="!empleadoActivo(empleado)" class="rounded-md bg-rose-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-600 border border-rose-200">Inactivo</span>
+                                                <span v-else-if="!numeroDirectorio(empleado)" class="rounded-md bg-amber-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-600 border border-amber-200">Sin numero</span>
                                             </div>
                                             <span class="text-xs font-semibold text-slate-400">
-                                                No. empleado: {{ empleado.numero_empleado || empleado.numero_empleado_baja || 'S/N' }}
+                                                No. empleado: {{ numeroDirectorio(empleado) || 'S/N' }}
                                             </span>
                                         </div>
                                     </div>
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="font-bold text-slate-700">{{ empleado.puesto || 'No asignado' }}</div>
-                                    <div v-if="Boolean(Number(empleado.estatus ?? 0))" class="text-xs font-semibold text-emerald-600">{{ empleado.antiguedad_anios }} año(s) activos</div>
+                                    <div v-if="empleadoActivo(empleado)" class="text-xs font-semibold text-emerald-600">{{ empleado.antiguedad_anios }} año(s) activos</div>
                                     <div v-else class="text-xs font-semibold text-rose-500">
                                         Baja: {{ empleado.fecha_baja || 'S/F' }}
                                         <span class="block text-[10px] font-bold text-rose-400">
@@ -445,7 +478,7 @@ const restaurarEmpleado = (id, nombre) => { if (confirm(`¿Restaurar a ${nombre}
                                         <button v-if="canManage" @click="editarEmpleado(empleado)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600 border border-slate-200 transition-all" title="Editar">
                                             <i class="ti ti-pencil"></i>
                                         </button>
-                                        <button v-if="canManage && Boolean(Number(empleado.estatus ?? 0))" @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 transition-all" title="Dar baja">
+                                        <button v-if="canManage && empleadoActivo(empleado)" @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 transition-all" title="Dar baja">
                                             <i class="ti ti-trash"></i>
                                         </button>
                                         <button v-else-if="canManage" @click="restaurarEmpleado(empleado.id, empleado.nombre_completo)" class="flex h-8 items-center justify-center rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-700 transition-all">

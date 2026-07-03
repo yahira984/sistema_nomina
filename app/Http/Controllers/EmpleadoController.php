@@ -237,8 +237,14 @@ class EmpleadoController extends Controller
 
     public function restaurar(Empleado $empleado)
     {
+        $numeroAnterior = $empleado->numero_empleado ?: $empleado->numero_empleado_baja;
+        $numeroOcupado = $numeroAnterior
+            ? $this->numeroEmpleadoActivoOcupado($empleado, $numeroAnterior)
+            : false;
+        $numeroRestaurado = $numeroAnterior && !$numeroOcupado ? $numeroAnterior : null;
         $datosRestaurar = [
             'estatus' => true,
+            'numero_empleado' => $numeroRestaurado,
             'fecha_baja' => null,
             'dias_laborados' => 0,
             'motivo_baja' => null,
@@ -249,10 +255,16 @@ class EmpleadoController extends Controller
         }
 
         $empleado->update($datosRestaurar);
+        $empleado->refresh();
+        $this->moverFotoEmpleadoAActivos($empleado);
 
         FirebaseSyncService::sincronizarEmpleado($empleado);
 
-        return redirect()->back()->with('success', 'Empleado restaurado. Asignale un numero nuevo o disponible antes de usarlo en checador.');
+        $mensaje = $numeroOcupado
+            ? "Empleado restaurado sin numero. El numero {$numeroAnterior} ya lo usa otro empleado activo; asignale uno nuevo antes de usarlo en checador."
+            : 'Empleado restaurado correctamente.';
+
+        return redirect()->back()->with('success', $mensaje);
     }
 
     public function guardarAccesoApp(Request $request, Empleado $empleado)
@@ -310,6 +322,7 @@ class EmpleadoController extends Controller
         $claves = collect([
             "id-{$empleado->id}",
             "empleado-{$empleado->id}",
+            (string) $empleado->id,
             $numero,
             ltrim($numero, '0') ?: $numero,
         ])->filter()->unique();
@@ -329,6 +342,72 @@ class EmpleadoController extends Controller
                 }
             }
         }
+    }
+
+    private function moverFotoEmpleadoAActivos(Empleado $empleado): void
+    {
+        $directorioActivo = public_path('img/empleados');
+        $directorioBajas = $directorioActivo . DIRECTORY_SEPARATOR . 'bajas';
+
+        if (!is_dir($directorioBajas)) {
+            return;
+        }
+
+        if (!is_dir($directorioActivo)) {
+            mkdir($directorioActivo, 0755, true);
+        }
+
+        $numero = $this->limpiarClaveFoto($empleado->numero_empleado ?: $empleado->numero_empleado_baja);
+        $claves = collect([
+            "id-{$empleado->id}",
+            "empleado-{$empleado->id}",
+            (string) $empleado->id,
+            $numero,
+            ltrim($numero, '0') ?: $numero,
+        ])->filter()->unique();
+
+        foreach ($claves as $clave) {
+            foreach ($this->extensionesFotoEmpleado() as $extension) {
+                $origen = $directorioBajas . DIRECTORY_SEPARATOR . "{$clave}.{$extension}";
+
+                if (!is_file($origen)) {
+                    continue;
+                }
+
+                $destino = $directorioActivo . DIRECTORY_SEPARATOR . "id-{$empleado->id}.{$extension}";
+
+                if (is_file($destino)) {
+                    if (@copy($origen, $destino)) {
+                        @unlink($origen);
+                    }
+
+                    continue;
+                }
+
+                if (!@rename($origen, $destino) && @copy($origen, $destino)) {
+                    @unlink($origen);
+                }
+            }
+        }
+    }
+
+    private function numeroEmpleadoActivoOcupado(Empleado $empleado, string $numero): bool
+    {
+        $numero = trim($numero);
+        $sinCeros = ltrim($numero, '0') ?: $numero;
+        $variantes = collect([$numero, $sinCeros])->filter()->unique()->values()->all();
+
+        return Empleado::query()
+            ->whereKeyNot($empleado->id)
+            ->where('estatus', true)
+            ->whereNotNull('numero_empleado')
+            ->pluck('numero_empleado')
+            ->contains(function ($numeroRegistrado) use ($variantes, $sinCeros) {
+                $numeroRegistrado = trim((string) $numeroRegistrado);
+
+                return in_array($numeroRegistrado, $variantes, true)
+                    || (ltrim($numeroRegistrado, '0') ?: $numeroRegistrado) === $sinCeros;
+            });
     }
 
     private function limpiarClaveFoto($valor): string

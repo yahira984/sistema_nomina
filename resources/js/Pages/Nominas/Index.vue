@@ -537,6 +537,10 @@ const seleccionadosPendientes = computed(() => seleccionadosConRecibo.value.filt
 const seleccionadosLiquidados = computed(() => seleccionadosConRecibo.value.filter((empleado) => empleado.pagado).length);
 const seleccionadosSinRecibo = computed(() => Math.max(0, seleccionadosCount.value - seleccionadosConRecibo.value.length));
 const empleadosConImss = computed(() => props.empleados.filter((empleado) => puedeCalcularNomina(empleado) && numero(resumenNomina(empleado).deposito_imss) > 0).length);
+const empleadosConDiferenciaImss = computed(() => props.empleados.filter((empleado) => {
+    const resumen = resumenNomina(empleado);
+    return numero(resumen.deposito_imss) > 0 && Math.abs(numero(resumen.diferencia_imss)) >= 0.01;
+}).length);
 const empleadoSeleccionado = (empleadoId) => selectedEmpleadoIds.value.includes(empleadoId);
 
 const toggleEmpleado = (empleadoId, checked) => {
@@ -609,6 +613,11 @@ const urlRecibosGrupo = (empleadosGrupo) => {
 };
 
 const urlDiferenciaImss = () => route('nominas.diferencia-imss', {
+    semana: numeroSemanaSeleccionada.value,
+    fecha_corte: selectedCorte.value,
+});
+
+const urlRecibosDiferenciaImss = () => route('nominas.diferencia-imss.recibos', {
     semana: numeroSemanaSeleccionada.value,
     fecha_corte: selectedCorte.value,
 });
@@ -831,8 +840,13 @@ const cambiarPagosMasivos = (accion) => {
                             </a>
 
                             <a v-if="canExport" :href="urlDiferenciaImss()" target="_blank" class="flex items-center gap-2 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
-                                <i class="ti ti-report-money text-lg"></i> Diferencia IMSS
+                                <i class="ti ti-file-spreadsheet text-lg"></i> Excel IMSS
                                 <span class="rounded-md bg-white px-1.5 py-0.5 text-[10px] text-cyan-600">{{ empleadosConImss }}</span>
+                            </a>
+
+                            <a v-if="canExport" :href="urlRecibosDiferenciaImss()" target="_blank" class="flex items-center gap-2 rounded-xl bg-cyan-700 text-white border border-cyan-700 hover:bg-cyan-800 hover:shadow-lg hover:shadow-cyan-700/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                                <i class="ti ti-printer text-lg"></i> PDF Diferencias IMSS
+                                <span class="rounded-md bg-white/15 px-1.5 py-0.5 text-[10px] text-white">{{ empleadosConDiferenciaImss }}</span>
                             </a>
                             
                             <a v-if="canExport && seleccionadosCount > 0" :href="urlRecibosMasivos(false)" target="_blank" class="flex items-center gap-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
@@ -1083,7 +1097,7 @@ const cambiarPagosMasivos = (accion) => {
                                                             <i class="ti ti-report-money text-base"></i> Diferencia IMSS
                                                         </div>
                                                         <span class="rounded-md bg-white border border-cyan-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-cyan-700 shadow-sm">
-                                                            Solo Excel
+                                                            PDF global arriba
                                                         </span>
                                                     </div>
 
