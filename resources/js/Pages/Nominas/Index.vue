@@ -345,6 +345,38 @@ const mensajeCapturaAsistencia = (empleado) => {
     const resumen = resumenNomina(empleado);
     return resumen.mensaje_captura_asistencia || 'Asistencia pendiente de captura.';
 };
+const coberturaAsistencia = (empleado) => {
+    const resumen = resumenNomina(empleado);
+    const requeridos = Math.max(0, numero(resumen.dias_requeridos_asistencia));
+    const capturados = Math.max(0, numero(resumen.dias_capturados_asistencia));
+    const porcentaje = requeridos > 0 ? Math.min(100, Math.round((capturados / requeridos) * 100)) : 0;
+
+    return { requeridos, capturados, porcentaje };
+};
+const textoCoberturaAsistencia = (empleado) => {
+    const cobertura = coberturaAsistencia(empleado);
+
+    if (cobertura.requeridos <= 0) {
+        return `${cobertura.capturados} dia(s) capturado(s)`;
+    }
+
+    return `${cobertura.capturados}/${cobertura.requeridos} dia(s) capturado(s)`;
+};
+const asistenciaIncompleta = (empleado) => {
+    const cobertura = coberturaAsistencia(empleado);
+
+    return cobertura.requeridos > 0 && cobertura.capturados < cobertura.requeridos;
+};
+const claseCoberturaAsistencia = (empleado) => (
+    asistenciaPendiente(empleado) || asistenciaIncompleta(empleado)
+        ? 'text-amber-600'
+        : 'text-emerald-600'
+);
+const barraCoberturaAsistencia = (empleado) => (
+    asistenciaPendiente(empleado) || asistenciaIncompleta(empleado)
+        ? 'bg-amber-500'
+        : 'bg-emerald-500'
+);
 
 const depositoImssActual = (empleado) => {
     const ajuste = ajustesNomina.value[empleado.id] || {};
@@ -784,9 +816,9 @@ const cambiarPagosMasivos = (accion) => {
                 </div>
 
                 <div class="p-6 sm:p-8 space-y-6 bg-white">
-                    <div class="flex flex-col lg:flex-row gap-4">
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(20rem,1.2fr)_minmax(12rem,1fr)_minmax(13rem,1fr)]">
                         
-                        <div class="relative flex-1 min-w-[200px]">
+                        <div class="relative min-w-0">
                             <select v-model="selectedCorte" class="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-4 pr-10 text-sm font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 appearance-none transition-all cursor-pointer">
                                 <option v-for="sem in semanasDisponibles" :key="sem.fecha_corte" :value="sem.fecha_corte">
                                     {{ sem.etiqueta }}
@@ -795,19 +827,19 @@ const cambiarPagosMasivos = (accion) => {
                             <i class="ti ti-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
                         </div>
 
-                        <div class="flex rounded-xl bg-slate-100/80 p-1">
-                            <button @click="filtroEstado = 'todos'" :class="filtroEstado === 'todos' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2">
+                        <div class="flex min-w-0 overflow-hidden rounded-xl bg-slate-100/80 p-1">
+                            <button @click="filtroEstado = 'todos'" :class="filtroEstado === 'todos' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all sm:px-4">
                                 <i class="ti ti-layout-grid"></i> Todos
                             </button>
-                            <button @click="filtroEstado = 'pendiente'" :class="filtroEstado === 'pendiente' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2">
+                            <button @click="filtroEstado = 'pendiente'" :class="filtroEstado === 'pendiente' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all sm:px-4">
                                 <i class="ti ti-clock-dollar"></i> Pendientes
                             </button>
-                            <button @click="filtroEstado = 'liquidado'" :class="filtroEstado === 'liquidado' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2">
+                            <button @click="filtroEstado = 'liquidado'" :class="filtroEstado === 'liquidado' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all sm:px-4">
                                 <i class="ti ti-circle-check"></i> Liquidados
                             </button>
                         </div>
 
-                        <div class="relative flex-1 min-w-[200px]">
+                        <div class="relative min-w-0">
                             <select v-model="criterioOrden" class="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-4 pr-10 text-sm font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 appearance-none transition-all cursor-pointer">
                                 <option value="asc">Nombre (A - Z)</option>
                                 <option value="desc">Nombre (Z - A)</option>
@@ -817,7 +849,7 @@ const cambiarPagosMasivos = (accion) => {
                             <i class="ti ti-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
                         </div>
 
-                        <div class="relative flex-1 min-w-[200px]">
+                        <div class="relative min-w-0">
                             <select v-model="filtroBanco" class="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-4 pr-10 text-sm font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 appearance-none transition-all cursor-pointer">
                                 <option value="todos">Todos los bancos</option>
                                 <option v-for="banco in bancosDisponibles" :key="banco" :value="banco">
@@ -828,39 +860,39 @@ const cambiarPagosMasivos = (accion) => {
                         </div>
                     </div>
 
-                    <div class="flex flex-col xl:flex-row justify-between gap-4 border-t border-slate-100 pt-6">
-                        <div class="relative w-full xl:w-80">
+                    <div class="grid gap-4 border-t border-slate-100 pt-6 xl:grid-cols-[minmax(16rem,20rem)_1fr] xl:items-start">
+                        <div class="relative w-full">
                             <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
                             <input v-model="searchQuery" type="text" class="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="Buscar empleado o ID..." />
                         </div>
 
-                        <div class="flex flex-wrap gap-2 sm:gap-3">
-                            <a v-if="canExport" :href="route('nominas.reporte', { semana: numeroSemanaSeleccionada, fecha_corte: selectedCorte })" target="_blank" class="flex items-center gap-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                        <div class="flex flex-wrap items-center gap-2 sm:justify-end sm:gap-3">
+                            <a v-if="canExport" :href="route('nominas.reporte', { semana: numeroSemanaSeleccionada, fecha_corte: selectedCorte })" target="_blank" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-file-spreadsheet text-lg"></i> Excel Global
                             </a>
 
-                            <a v-if="canExport" :href="urlDiferenciaImss()" target="_blank" class="flex items-center gap-2 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                            <a v-if="canExport" :href="urlDiferenciaImss()" target="_blank" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-file-spreadsheet text-lg"></i> Excel IMSS
                                 <span class="rounded-md bg-white px-1.5 py-0.5 text-[10px] text-cyan-600">{{ empleadosConImss }}</span>
                             </a>
 
-                            <a v-if="canExport" :href="urlRecibosDiferenciaImss()" target="_blank" class="flex items-center gap-2 rounded-xl bg-cyan-700 text-white border border-cyan-700 hover:bg-cyan-800 hover:shadow-lg hover:shadow-cyan-700/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                            <a v-if="canExport" :href="urlRecibosDiferenciaImss()" target="_blank" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-cyan-700 text-white border border-cyan-700 hover:bg-cyan-800 hover:shadow-lg hover:shadow-cyan-700/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-printer text-lg"></i> PDF Diferencias IMSS
                                 <span class="rounded-md bg-white/15 px-1.5 py-0.5 text-[10px] text-white">{{ empleadosConDiferenciaImss }}</span>
                             </a>
                             
-                            <a v-if="canExport && seleccionadosCount > 0" :href="urlRecibosMasivos(false)" target="_blank" class="flex items-center gap-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                            <a v-if="canExport && seleccionadosCount > 0" :href="urlRecibosMasivos(false)" target="_blank" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-printer text-lg"></i> PDF Seleccionados ({{ seleccionadosCount }})
                             </a>
-                            <button v-else-if="canExport" disabled class="flex items-center gap-2 rounded-xl bg-slate-50 text-slate-400 border border-slate-200 px-4 py-2.5 text-xs font-black uppercase tracking-wider cursor-not-allowed">
+                            <button v-else-if="canExport" disabled class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-50 text-slate-400 border border-slate-200 px-4 py-2.5 text-xs font-black uppercase tracking-wider cursor-not-allowed">
                                 <i class="ti ti-printer text-lg"></i> PDF Seleccionados
                             </button>
 
-                            <button v-if="seleccionadosCount > 0" @click="limpiarSeleccion" type="button" class="flex items-center gap-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                            <button v-if="seleccionadosCount > 0" @click="limpiarSeleccion" type="button" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-square-x text-lg"></i> Limpiar seleccion
                             </button>
 
-                            <a v-if="canExport" :href="urlRecibosMasivos(true)" target="_blank" class="flex items-center gap-2 rounded-xl bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-lg hover:shadow-slate-900/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                            <a v-if="canExport" :href="urlRecibosMasivos(true)" target="_blank" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-lg hover:shadow-slate-900/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-printer text-lg"></i> PDF Todos
                             </a>
                         </div>
@@ -933,12 +965,12 @@ const cambiarPagosMasivos = (accion) => {
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="flex gap-2">
-                                        <button @click="seleccionarBanco(empleadosBanco)" :class="['flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all hover:-translate-y-0.5', temaBanco(nombreBanco).button]">
+                                    <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+                                        <button @click="seleccionarBanco(empleadosBanco)" :class="['flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all hover:-translate-y-0.5 sm:w-auto', temaBanco(nombreBanco).button]">
                                             <i :class="['ti text-base', empleadosGrupoSeleccionados(empleadosBanco) ? 'ti-square-x' : 'ti-checks']"></i>
                                             {{ empleadosGrupoSeleccionados(empleadosBanco) ? 'Quitar grupo' : 'Seleccionar grupo' }}
                                         </button>
-                                        <a v-if="canExport" :href="urlRecibosGrupo(empleadosBanco)" target="_blank" :class="['flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all hover:-translate-y-0.5', temaBanco(nombreBanco).pdf]">
+                                        <a v-if="canExport" :href="urlRecibosGrupo(empleadosBanco)" target="_blank" :class="['flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all hover:-translate-y-0.5 sm:w-auto', temaBanco(nombreBanco).pdf]">
                                             <i class="ti ti-printer text-base"></i> PDF Grupo
                                         </a>
                                     </div>
@@ -950,18 +982,31 @@ const cambiarPagosMasivos = (accion) => {
                                     :class="['rounded-3xl border bg-white shadow-sm transition-all duration-300 hover:shadow-xl hover:border-blue-200 overflow-hidden flex flex-col', tieneReglaEspecial(empleado) ? 'border-amber-200' : 'border-slate-200/60']">
                                     
                                     <div class="border-b border-slate-100 bg-slate-50/50 p-5 flex flex-wrap gap-4 items-start justify-between">
-                                        <div class="flex items-start gap-4">
+                                        <div class="flex min-w-0 items-start gap-4">
                                             <div class="pt-1">
                                                 <input type="checkbox" :checked="empleadoSeleccionado(empleado.id)" @change="toggleEmpleado(empleado.id, $event.target.checked)" class="h-5 w-5 rounded-md border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer shadow-sm" :title="`Seleccionar ${empleado.nombre_completo}`" />
                                             </div>
-                                            <div>
-                                                <div class="flex items-center gap-3 mb-1">
+                                            <div class="min-w-0">
+                                                <div class="mb-1 flex flex-wrap items-center gap-2">
                                                     <span :class="['flex h-6 items-center justify-center rounded-lg border px-2 text-[10px] font-black uppercase tracking-widest', claseNumeroNomina(empleado)]">
                                                         #{{ empleado.numero_empleado || 'S/N' }}
                                                     </span>
-                                                    <h4 class="text-base font-black uppercase text-slate-900 leading-tight">{{ empleado.nombre_completo }}</h4>
+                                                    <h4 class="min-w-0 text-base font-black uppercase leading-tight text-slate-900 break-words">{{ empleado.nombre_completo }}</h4>
                                                 </div>
                                                 <p class="text-xs font-bold text-slate-500 mb-2">{{ empleado.puesto || 'Sin puesto asignado' }}</p>
+                                                <div v-if="asistenciaPendiente(empleado) || coberturaAsistencia(empleado).requeridos > 0" class="mt-3 max-w-xs">
+                                                    <div class="mb-1 flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                                        <span>Asistencia</span>
+                                                        <span :class="claseCoberturaAsistencia(empleado)">{{ coberturaAsistencia(empleado).porcentaje }}%</span>
+                                                    </div>
+                                                    <div class="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                                                        <div
+                                                            :class="['h-full rounded-full transition-all', barraCoberturaAsistencia(empleado)]"
+                                                            :style="{ width: `${coberturaAsistencia(empleado).porcentaje}%` }"
+                                                        ></div>
+                                                    </div>
+                                                    <p class="mt-1 text-[10px] font-bold text-slate-400">{{ textoCoberturaAsistencia(empleado) }}</p>
+                                                </div>
                                                 
                                                 <div v-if="tieneReglaEspecial(empleado)" class="flex flex-wrap gap-1">
                                                     <span v-for="regla in reglasEspecialesEmpleado(empleado)" :key="regla.texto" :class="['rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider shadow-sm', regla.clase]">
@@ -1032,7 +1077,7 @@ const cambiarPagosMasivos = (accion) => {
                                                         <p class="font-black uppercase tracking-wider">Nomina sin calcular</p>
                                                         <p class="mt-1">{{ mensajeCapturaAsistencia(empleado) }}</p>
                                                         <p class="mt-1 text-[10px] uppercase tracking-wider text-amber-700">
-                                                            Sin registros de asistencia en el periodo.
+                                                            {{ textoCoberturaAsistencia(empleado) }}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -1133,7 +1178,7 @@ const cambiarPagosMasivos = (accion) => {
                                                             <i class="ti ti-calendar-exclamation text-base"></i> Faltas y forma de pago
                                                         </div>
                                                         <span :class="['rounded-md bg-white px-2.5 py-1 text-[9px] font-black uppercase tracking-wider shadow-sm border', asistenciaPendiente(empleado) ? 'border-amber-200 text-amber-700' : 'border-rose-100 text-rose-600']">
-                                                            {{ asistenciaPendiente(empleado) ? 'Sin registros en periodo' : `Reloj detectó ${resumenNomina(empleado).faltas_detectadas || 0} falta(s)` }}
+                                                            {{ asistenciaPendiente(empleado) ? textoCoberturaAsistencia(empleado) : `Reloj detectó ${resumenNomina(empleado).faltas_detectadas || 0} falta(s)` }}
                                                         </span>
                                                     </div>
 

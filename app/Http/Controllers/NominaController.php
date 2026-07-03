@@ -800,6 +800,14 @@ class NominaController extends Controller
         $diasFestivosNoTrabajados = $diasFestivosLaborables
             ->diff($fechasFestivasTrabajadas)
             ->count();
+        $diasLaborablesRequeridos = max(0, (int) $estadoCaptura['dias_requeridos']);
+        $fechasNormalesPagables = $asistencias
+            ->where('tipo_asistencia', 'Normal')
+            ->filter(fn (Asistencia $asistencia) => $this->esDiaSueldoBasePagable($asistencia))
+            ->map(fn (Asistencia $asistencia) => Carbon::parse($asistencia->fecha)->format('Y-m-d'))
+            ->unique()
+            ->values();
+        $diasNormalesPagables = $fechasNormalesPagables->count();
 
         $diasFalta = $asistencias
             ->where('tipo_asistencia', 'Falta')
@@ -815,6 +823,16 @@ class NominaController extends Controller
             max(0, $faltasDescontables - $faltasCubiertasVacaciones)
         );
         $diasVacacionesAdicionales = max(0, (float) $ajustes['dias_vacaciones_adicionales']);
+        $diasCubiertosPeriodo = min(
+            $diasLaborablesRequeridos,
+            $diasNormalesPagables
+                + $diasFalta
+                + $diasVacacionesDetectadas
+                + $diasIncapacidadDetectadas
+                + $diasFestivosNoTrabajados
+        );
+        $diasPendientesCaptura = max(0, $diasLaborablesRequeridos - $diasCubiertosPeriodo);
+        $asistenciaCompletaPeriodo = $diasLaborablesRequeridos <= 0 || $diasPendientesCaptura <= 0;
         $usarTotalVacacionesLegacy = $ajustes['dias_vacaciones_pagadas'] !== null
             && $faltasCubiertasVacaciones <= 0
             && $diasVacacionesAdicionales <= 0;
@@ -850,6 +868,10 @@ class NominaController extends Controller
             ? $sueldoPorHora
             : ($sueldoSemanal > 0 ? $sueldoSemanal / self::HORAS_BASE_SEMANA : 0);
         $pagoDiaPlanta = $sueldoSemanal > 0 ? $sueldoSemanal / self::DIAS_SUELDO_SEMANA : 0;
+        $diasSueldoBasePagados = min($diasLaborablesRequeridos, $diasNormalesPagables + $faltasPagadas);
+        $pagoBasePlanta = $asistenciaCompletaPeriodo
+            ? $sueldoSemanal
+            : $pagoDiaPlanta * $diasSueldoBasePagados;
 
         $horasAdeudoGeneradas = ($faltasPagadas * self::HORAS_FALTA_COMPLETA) + $horasAdeudoMiercolesAnterior;
         $horasAdeudoDescontadas = min((float) $ajustes['horas_adeudo_descontadas'], $horasExtra);
@@ -871,7 +893,7 @@ class NominaController extends Controller
         } else {
             $pagoNormal = $esEstudiante
                 ? ($horasNormales * $sueldoPorHora) + ($faltasPagadas * self::HORAS_FALTA_COMPLETA * $sueldoPorHora)
-                : $sueldoSemanal;
+                : $pagoBasePlanta;
             $pagoExtra = $horasExtraPagadas * ($tarifaBaseHora * 2);
         }
         $pagoIncapacidad = (!$esEstudiante && $diasIncapacidadPagadas > 0)
@@ -928,6 +950,7 @@ class NominaController extends Controller
             'horas_festivas_trabajadas' => round($horasFestivasTrabajadas, 2),
             'dias_festivos_no_trabajados' => round($diasFestivosNoTrabajados, 2),
             'pago_festivo_trabajado' => round($pagoFestivoTrabajado, 2),
+            'dias_sueldo_base_pagados' => round($diasSueldoBasePagados, 2),
             'horas_adeudo_generadas' => round($horasAdeudoGeneradas, 2),
             'horas_adeudo_miercoles_anterior' => round($horasAdeudoMiercolesAnterior, 2),
             'horas_adeudo_descontadas' => round($horasAdeudoDescontadas, 2),
@@ -966,7 +989,7 @@ class NominaController extends Controller
             'asistencia_pendiente_captura' => false,
             'dias_requeridos_asistencia' => $estadoCaptura['dias_requeridos'],
             'dias_capturados_asistencia' => $estadoCaptura['dias_capturados'],
-            'dias_pendientes_captura' => 0,
+            'dias_pendientes_captura' => $diasPendientesCaptura,
             'fechas_pendientes_captura' => [],
             'mensaje_captura_asistencia' => null,
         ];
@@ -1293,6 +1316,12 @@ class NominaController extends Controller
     {
         return !Carbon::parse($fecha)->isWeekend()
             && !$this->esFechaFestiva($fecha, $fechasFestivas);
+    }
+
+    private function esDiaSueldoBasePagable(Asistencia $asistencia): bool
+    {
+        return !Carbon::parse($asistencia->fecha)->isWeekend()
+            && $this->asistenciaTieneJornadaValida($asistencia);
     }
 
     private function esRetardoDescontable(Asistencia $asistencia, array $fechasFestivas = []): bool
