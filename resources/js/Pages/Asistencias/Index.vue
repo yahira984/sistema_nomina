@@ -237,7 +237,15 @@ const normalizarNumeroEmpleado = (numero) => {
     return sinCeros || texto || '';
 };
 
-const numeroEmpleado = (empleado) => normalizarNumeroEmpleado(empleado?.numero_empleado || empleado?.numero_empleado_baja);
+const empleadoActivo = (empleado) => Boolean(Number(empleado?.estatus ?? 0));
+
+const numeroEmpleado = (empleado) => {
+    const numeroVisible = empleadoActivo(empleado)
+        ? empleado?.numero_empleado
+        : (empleado?.numero_empleado || empleado?.numero_empleado_baja);
+
+    return normalizarNumeroEmpleado(numeroVisible);
+};
 
 const valorNumeroEmpleado = (empleado) => {
     const valor = parseInt(numeroEmpleado(empleado), 10);
@@ -383,8 +391,7 @@ const coincideEmpleado = (empleado, termino) => {
     if (!termino) return true;
 
     return String(empleado?.nombre_completo || '').toLowerCase().includes(termino)
-        || String(empleado?.numero_empleado || '').toLowerCase().includes(termino)
-        || String(empleado?.numero_empleado_baja || '').toLowerCase().includes(termino);
+        || String(numeroEmpleado(empleado) || '').toLowerCase().includes(termino);
 };
 
 const coincideFilaRevision = (fila, termino) => {

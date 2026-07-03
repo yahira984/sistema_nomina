@@ -197,6 +197,18 @@ class NominaController extends Controller
         return Excel::download(new DiferenciaImssExport($numeroSemana, $inicioSemana, $finSemana), $nombreArchivo);
     }
 
+    public function recibosDiferenciaImss(Request $request, $semana)
+    {
+        [$inicioSemana, $finSemana, $numeroSemana] = $this->resolverSemanaNomina($request);
+        $recibos = $this->recibosDiferenciaImssPeriodo($inicioSemana, $finSemana);
+
+        $pdf = Pdf::loadView('pdf.recibos_diferencia_imss', [
+            'recibos' => $recibos,
+        ]);
+
+        return $pdf->stream('Recibos_Diferencia_IMSS_Semana_' . $numeroSemana . '.pdf');
+    }
+
     public function actualizarDiferenciaImss(Request $request, $empleado_id)
     {
         $validated = $request->validate([
@@ -619,6 +631,41 @@ class NominaController extends Controller
                 'historial_busqueda' => $busqueda,
             ],
         ];
+    }
+
+    private function recibosDiferenciaImssPeriodo(Carbon $inicioSemana, Carbon $finSemana): Collection
+    {
+        return Nomina::query()
+            ->with('empleado')
+            ->whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
+            ->whereDate('fecha_fin', $finSemana->format('Y-m-d'))
+            ->where('deposito_imss', '>', 0)
+            ->get()
+            ->map(function (Nomina $nomina) {
+                $diferencia = round((float) ($nomina->pago_neto ?? 0) - (float) ($nomina->deposito_imss ?? 0), 2);
+
+                return [
+                    'nomina' => $nomina,
+                    'empleado' => $nomina->empleado,
+                    'diferencia_imss' => $diferencia,
+                ];
+            })
+            ->filter(fn (array $recibo) => $recibo['empleado'] && abs($recibo['diferencia_imss']) >= 0.01)
+            ->sort(function (array $a, array $b) {
+                $empleadoA = $a['empleado'];
+                $empleadoB = $b['empleado'];
+
+                return [
+                    strtoupper((string) ($empleadoA?->banco ?? '')),
+                    (int) ($empleadoA?->numero_empleado ?? $empleadoA?->numero_empleado_baja ?? 0),
+                    strtoupper((string) ($empleadoA?->nombre_completo ?? '')),
+                ] <=> [
+                    strtoupper((string) ($empleadoB?->banco ?? '')),
+                    (int) ($empleadoB?->numero_empleado ?? $empleadoB?->numero_empleado_baja ?? 0),
+                    strtoupper((string) ($empleadoB?->nombre_completo ?? '')),
+                ];
+            })
+            ->values();
     }
 
     private function abortarSiAsistenciaPendiente(Empleado $empleado, Carbon $inicioSemana, Carbon $finSemana): void
