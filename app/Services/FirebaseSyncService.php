@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Exception\Auth\UserNotFound;
 use Kreait\Firebase\Factory;
+use Kreait\Firebase\Http\HttpClientOptions;
 use Throwable;
 
 class FirebaseSyncService
@@ -90,6 +91,7 @@ class FirebaseSyncService
             }
 
             $empleados = [];
+            $updates = [];
 
             foreach ($asistencias as $asistencia) {
                 if (!$asistencia instanceof Asistencia) {
@@ -102,13 +104,27 @@ class FirebaseSyncService
                     continue;
                 }
 
-                self::sincronizarAsistenciaConDatabase($database, $asistencia);
+                $updates[self::pathAsistenciaEmpleado($asistencia->empleado, $asistencia)] = self::datosAsistencia($asistencia);
                 $empleados[$asistencia->empleado->id] = $asistencia->empleado;
+
+                if (count($updates) >= 1000) {
+                    self::aplicarUpdatesDatabase($database, $updates);
+                    $updates = [];
+                }
             }
 
             foreach ($empleados as $empleado) {
-                self::sincronizarEmpleadoConDatabase($database, $empleado->fresh() ?: $empleado);
+                foreach (self::updatesEmpleado($empleado->fresh() ?: $empleado) as $path => $payload) {
+                    $updates[$path] = $payload;
+                }
+
+                if (count($updates) >= 1000) {
+                    self::aplicarUpdatesDatabase($database, $updates);
+                    $updates = [];
+                }
             }
+
+            self::aplicarUpdatesDatabase($database, $updates);
         } catch (Throwable $e) {
             Log::error('Error sincronizando asistencias con Firebase', [
                 'error' => $e->getMessage(),
@@ -363,6 +379,11 @@ class FirebaseSyncService
         $database = (new Factory)
             ->withServiceAccount($credentialsPath)
             ->withDatabaseUri($databaseUrl)
+            ->withHttpClientOptions(
+                HttpClientOptions::default()
+                    ->withConnectTimeout((float) config('services.firebase.connect_timeout', 2))
+                    ->withTimeout((float) config('services.firebase.timeout', 8))
+            )
             ->createDatabase();
 
         return $database;
@@ -435,14 +456,7 @@ class FirebaseSyncService
 
     private static function sincronizarEmpleadoConDatabase($database, Empleado $empleado): void
     {
-        $empleado = $empleado->fresh() ?: $empleado;
-        $basePath = self::pathEmpleado($empleado);
-
-        $database->getReference($basePath . '/perfil')->set(self::datosPerfilEmpleado($empleado));
-        $database->getReference($basePath . '/resumen')->set(self::datosResumenEmpleado($empleado));
-        $database->getReference($basePath . '/meta')->update([
-            'updated_at' => now()->toISOString(),
-        ]);
+        self::aplicarUpdatesDatabase($database, self::updatesEmpleado($empleado->fresh() ?: $empleado));
     }
 
     private static function sincronizarAsistenciaConDatabase($database, Asistencia $asistencia): void
@@ -455,6 +469,26 @@ class FirebaseSyncService
 
         $database->getReference(self::pathAsistenciaEmpleado($asistencia->empleado, $asistencia))
             ->set(self::datosAsistencia($asistencia));
+    }
+
+    private static function aplicarUpdatesDatabase($database, array $updates): void
+    {
+        if ($updates === []) {
+            return;
+        }
+
+        $database->getReference()->update($updates);
+    }
+
+    private static function updatesEmpleado(Empleado $empleado): array
+    {
+        $basePath = self::pathEmpleado($empleado);
+
+        return [
+            $basePath . '/perfil' => self::datosPerfilEmpleado($empleado),
+            $basePath . '/resumen' => self::datosResumenEmpleado($empleado),
+            $basePath . '/meta/updated_at' => now()->toISOString(),
+        ];
     }
 
     private static function sincronizarNominaPagadaConDatabase($database, Empleado $empleado, Nomina $nomina, array $desglose): void
