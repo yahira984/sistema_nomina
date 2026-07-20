@@ -4,6 +4,7 @@ namespace App\Exports;
 
 use App\Models\Asistencia;
 use App\Models\Empleado;
+use App\Support\HorasExtraEmpleado;
 use App\Support\ReglasNominaEmpleado;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Concerns\FromArray;
@@ -330,23 +331,12 @@ class AsistenciasSemanalesExport implements FromArray, WithColumnWidths, WithDra
             return 0;
         }
 
-        $fecha = Carbon::parse($asistencia->fecha);
-
-        if (!$fecha->isSaturday()) {
-            return (float) $asistencia->horas_extra;
-        }
-
-        $entrada = Carbon::parse($fecha->format('Y-m-d') . ' ' . $asistencia->hora_entrada);
-        $salida = Carbon::parse($fecha->format('Y-m-d') . ' ' . $asistencia->hora_salida);
-
-        if ($salida->lessThanOrEqualTo($entrada)) {
-            return 0;
-        }
-
-        $horaOficial = Carbon::parse($fecha->format('Y-m-d') . ' 08:00:00');
-        $inicioSabado = $entrada->lessThan($horaOficial) ? $horaOficial : $entrada;
-
-        return max(0, round($inicioSabado->diffInMinutes($salida) / 60));
+        return HorasExtraEmpleado::calcular(
+            $empleado,
+            $asistencia->fecha,
+            $asistencia->hora_entrada,
+            $asistencia->hora_salida
+        );
     }
 
     private function signatureRow(): array

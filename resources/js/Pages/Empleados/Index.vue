@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, useForm, router, Link, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { clavesFotoEmpleado, fotoEmpleadoSrc, mostrarFotoEmpleado, probarSiguienteFotoEmpleado } from '@/Utils/employeePhotos';
 
 const props = defineProps({ empleados: Array });
@@ -13,6 +13,31 @@ const empleadoId = ref(null);
 const searchQuery = ref('');
 const filtroEstado = ref('activos');
 const criterioOrdenDirectorio = ref('num_asc');
+const empleadoFotoAmpliada = ref(null);
+const fotosDisponibles = ref(new Set());
+
+const marcarFotoDisponible = (empleado, event) => {
+    mostrarFotoEmpleado(event);
+    fotosDisponibles.value = new Set([...fotosDisponibles.value, Number(empleado.id)]);
+};
+
+const fotoDisponible = (empleado) => fotosDisponibles.value.has(Number(empleado.id));
+
+const abrirFotoEmpleado = (empleado) => {
+    if (!clavesFotoEmpleado(empleado).length) return;
+    empleadoFotoAmpliada.value = empleado;
+};
+
+const cerrarFotoEmpleado = () => {
+    empleadoFotoAmpliada.value = null;
+};
+
+const manejarTeclaFoto = (event) => {
+    if (event.key === 'Escape') cerrarFotoEmpleado();
+};
+
+onMounted(() => window.addEventListener('keydown', manejarTeclaFoto));
+onBeforeUnmount(() => window.removeEventListener('keydown', manejarTeclaFoto));
 
 const normalizarNumeroEmpleado = (numero) => {
     const texto = String(numero || '').trim();
@@ -396,7 +421,13 @@ const restaurarEmpleado = (id, nombre) => {
                             <tr v-for="empleado in empleadosFiltrados" :key="empleado.id" class="transition-colors hover:bg-slate-50/50">
                                 <td class="px-6 py-4">
                                     <div class="flex items-center gap-3">
-                                        <div class="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-blue-100 bg-blue-50 text-xs font-black text-blue-600 shadow-sm">
+                                        <button
+                                            type="button"
+                                            class="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-blue-100 bg-blue-50 text-xs font-black text-blue-600 shadow-sm transition hover:border-blue-300 hover:ring-4 hover:ring-blue-100 disabled:cursor-default disabled:hover:border-blue-100 disabled:hover:ring-0"
+                                            :disabled="!fotoDisponible(empleado)"
+                                            :title="fotoDisponible(empleado) ? 'Ampliar fotografia' : 'Sin fotografia'"
+                                            @click="abrirFotoEmpleado(empleado)"
+                                        >
                                             <span>{{ numeroDirectorio(empleado) || 'S/N' }}</span>
                                             <img
                                                 v-if="clavesFotoEmpleado(empleado).length"
@@ -406,10 +437,10 @@ const restaurarEmpleado = (id, nombre) => {
                                                 loading="lazy"
                                                 decoding="async"
                                                 class="absolute inset-0 h-full w-full object-cover"
-                                                @load="mostrarFotoEmpleado"
+                                                @load="marcarFotoDisponible(empleado, $event)"
                                                 @error="probarSiguienteFotoEmpleado(empleado, $event)"
                                             />
-                                        </div>
+                                        </button>
                                         <div>
                                             <div class="flex items-center gap-2">
                                                 <span class="font-bold text-slate-900">{{ empleado.nombre_completo }}</span>
@@ -500,5 +531,39 @@ const restaurarEmpleado = (id, nombre) => {
                 </div>
             </section>
         </div>
+
+        <Teleport to="body">
+            <div
+                v-if="empleadoFotoAmpliada"
+                class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
+                role="dialog"
+                aria-modal="true"
+                :aria-label="`Fotografia de ${empleadoFotoAmpliada.nombre_completo}`"
+                @click.self="cerrarFotoEmpleado"
+            >
+                <div class="relative max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-xl border border-white/20 bg-slate-950 shadow-2xl">
+                    <button
+                        type="button"
+                        class="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 bg-slate-950/70 text-xl text-white transition hover:bg-white hover:text-slate-950"
+                        title="Cerrar fotografia"
+                        aria-label="Cerrar fotografia"
+                        @click="cerrarFotoEmpleado"
+                    >
+                        <i class="ti ti-x" aria-hidden="true"></i>
+                    </button>
+                    <img
+                        :src="fotoEmpleadoSrc(empleadoFotoAmpliada)"
+                        :alt="`Foto de ${empleadoFotoAmpliada.nombre_completo}`"
+                        class="max-h-[82vh] w-full bg-slate-900 object-contain"
+                        @load="mostrarFotoEmpleado"
+                        @error="probarSiguienteFotoEmpleado(empleadoFotoAmpliada, $event)"
+                    />
+                    <div class="border-t border-white/10 bg-slate-950 px-5 py-4 text-white">
+                        <p class="text-base font-black">{{ empleadoFotoAmpliada.nombre_completo }}</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-300">No. empleado {{ numeroDirectorio(empleadoFotoAmpliada) || 'S/N' }}</p>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
     </AuthenticatedLayout>
 </template>

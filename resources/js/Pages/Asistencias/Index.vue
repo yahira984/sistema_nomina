@@ -51,6 +51,7 @@ const tabActiva = ref(props.previewImportacion && canImport.value
 const busquedaGlobal = ref('');
 const busquedaEmpleadoManual = ref('');
 const busquedaRevision = ref('');
+const filtroRevision = ref('todas');
 const busquedaUltimosRegistros = ref('');
 const empleadoRegistrosId = ref('');
 const ordenUltimosRegistros = ref('fecha_desc');
@@ -132,11 +133,30 @@ watch(fechaSemanaReferencia, (fecha) => {
 
 const crearUid = (fila, index) => {
     const empleado = fila.empleado_id || fila.numero_empleado || 'sin-empleado';
-    return `${empleado}-${fila.fecha || 'sin-fecha'}-${fila.estado || 'fila'}-${index}`;
+    return `${empleado}-${fila.csv_numero_empleado || ''}-${fila.fecha || 'sin-fecha'}-${index}`;
 };
 
-const clonarFilasRevision = (filas = []) => {
-    return filas.map((fila, index) => ({
+const claveEdicionesPreview = (previewId) => previewId ? `asistencias-preview:${previewId}` : '';
+
+const leerEdicionesPreview = (previewId) => {
+    if (typeof window === 'undefined' || !previewId) return new Map();
+
+    try {
+        const guardadas = JSON.parse(window.sessionStorage.getItem(claveEdicionesPreview(previewId)) || '[]');
+        return new Map(guardadas.map((fila) => [fila._uid, fila]));
+    } catch (error) {
+        return new Map();
+    }
+};
+
+const clonarFilasRevision = (filas = [], previewId = '') => {
+    const ediciones = leerEdicionesPreview(previewId);
+
+    return filas.map((fila, index) => {
+        const uid = crearUid(fila, index);
+        const guardada = ediciones.get(uid) || {};
+
+        return {
         aprobado: fila.aprobado ?? true,
         empleado_id: fila.empleado_id ?? null,
         numero_empleado: fila.numero_empleado ?? '',
@@ -153,20 +173,65 @@ const clonarFilasRevision = (filas = []) => {
         estado: fila.estado ?? 'detectada',
         mensaje: fila.mensaje ?? '',
         marcas: fila.marcas ?? 0,
-        _uid: crearUid(fila, index),
-    }));
+        ...guardada,
+        _uid: uid,
+        };
+    });
 };
 
-const filasRevision = ref(clonarFilasRevision(props.previewImportacion?.filas || []));
+const previewIdActivo = ref(props.previewImportacion?.preview_id || '');
+const filasRevision = ref(clonarFilasRevision(props.previewImportacion?.filas || [], previewIdActivo.value));
+
+const limpiarEdicionesPreview = (previewId = previewIdActivo.value) => {
+    if (typeof window === 'undefined' || !previewId) return;
+    window.sessionStorage.removeItem(claveEdicionesPreview(previewId));
+};
+
+watch(filasRevision, (filas) => {
+    if (typeof window === 'undefined' || !previewIdActivo.value) return;
+
+    const editables = filas.map((fila) => ({
+        _uid: fila._uid,
+        aprobado: fila.aprobado,
+        empleado_id: fila.empleado_id,
+        numero_empleado: fila.numero_empleado,
+        nombre_completo: fila.nombre_completo,
+        fecha: fila.fecha,
+        tipo_asistencia: fila.tipo_asistencia,
+        hora_entrada: fila.hora_entrada,
+        hora_salida: fila.hora_salida,
+        minutos_tarde: fila.minutos_tarde,
+        horas_trabajadas: fila.horas_trabajadas,
+        horas_extra: fila.horas_extra,
+        estado: fila.estado,
+        mensaje: fila.mensaje,
+    }));
+
+    try {
+        window.sessionStorage.setItem(claveEdicionesPreview(previewIdActivo.value), JSON.stringify(editables));
+    } catch (error) {
+        // La revision sigue disponible en memoria aunque el navegador limite el almacenamiento de sesion.
+    }
+}, { deep: true });
 
 watch(
     () => props.previewImportacion,
     (preview) => {
-        filasRevision.value = clonarFilasRevision(preview?.filas || []);
+        const nuevoPreviewId = preview?.preview_id || '';
+        const cambioPreview = nuevoPreviewId !== previewIdActivo.value;
+
+        previewIdActivo.value = nuevoPreviewId;
+        filasRevision.value = clonarFilasRevision(preview?.filas || [], previewIdActivo.value);
         fechaRevisionReferencia.value = preview?.resumen?.fecha_inicio
             || preview?.filas?.[0]?.fecha
             || fechaSemanaReferencia.value;
         paginaRevision.value = 1;
+
+        if (cambioPreview) {
+            filtroRevision.value = 'todas';
+            busquedaRevision.value = '';
+        }
+
         if (filasRevision.value.length > 0) {
             tabActiva.value = 'revision';
         }
@@ -260,6 +325,7 @@ const valorNumeroFilaRevision = (fila) => {
 const empleadoEnRegla = (empleado, reglas) => reglas.has(numeroEmpleado(empleado));
 
 const esEmpleadoEstudiante = (empleado) => Boolean(empleado?.es_estudiante);
+const esVigilancia24x24 = (empleado) => Boolean(empleado?.horario_24x24);
 
 const minutosDesdeHora = (hora) => {
     const [horas, minutos] = String(hora || '').substring(0, 5).split(':').map(Number);
@@ -281,12 +347,22 @@ const esSabado = (fecha) => {
     return new Date(anio, mes - 1, dia).getDay() === 6;
 };
 
-const normalizarHorasExtraSabado = (asistencia, empleado) => {
-    if (!asistencia || asistencia.tipo_asistencia !== 'Normal' || !esSabado(asistencia.fecha)) {
+const esFinDeSemana = (fecha) => {
+    const dia = crearFechaLocal(fecha).getDay();
+    return dia === 0 || dia === 6;
+};
+
+const redondearMediaHoraInferior = (horas) => Math.max(0, Math.floor(horas * 2) / 2);
+const redondearMediaHoraCercana = (horas) => Math.max(0, Math.round(horas * 2) / 2);
+
+const normalizarHorasExtraAsistencia = (asistencia, empleado) => {
+    if (!asistencia || asistencia.tipo_asistencia !== 'Normal') {
         return asistencia;
     }
 
-    if (!esEmpleadoEstudiante(empleado) && empleadoEnRegla(empleado, empleadosSinHorasExtra)) {
+    if (esEmpleadoEstudiante(empleado)
+        || esVigilancia24x24(empleado)
+        || empleadoEnRegla(empleado, empleadosSinHorasExtra)) {
         return { ...asistencia, horas_extra: 0 };
     }
 
@@ -297,8 +373,17 @@ const normalizarHorasExtraSabado = (asistencia, empleado) => {
         return asistencia;
     }
 
-    const inicio = Math.max(entrada, 8 * 60);
-    const horasExtra = Math.max(0, Math.round((salida - inicio) / 60));
+    let horasExtra = 0;
+
+    if (esFinDeSemana(asistencia.fecha)) {
+        const inicio = Math.max(entrada, 8 * 60);
+        horasExtra = redondearMediaHoraCercana((salida - inicio) / 60);
+    } else {
+        const limiteNormal = (17 * 60) + 30;
+        horasExtra = salida > limiteNormal
+            ? redondearMediaHoraInferior((salida - limiteNormal) / 60)
+            : 0;
+    }
 
     return {
         ...asistencia,
@@ -307,7 +392,7 @@ const normalizarHorasExtraSabado = (asistencia, empleado) => {
 };
 
 const aplicarReglasVisualesAsistencia = (asistencia, empleado) => {
-    const asistenciaNormalizada = normalizarHorasExtraSabado(asistencia, empleado);
+    const asistenciaNormalizada = normalizarHorasExtraAsistencia(asistencia, empleado);
 
     if (!asistenciaNormalizada || !esEmpleadoEstudiante(empleado)) {
         return asistenciaNormalizada;
@@ -406,6 +491,13 @@ const coincideFilaRevision = (fila, termino) => {
         || String(fila.tipo_asistencia || '').toLowerCase().includes(termino);
 };
 
+const coincideFiltroRevision = (fila) => {
+    if (filtroRevision.value === 'incompletas') return fila.estado === 'incompleta';
+    if (filtroRevision.value === 'faltas') return fila.tipo_asistencia === 'Falta';
+
+    return true;
+};
+
 const asistenciasPorEmpleadoFecha = computed(() => {
     const mapa = new Map();
     props.asistencias.forEach((asistencia) => {
@@ -487,7 +579,6 @@ const filasMatrizRevision = computed(() => {
 
     ordenarFilasRevision(filasRevision.value)
         .filter((fila) => fechasSet.has(fila.fecha))
-        .filter((fila) => coincideFilaRevision(fila, termino))
         .forEach((fila) => {
             const llave = llaveGrupoRevision(fila);
 
@@ -498,7 +589,10 @@ const filasMatrizRevision = computed(() => {
             grupos.get(llave).filas.push(fila);
         });
 
-    return [...grupos.values()].map((grupo) => {
+    return [...grupos.values()]
+        .filter((grupo) => grupo.filas.some((fila) => coincideFiltroRevision(fila)))
+        .filter((grupo) => !termino || grupo.filas.some((fila) => coincideFilaRevision(fila, termino)))
+        .map((grupo) => {
         const porFecha = new Map(grupo.filas.map((fila) => [fila.fecha, fila]));
         const ids = [...new Set(grupo.filas.map((fila) => fila.empleado_id).filter(Boolean))];
 
@@ -510,7 +604,7 @@ const filasMatrizRevision = computed(() => {
                 fila: porFecha.get(dia.iso) || null,
             })),
         };
-    }).sort((a, b) => {
+        }).sort((a, b) => {
         const numeroA = parseInt(normalizarNumeroEmpleado(a.numero_empleado || a.csv_numero_empleado), 10);
         const numeroB = parseInt(normalizarNumeroEmpleado(b.numero_empleado || b.csv_numero_empleado), 10);
         const valorA = Number.isFinite(numeroA) ? numeroA : Number.MAX_SAFE_INTEGER;
@@ -521,6 +615,22 @@ const filasMatrizRevision = computed(() => {
         return String(a.nombre_completo || '').localeCompare(String(b.nombre_completo || ''), 'es');
     });
 });
+
+const textoCeldaVaciaRevision = (grupo, fecha) => {
+    const inicio = props.previewImportacion?.resumen?.fecha_inicio;
+    const fin = props.previewImportacion?.resumen?.fecha_fin;
+
+    if ((inicio && fecha < inicio) || (fin && fecha > fin)) return 'Fuera del rango';
+
+    const empleado = props.empleados.find((item) => Number(item.id) === Number(grupo.empleado_id));
+
+    if (empleado?.fecha_ingreso && fecha < empleado.fecha_ingreso) return 'No laboraba';
+    if (empleado?.fecha_baja && fecha > empleado.fecha_baja) return 'No laboraba';
+    if (empleado?.horario_24x24) return 'Descanso 24x24';
+    if (esFinDeSemana(fecha)) return 'Descanso';
+
+    return 'No aplica';
+};
 
 const filasMatrizRevisionPaginadas = computed(() => {
     const inicio = (paginaRevision.value - 1) * REGISTROS_POR_PAGINA;
@@ -659,6 +769,7 @@ const claseEstadoRevision = (estado) => {
     if (estado === 'incompleta') return 'border-orange-200 bg-orange-50 text-orange-700';
     if (estado === 'no_encontrado') return 'border-slate-300 bg-slate-100 text-slate-700';
     if (estado === 'actualiza') return 'border-amber-200 bg-amber-50 text-amber-700';
+    if (estado === 'existente') return 'border-blue-200 bg-blue-50 text-blue-700';
     return 'border-emerald-200 bg-emerald-50 text-emerald-700';
 };
 
@@ -667,6 +778,7 @@ const textoEstadoRevision = (estado) => {
     if (estado === 'incompleta') return 'Incompleta';
     if (estado === 'no_encontrado') return 'Sin empleado';
     if (estado === 'actualiza') return 'Actualiza';
+    if (estado === 'existente') return 'Existente';
     return 'Detectada';
 };
 
@@ -701,7 +813,7 @@ watch(filasMatrizAsistencias, () => {
     }
 });
 
-watch([busquedaRevision, fechaRevisionReferencia], () => {
+watch([busquedaRevision, filtroRevision, fechaRevisionReferencia], () => {
     paginaRevision.value = 1;
 });
 
@@ -870,6 +982,19 @@ const aplicarReglasFilaRevision = (fila) => {
         return;
     }
 
+    if (Number.isNaN(entrada.getTime()) || Number.isNaN(salida.getTime())) {
+        fila.minutos_tarde = 0;
+        fila.horas_trabajadas = 0;
+        fila.horas_extra = 0;
+        return;
+    }
+
+    if (esVigilancia24x24(empleado)) {
+        fila.minutos_tarde = 0;
+        fila.horas_extra = 0;
+        return;
+    }
+
     if (esEmpleadoEstudiante(empleado)) {
         fila.horas_trabajadas = Number(fila.horas_trabajadas || 0) + Number(fila.horas_extra || 0);
         fila.horas_extra = 0;
@@ -897,8 +1022,24 @@ const calcularHorasFilaRevision = (fila) => {
     const entrada = new Date(`${fila.fecha}T${fila.hora_entrada}:00`);
     const salida = new Date(`${fila.fecha}T${fila.hora_salida}:00`);
     const horaOficial = new Date(`${fila.fecha}T08:00:00`);
+    const empleado = empleadosPorId.value.get(Number(fila.empleado_id));
 
-    if (Number.isNaN(entrada.getTime()) || Number.isNaN(salida.getTime()) || salida <= entrada) {
+    if (esVigilancia24x24(empleado)) {
+        salida.setDate(salida.getDate() + 1);
+        fila.minutos_tarde = 0;
+        fila.horas_trabajadas = Math.max(0, (salida - entrada) / 3600000);
+        fila.horas_extra = 0;
+
+        if (fila.estado === 'incompleta') {
+            fila.estado = 'detectada';
+            fila.mensaje = 'Turno 24x24 completado manualmente en revision.';
+            fila.aprobado = Boolean(fila.empleado_id);
+        }
+
+        return;
+    }
+
+    if (salida <= entrada) {
         fila.minutos_tarde = 0;
         fila.horas_trabajadas = 0;
         fila.horas_extra = 0;
@@ -913,10 +1054,10 @@ const calcularHorasFilaRevision = (fila) => {
 
     fila.minutos_tarde = entrada > horaOficial ? Math.round((entrada - horaOficial) / 60000) : 0;
 
-    if (entrada.getDay() === 6) {
+    if (entrada.getDay() === 0 || entrada.getDay() === 6) {
         const inicioSabado = entrada < horaOficial ? horaOficial : entrada;
         fila.horas_trabajadas = 0;
-        fila.horas_extra = Math.max(0, Math.round((salida - inicioSabado) / 3600000));
+        fila.horas_extra = redondearMediaHoraCercana((salida - inicioSabado) / 3600000);
         aplicarReglasFilaRevision(fila);
         return;
     }
@@ -926,7 +1067,7 @@ const calcularHorasFilaRevision = (fila) => {
 
     if (salida > limiteNormal) {
         fila.horas_trabajadas = Math.max(0, (limiteNormal - inicioJornada) / 3600000);
-        fila.horas_extra = Math.max(0, Math.floor((salida - limiteNormal) / 3600000));
+        fila.horas_extra = redondearMediaHoraInferior((salida - limiteNormal) / 3600000);
         aplicarReglasFilaRevision(fila);
         return;
     }
@@ -937,6 +1078,13 @@ const calcularHorasFilaRevision = (fila) => {
 };
 
 const prepararCambioTipo = (fila) => {
+    fila.aprobado = Boolean(fila.empleado_id);
+
+    if (fila.estado === 'existente') {
+        fila.estado = 'actualiza';
+        fila.mensaje = 'Registro existente editado manualmente en revision.';
+    }
+
     if (fila.tipo_asistencia !== 'Normal') {
         fila.hora_entrada = '';
         fila.hora_salida = '';
@@ -960,6 +1108,7 @@ const seleccionarRevision = (seleccionar) => {
 };
 
 const aprobarRevision = () => {
+    const previewIdEnviado = previewIdActivo.value;
     const incompletasAprobadas = filasRevision.value.filter((fila) => {
         return fila.aprobado
             && fila.empleado_id
@@ -992,6 +1141,8 @@ const aprobarRevision = () => {
     formRevision.post(route('asistencias.importar.aprobar'), {
         preserveScroll: true,
         onSuccess: () => {
+            limpiarEdicionesPreview(previewIdEnviado);
+            previewIdActivo.value = '';
             filasRevision.value = [];
             tabActiva.value = 'captura';
         },
@@ -1003,9 +1154,13 @@ const descartarRevision = () => {
         return;
     }
 
+    const previewIdDescartado = previewIdActivo.value;
+
     router.delete(route('asistencias.importar.descartar'), {
         preserveScroll: true,
         onSuccess: () => {
+            limpiarEdicionesPreview(previewIdDescartado);
+            previewIdActivo.value = '';
             filasRevision.value = [];
             tabActiva.value = 'captura';
         },
@@ -1563,7 +1718,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                         Ordenado por empleado
                                     </span>
                                 </div>
-                                <div class="grid w-full gap-3 xl:w-auto xl:grid-cols-[auto_1fr_auto_auto_1.4fr] xl:items-end">
+                                <div class="grid w-full gap-3 xl:w-auto xl:grid-cols-[auto_1fr_auto_auto_1fr_1.35fr] xl:items-end">
                                     <button type="button" class="btn-secondary px-3 text-xs" @click="cambiarSemana('revision', -1)">
                                         <i class="ti ti-chevron-left" aria-hidden="true"></i>
                                     </button>
@@ -1577,6 +1732,14 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                     <button type="button" class="btn-secondary px-3 text-xs" @click="cambiarSemana('revision', 1)">
                                         <i class="ti ti-chevron-right" aria-hidden="true"></i>
                                     </button>
+                                    <label class="block">
+                                        <span class="field-label mb-1">Mostrar</span>
+                                        <select v-model="filtroRevision" class="field-input-soft">
+                                            <option value="todas">Todas las filas</option>
+                                            <option value="incompletas">Empleados con incompletas</option>
+                                            <option value="faltas">Empleados con faltas</option>
+                                        </select>
+                                    </label>
                                     <label class="block">
                                         <span class="field-label mb-1">Buscar en revision</span>
                                         <input v-model="busquedaRevision" type="text" class="field-input-soft" placeholder="Numero, nombre, fecha o estado..." />
@@ -1679,7 +1842,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                                         {{ dia.fila.mensaje }}
                                                     </p>
                                                 </template>
-                                                <span v-else class="cell-empty">--</span>
+                                                <span v-else class="cell-empty">{{ textoCeldaVaciaRevision(grupo, dia.iso) }}</span>
                                             </td>
                                             <td class="text-center font-black text-emerald-700">{{ grupo.filas.filter((fila) => fila.aprobado && fila.empleado_id).length }}</td>
                                             <td class="text-center font-black text-rose-600">{{ grupo.filas.filter((fila) => fila.tipo_asistencia === 'Falta').length }}</td>
