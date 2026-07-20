@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
 use App\Support\DiasLaborados;
+use App\Support\HorarioLaboralEmpleado;
 
 class Empleado extends Model
 {
@@ -82,7 +83,7 @@ class Empleado extends Model
         return $this->asistencias()
             ->where('tipo_asistencia', 'Falta')
             ->get(['fecha'])
-            ->filter(fn ($asistencia) => !$this->esFechaFinDeSemana($asistencia->fecha))
+            ->filter(fn ($asistencia) => HorarioLaboralEmpleado::esDiaLaboral($this, $asistencia->fecha))
             ->count(); 
     }
 
@@ -92,14 +93,9 @@ class Empleado extends Model
             ->where('tipo_asistencia', 'Falta')
             ->orderBy('fecha', 'desc')
             ->get(['fecha'])
-            ->filter(fn ($asistencia) => !$this->esFechaFinDeSemana($asistencia->fecha))
+            ->filter(fn ($asistencia) => HorarioLaboralEmpleado::esDiaLaboral($this, $asistencia->fecha))
             ->map(fn ($asistencia) => Carbon::parse($asistencia->fecha)->format('Y-m-d'))
             ->values();
-    }
-
-    private function esFechaFinDeSemana($fecha): bool
-    {
-        return Carbon::parse($fecha)->isWeekend();
     }
 
     public function getDiasLaboradosAttribute($value)

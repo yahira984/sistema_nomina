@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { clavesFotoEmpleado, fotoEmpleadoSrc, mostrarFotoEmpleado, probarSiguienteFotoEmpleado } from '@/Utils/employeePhotos';
 
 const props = defineProps({
@@ -13,6 +13,28 @@ const props = defineProps({
 });
 
 const tabActiva = ref('perfil');
+const fotoAmpliada = ref(false);
+const fotoDisponible = ref(false);
+
+const marcarFotoDisponible = (event) => {
+    fotoDisponible.value = true;
+    mostrarFotoEmpleado(event);
+};
+
+const abrirFotoEmpleado = () => {
+    if (fotoDisponible.value) fotoAmpliada.value = true;
+};
+
+const cerrarFotoEmpleado = () => {
+    fotoAmpliada.value = false;
+};
+
+const manejarTeclaFoto = (event) => {
+    if (event.key === 'Escape') cerrarFotoEmpleado();
+};
+
+onMounted(() => window.addEventListener('keydown', manejarTeclaFoto));
+onBeforeUnmount(() => window.removeEventListener('keydown', manejarTeclaFoto));
 
 /* MODAL PARA EDITAR FECHA DE BAJA */
 const modalEditarBaja = ref(false);
@@ -118,7 +140,13 @@ const desactivarAccesoApp = () => {
                 <div class="relative flex flex-col items-start gap-5 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 md:flex-row md:items-center md:gap-6">
                     <div class="absolute top-0 left-0 w-full h-16 bg-gradient-to-r from-teal-500 to-emerald-600 opacity-20"></div>
 
-                    <div class="relative z-10 flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-gradient-to-br from-teal-600 to-emerald-800 text-2xl font-black text-white shadow-lg sm:h-24 sm:w-24 sm:text-3xl">
+                    <button
+                        type="button"
+                        class="relative z-10 flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-gradient-to-br from-teal-600 to-emerald-800 text-2xl font-black text-white shadow-lg transition hover:ring-4 hover:ring-teal-200 disabled:cursor-default disabled:hover:ring-0 sm:h-24 sm:w-24 sm:text-3xl"
+                        :disabled="!fotoDisponible"
+                        :title="fotoDisponible ? 'Ampliar fotografia' : 'Sin fotografia'"
+                        @click="abrirFotoEmpleado"
+                    >
                         <span>{{ iniciales }}</span>
                         <img
                             v-if="clavesFotoEmpleado(empleado).length"
@@ -127,10 +155,10 @@ const desactivarAccesoApp = () => {
                             loading="lazy"
                             decoding="async"
                             class="absolute inset-0 h-full w-full object-cover"
-                            @load="mostrarFotoEmpleado"
+                            @load="marcarFotoDisponible"
                             @error="probarSiguienteFotoEmpleado(empleado, $event)"
                         />
-                    </div>
+                    </button>
 
                     <div class="z-10 min-w-0 flex-1">
                         <div class="mb-1 flex flex-wrap items-center gap-2 sm:gap-3">
@@ -596,6 +624,40 @@ const desactivarAccesoApp = () => {
                 </form>
             </div>
         </div>
+
+        <Teleport to="body">
+            <div
+                v-if="fotoAmpliada"
+                class="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
+                role="dialog"
+                aria-modal="true"
+                :aria-label="`Fotografia de ${empleado.nombre_completo}`"
+                @click.self="cerrarFotoEmpleado"
+            >
+                <div class="relative max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-xl border border-white/20 bg-slate-950 shadow-2xl">
+                    <button
+                        type="button"
+                        class="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 bg-slate-950/70 text-xl text-white transition hover:bg-white hover:text-slate-950"
+                        title="Cerrar fotografia"
+                        aria-label="Cerrar fotografia"
+                        @click="cerrarFotoEmpleado"
+                    >
+                        <i class="ti ti-x" aria-hidden="true"></i>
+                    </button>
+                    <img
+                        :src="fotoEmpleadoSrc(empleado)"
+                        :alt="`Foto de ${empleado.nombre_completo}`"
+                        class="max-h-[84vh] w-full bg-slate-900 object-contain"
+                        @load="mostrarFotoEmpleado"
+                        @error="probarSiguienteFotoEmpleado(empleado, $event)"
+                    />
+                    <div class="border-t border-white/10 bg-slate-950 px-5 py-4 text-white">
+                        <p class="text-base font-black">{{ empleado.nombre_completo }}</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-300">No. empleado {{ numeroEmpleado }}</p>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
     </AuthenticatedLayout>
 </template>
 

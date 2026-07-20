@@ -8,6 +8,8 @@ use App\Models\Asistencia;
 use App\Models\DiaFestivo;
 use App\Models\Nomina;
 use App\Services\DiasFestivosMexicoService;
+use App\Support\HorarioLaboralEmpleado;
+use App\Support\HorasExtraEmpleado;
 use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Carbon\Carbon;
@@ -47,12 +49,14 @@ class DashboardController extends Controller
             ->where('pagado', false)
             ->count();
         $asistenciasMes = $this->asistenciasDashboard()
+            ->with('empleado')
             ->whereBetween('fecha', [$hoy->copy()->startOfMonth()->format('Y-m-d'), $hoy->copy()->endOfMonth()->format('Y-m-d')])
-            ->get(['fecha', 'tipo_asistencia', 'horas_extra']);
+            ->get(['empleado_id', 'fecha', 'tipo_asistencia', 'horas_extra']);
 
         $faltasMes = $asistenciasMes
             ->where('tipo_asistencia', 'Falta')
-            ->filter(fn ($asistencia) => !$this->esFinDeSemana($asistencia->fecha))
+            ->filter(fn ($asistencia) => $asistencia->empleado
+                && HorarioLaboralEmpleado::esDiaLaboral($asistencia->empleado, $asistencia->fecha))
             ->count();
 
         // 3. CUMPLEAÑOS DEL MES
@@ -91,10 +95,19 @@ class DashboardController extends Controller
         $inicioUltimos7Dias = $hoy->copy()->subDays(6)->format('Y-m-d');
         $finUltimos7Dias = $hoy->format('Y-m-d');
         $horasExtraPorFecha = $this->asistenciasDashboard()
+            ->with('empleado')
             ->whereBetween('fecha', [$inicioUltimos7Dias, $finUltimos7Dias])
-            ->selectRaw('fecha, SUM(horas_extra) as total_horas')
-            ->groupBy('fecha')
-            ->pluck('total_horas', 'fecha');
+            ->where('tipo_asistencia', 'Normal')
+            ->get(['empleado_id', 'fecha', 'hora_entrada', 'hora_salida'])
+            ->groupBy(fn (Asistencia $asistencia) => Carbon::parse($asistencia->fecha)->format('Y-m-d'))
+            ->map(fn ($asistencias) => $asistencias->sum(fn (Asistencia $asistencia) => $asistencia->empleado
+                ? HorasExtraEmpleado::calcular(
+                    $asistencia->empleado,
+                    $asistencia->fecha,
+                    $asistencia->hora_entrada,
+                    $asistencia->hora_salida
+                )
+                : 0));
         $ultimos7Dias = collect();
         for ($i = 6; $i >= 0; $i--) {
             $fecha = $hoy->copy()->subDays($i)->format('Y-m-d');
@@ -410,6 +423,7 @@ class DashboardController extends Controller
             Carbon::THURSDAY => 'Jue',
             Carbon::FRIDAY => 'Vie',
             Carbon::SATURDAY => 'Sab',
+            Carbon::SUNDAY => 'Dom',
         ];
 
         $faltas = array_fill_keys(array_values($dias), 0);
@@ -428,7 +442,9 @@ class DashboardController extends Controller
 
             $label = $dias[$dia];
 
-            if ($asistencia->tipo_asistencia === 'Falta') {
+            if ($asistencia->tipo_asistencia === 'Falta'
+                && $asistencia->empleado
+                && HorarioLaboralEmpleado::esDiaLaboral($asistencia->empleado, $asistencia->fecha)) {
                 $faltas[$label]++;
             }
 
@@ -471,7 +487,8 @@ class DashboardController extends Controller
             ->get();
 
         $asistenciasEvaluadas = $asistencias
-            ->filter(fn ($asistencia) => !$this->esFinDeSemana($asistencia->fecha))
+            ->filter(fn ($asistencia) => $asistencia->empleado
+                && HorarioLaboralEmpleado::esDiaLaboral($asistencia->empleado, $asistencia->fecha))
             ->values();
 
         $totalEvaluados = $asistenciasEvaluadas->pluck('empleado_id')->unique()->count();

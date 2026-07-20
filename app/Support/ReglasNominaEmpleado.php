@@ -14,12 +14,14 @@ class ReglasNominaEmpleado
 
     public static function sinHorasExtra(Empleado $empleado): bool
     {
-        return self::coincideNumero($empleado, self::SIN_HORAS_EXTRA);
+        return HorarioLaboralEmpleado::esVigilancia24x24($empleado)
+            || self::coincideNumero($empleado, self::SIN_HORAS_EXTRA);
     }
 
     public static function sinRetardos(Empleado $empleado): bool
     {
-        return self::coincideNumero($empleado, self::SIN_RETARDOS);
+        return HorarioLaboralEmpleado::esVigilancia24x24($empleado)
+            || self::coincideNumero($empleado, self::SIN_RETARDOS);
     }
 
     public static function pagoPorHoraTopado(Empleado $empleado): bool

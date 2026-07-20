@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Asistencia;
 use App\Models\Empleado;
 use App\Models\Nomina;
+use App\Support\HorasExtraEmpleado;
 use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Carbon\Carbon;
@@ -550,6 +551,18 @@ class FirebaseSyncService
 
     private static function datosAsistencia(Asistencia $asistencia): array
     {
+        $empleado = $asistencia->empleado;
+        $horasExtra = $asistencia->tipo_asistencia === 'Normal'
+            && $empleado
+            && !(bool) ($empleado->es_estudiante ?? false)
+            ? HorasExtraEmpleado::calcular(
+                $empleado,
+                $asistencia->fecha,
+                $asistencia->hora_entrada,
+                $asistencia->hora_salida
+            )
+            : 0;
+
         return [
             'id' => $asistencia->id,
             'fecha' => self::fecha($asistencia->fecha),
@@ -558,7 +571,7 @@ class FirebaseSyncService
             'hora_salida' => self::hora($asistencia->hora_salida),
             'minutos_tarde' => (int) ($asistencia->minutos_tarde ?? 0),
             'horas_trabajadas' => self::numero($asistencia->horas_trabajadas ?? 0),
-            'horas_extra' => self::numero($asistencia->horas_extra ?? 0),
+            'horas_extra' => self::numero($horasExtra),
             'es_falta' => $asistencia->tipo_asistencia === 'Falta',
             'updated_at' => now()->toISOString(),
         ];
