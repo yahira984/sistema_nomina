@@ -12,6 +12,11 @@ class Nomina extends Model
     // AL DEJARLO VACÍO, PERMITIMOS QUE SÍ SE GUARDEN LAS MATEMÁTICAS EN LA BASE DE DATOS
     protected $guarded = [];
 
+    protected $casts = [
+        'calculation_snapshot' => 'array',
+        'pagado' => 'boolean',
+    ];
+
     public function empleado()
     {
         return $this->belongsTo(Empleado::class);

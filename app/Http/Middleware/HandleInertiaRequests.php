@@ -3,7 +3,11 @@
 namespace App\Http\Middleware;
 
 use App\Support\SecurityPermissions;
+use App\Models\IntegrationFailure;
+use App\Models\SystemOperation;
+use App\Models\UserPreference;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -32,9 +36,13 @@ class HandleInertiaRequests extends Middleware
     {
         $user = $request->user();
         $permissions = $user?->effectivePermissions() ?? [];
+        $preferences = $user && Schema::hasTable('user_preferences')
+            ? UserPreference::firstOrCreate(['user_id' => $user->id])
+            : null;
 
         return [
             ...parent::share($request),
+            'appVersion' => config('app.version'),
             'auth' => [
                 'user' => $user ? [
                     'id' => $user->id,
@@ -46,6 +54,17 @@ class HandleInertiaRequests extends Middleware
                     'is_recovery_admin' => $user->isRecoveryAdmin(),
                     'approved_at' => $user->approved_at,
                     'disabled_at' => $user->disabled_at,
+                    'preferences' => $preferences ? [
+                        'theme' => $preferences->theme,
+                        'density' => $preferences->density,
+                        'sidebar_collapsed' => (bool) $preferences->sidebar_collapsed,
+                        'saved_filters' => $preferences->saved_filters ?? [],
+                    ] : [
+                        'theme' => 'system',
+                        'density' => 'comfortable',
+                        'sidebar_collapsed' => false,
+                        'saved_filters' => [],
+                    ],
                 ] : null,
                 'permissions' => $permissions,
                 'can' => collect(SecurityPermissions::allKeys())
@@ -55,6 +74,21 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
+                'operation_id' => fn () => $request->session()->get('operation_id'),
+            ],
+            'systemContext' => [
+                'selected_period' => $request->input('fecha_corte') ?: $request->input('fecha'),
+                'notifications' => fn () => $user && Schema::hasTable('system_operations')
+                    ? [
+                        'failed_operations' => SystemOperation::where('user_id', $user->id)
+                            ->where('status', 'failed')
+                            ->where('updated_at', '>=', now()->subDay())
+                            ->count(),
+                        'integration_failures' => $user->isAdmin() && Schema::hasTable('integration_failures')
+                            ? IntegrationFailure::where('status', '!=', 'resolved')->count()
+                            : 0,
+                    ]
+                    : ['failed_operations' => 0, 'integration_failures' => 0],
             ],
         ];
     }

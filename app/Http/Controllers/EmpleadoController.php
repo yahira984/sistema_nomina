@@ -3,7 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Empleado;
+use App\Models\AuditLog;
 use App\Services\FirebaseSyncService;
+use App\Services\FirebaseJobDispatcher;
+use App\Models\UserPreference;
 use App\Support\DiasLaborados;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -12,11 +15,65 @@ use Illuminate\Support\Facades\Schema;
 
 class EmpleadoController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $empleados = Empleado::orderByDesc('estatus')->orderBy('id', 'desc')->get();
+        $savedFilters = Schema::hasTable('user_preferences')
+            ? UserPreference::where('user_id', $request->user()?->id)->first()?->saved_filters ?? []
+            : [];
+        $search = trim((string) $request->input('search', data_get($savedFilters, 'employees.search', '')));
+        $status = (string) $request->input('status', data_get($savedFilters, 'employees.status', 'activos'));
+        $sort = (string) $request->input('sort', data_get($savedFilters, 'employees.sort', 'num_asc'));
+        $perPage = max(12, min(60, (int) $request->input('per_page', 24)));
+        $query = Empleado::query()
+            ->withCount([
+                'asistencias as vacaciones_capturadas_count' => fn ($query) => $query->where('tipo_asistencia', 'Vacaciones'),
+            ])
+            ->withSum([
+                'nominas as vacaciones_pagadas_sum' => fn ($query) => $query->where('pagado', true),
+            ], 'dias_vacaciones_pagadas')
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($query) use ($search) {
+                    $query->where('nombre_completo', 'like', "%{$search}%")
+                        ->orWhere('numero_empleado', 'like', "%{$search}%")
+                        ->orWhere('numero_empleado_baja', 'like', "%{$search}%")
+                        ->orWhere('puesto', 'like', "%{$search}%");
+                });
+            })
+            ->when($status === 'activos', fn ($query) => $query->where('estatus', true))
+            ->when(in_array($status, ['bajas', 'papelera'], true), fn ($query) => $query->where('estatus', false))
+            ->when($status === 'prestamo', fn ($query) => $query->where('estatus', true)->where('saldo_prestamo', '>', 0));
+
+        match ($sort) {
+            'name_asc' => $query->orderBy('nombre_completo'),
+            'name_desc' => $query->orderByDesc('nombre_completo'),
+            'num_desc' => $query
+                ->orderByDesc('estatus')
+                ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), NULLIF(numero_empleado_baja, ''), id) AS UNSIGNED) DESC"),
+            default => $query
+                ->orderByDesc('estatus')
+                ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), NULLIF(numero_empleado_baja, ''), id) AS UNSIGNED) ASC"),
+        };
+
+        $paginator = $query->paginate($perPage)->withQueryString();
+        $employees = $paginator->getCollection()->map(fn (Empleado $employee) => $this->directoryPayload($employee));
+
         return Inertia::render('Empleados/Index', [
-            'empleados' => $empleados
+            'empleados' => $employees,
+            'empleadosMeta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+            'resumen' => [
+                'activos' => Empleado::where('estatus', true)->count(),
+                'bajas' => Empleado::where('estatus', false)->count(),
+                'con_deuda' => Empleado::where('estatus', true)->where('saldo_prestamo', '>', 0)->count(),
+                'sin_numero' => Empleado::where('estatus', true)->whereNull('numero_empleado')->count(),
+            ],
+            'filtros' => compact('search', 'status', 'sort'),
         ]);
     }
     // ... tu funcion index() ...
@@ -32,6 +89,22 @@ class EmpleadoController extends Controller
         return Inertia::render('Empleados/Show', [
             'empleado' => $empleado,
             'accesoApp' => FirebaseSyncService::obtenerAccesoApp($empleado),
+            'timeline' => AuditLog::query()
+                ->where('auditable_type', Empleado::class)
+                ->where('auditable_id', (string) $empleado->id)
+                ->with('user:id,name')
+                ->latest('created_at')
+                ->limit(100)
+                ->get()
+                ->map(fn (AuditLog $log) => [
+                    'id' => $log->id,
+                    'event' => $log->event,
+                    'description' => $log->description,
+                    'old_values' => $log->old_values,
+                    'new_values' => $log->new_values,
+                    'created_at' => $log->created_at?->toISOString(),
+                    'user' => $log->user?->name,
+                ]),
         ]);
     }
 
@@ -140,7 +213,7 @@ class EmpleadoController extends Controller
         }
 
         $empleado = Empleado::create($datos);
-        FirebaseSyncService::sincronizarEmpleado($empleado);
+        FirebaseJobDispatcher::employee($empleado);
 
         return redirect()->back()->with('success', 'Empleado registrado correctamente.');
     }
@@ -201,7 +274,7 @@ class EmpleadoController extends Controller
         }
 
         $empleado->update($datos);
-        FirebaseSyncService::sincronizarEmpleado($empleado);
+        FirebaseJobDispatcher::employee($empleado);
 
         return redirect()->back()->with('success', 'Datos del empleado actualizados correctamente.');
     }
@@ -230,7 +303,7 @@ class EmpleadoController extends Controller
         $empleado->update($datosBaja);
 
         FirebaseSyncService::desactivarAccesoApp($empleado);
-        FirebaseSyncService::sincronizarEmpleado($empleado);
+        FirebaseJobDispatcher::employee($empleado);
 
         return redirect()->back()->with('success', 'Empleado enviado a papelera y numero liberado.');
     }
@@ -258,7 +331,7 @@ class EmpleadoController extends Controller
         $empleado->refresh();
         $this->moverFotoEmpleadoAActivos($empleado);
 
-        FirebaseSyncService::sincronizarEmpleado($empleado);
+        FirebaseJobDispatcher::employee($empleado);
 
         $mensaje = $numeroOcupado
             ? "Empleado restaurado sin numero. El numero {$numeroAnterior} ya lo usa otro empleado activo; asignale uno nuevo antes de usarlo en checador."
@@ -422,5 +495,38 @@ class EmpleadoController extends Controller
     private function extensionesFotoEmpleado(): array
     {
         return ['webp', 'jpg', 'jpeg', 'png'];
+    }
+
+    private function directoryPayload(Empleado $employee): array
+    {
+        $attributes = $employee->getAttributes();
+        $start = $employee->fecha_ingreso ? Carbon::parse($employee->fecha_ingreso)->startOfDay() : null;
+        $end = $employee->fecha_baja ? Carbon::parse($employee->fecha_baja)->startOfDay() : now()->startOfDay();
+        $years = $start && $end->gte($start) ? (int) floor($start->diffInYears($end)) : 0;
+        $vacationTotal = $years < 1
+            ? 0
+            : ($years <= 5 ? 10 + ($years * 2) : 20 + ((int) ceil(($years - 5) / 5) * 2));
+        $vacationTaken = round(max(
+            (float) ($employee->vacaciones_capturadas_count ?? 0),
+            (float) ($employee->vacaciones_pagadas_sum ?? 0)
+        ), 2);
+
+        return array_merge($attributes, [
+            'estatus' => (bool) $employee->estatus,
+            'es_estudiante' => (bool) ($employee->es_estudiante ?? false),
+            'antiguedad_anios' => $years,
+            'dias_vacaciones_totales' => $vacationTotal,
+            'dias_vacaciones_tomados' => $vacationTaken,
+            'dias_vacaciones_restantes' => round(
+                $vacationTotal - $vacationTaken + (float) ($employee->ajuste_vacaciones ?? 0),
+                2
+            ),
+            'dias_laborados' => $employee->fecha_baja && $employee->fecha_ingreso
+                ? DiasLaborados::contarSinDomingos($employee->fecha_ingreso, $employee->fecha_baja)
+                : (int) ($employee->dias_laborados ?? 0),
+            'dias_laborados_anio_baja' => $employee->fecha_baja && $employee->fecha_ingreso
+                ? DiasLaborados::contarAnioDeBaja($employee->fecha_ingreso, $employee->fecha_baja)
+                : (int) ($employee->dias_laborados_anio_baja ?? 0),
+        ]);
     }
 }

@@ -3,19 +3,15 @@
 namespace App\Support;
 
 use App\Models\Empleado;
+use App\Services\LaborCalendarService;
+use App\Services\WorkRuleResolver;
 use Carbon\Carbon;
-use Illuminate\Support\Str;
 
 class HorarioLaboralEmpleado
 {
-    private const VIGILANCIA_RESPALDO = ['20', '29'];
-
     public static function esVigilancia24x24(Empleado $empleado): bool
     {
-        $puesto = Str::upper(Str::ascii(trim((string) ($empleado->puesto ?? ''))));
-
-        return Str::contains($puesto, ['VIGILANCIA', 'SEGURIDAD'])
-            || in_array(ReglasNominaEmpleado::numero($empleado), self::VIGILANCIA_RESPALDO, true);
+        return ReglasNominaEmpleado::turno24x24($empleado);
     }
 
     public static function esDiaLaboral(Empleado $empleado, Carbon|string $fecha): bool
@@ -28,8 +24,16 @@ class HorarioLaboralEmpleado
             return false;
         }
 
+        $calendarOverride = LaborCalendarService::overrideFor($empleado, $dia);
+
+        if ($calendarOverride !== null) {
+            return $calendarOverride;
+        }
+
+        $rule = WorkRuleResolver::for($empleado);
+
         if (!self::esVigilancia24x24($empleado)) {
-            return !$dia->isWeekend();
+            return in_array($dia->dayOfWeekIso, $rule['dias_laborales'] ?? [1, 2, 3, 4, 5], true);
         }
 
         $referencia = self::fechaReferencia24x24($empleado);
@@ -57,6 +61,12 @@ class HorarioLaboralEmpleado
 
     private static function fechaReferencia24x24(Empleado $empleado): Carbon
     {
+        $configured = WorkRuleResolver::for($empleado)['fecha_referencia_turno'] ?? null;
+
+        if ($configured) {
+            return Carbon::parse($configured)->startOfDay();
+        }
+
         if ($empleado->fecha_ingreso) {
             return Carbon::parse($empleado->fecha_ingreso)->startOfDay();
         }

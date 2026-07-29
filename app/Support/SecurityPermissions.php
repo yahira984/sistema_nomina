@@ -74,6 +74,14 @@ class SecurityPermissions
                 'label' => 'Respaldar/restaurar base de datos',
                 'group' => 'Sistema',
             ],
+            'sistema.rules' => [
+                'label' => 'Configurar reglas y calendario laboral',
+                'group' => 'Sistema',
+            ],
+            'sistema.health' => [
+                'label' => 'Ver salud e inconsistencias del sistema',
+                'group' => 'Sistema',
+            ],
             'sistema.users' => [
                 'label' => 'Aprobar usuarios y permisos',
                 'group' => 'Seguridad',
@@ -124,6 +132,8 @@ class SecurityPermissions
                 'nominas.pay',
                 'nominas.export',
                 'sistema.dias_festivos',
+                'sistema.rules',
+                'sistema.health',
             ],
             self::CAPTURIST => [
                 'dashboard.view',

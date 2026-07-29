@@ -1,6 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
 defineProps({
@@ -11,10 +11,16 @@ defineProps({
         default: () => [],
     },
     totalTablas: Number,
+    backups: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const page = usePage();
 const archivoInput = ref(null);
+const creandoRespaldo = ref(false);
+const verificandoRespaldo = ref(null);
 
 const mensajeExito = computed(() => page.props.flash?.success);
 
@@ -37,6 +43,22 @@ const importar = () => {
                 archivoInput.value.value = null;
             }
         },
+    });
+};
+
+const crearRespaldoAutomatico = () => {
+    creandoRespaldo.value = true;
+    router.post(route('base-datos.respaldos.store'), {}, {
+        preserveScroll: true,
+        onFinish: () => { creandoRespaldo.value = false; },
+    });
+};
+
+const verificarRespaldo = (backup) => {
+    verificandoRespaldo.value = backup.id;
+    router.post(route('base-datos.respaldos.verify', backup.id), {}, {
+        preserveScroll: true,
+        onFinish: () => { verificandoRespaldo.value = null; },
     });
 };
 </script>
@@ -173,6 +195,43 @@ const importar = () => {
                                 {{ form.processing ? 'Restaurando...' : 'Restaurar base de datos' }}
                             </button>
                         </form>
+                    </div>
+                </section>
+
+                <section class="app-panel">
+                    <div class="panel-header">
+                        <div class="flex items-start gap-3">
+                            <div class="soft-icon-emerald"><i class="ti ti-shield-check text-xl" aria-hidden="true"></i></div>
+                            <div>
+                                <h3 class="panel-title">Respaldos automáticos</h3>
+                                <p class="panel-subtitle">Historial, integridad del archivo y última prueba de lectura.</p>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-accent" :disabled="creandoRespaldo" @click="crearRespaldoAutomatico">
+                            <i class="ti ti-database-plus" aria-hidden="true"></i>
+                            {{ creandoRespaldo ? 'Creando...' : 'Crear respaldo ahora' }}
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="data-table">
+                            <thead><tr><th>Archivo</th><th>Fecha</th><th>Tamaño</th><th>Estado</th><th>Verificación</th><th class="text-right">Acción</th></tr></thead>
+                            <tbody>
+                                <tr v-for="backup in backups" :key="backup.id">
+                                    <td class="font-bold text-slate-900">{{ backup.file_name }}</td>
+                                    <td>{{ new Date(backup.created_at).toLocaleString('es-MX') }}</td>
+                                    <td>{{ (Number(backup.size_bytes || 0) / 1024 / 1024).toFixed(2) }} MB</td>
+                                    <td><span :class="backup.status === 'verified' ? 'status-success' : (backup.status === 'failed' ? 'status-danger' : 'status-warning')">{{ backup.status }}</span></td>
+                                    <td>{{ backup.verification_message || 'Pendiente' }}</td>
+                                    <td class="text-right">
+                                        <button type="button" class="btn-secondary" :disabled="verificandoRespaldo === backup.id" @click="verificarRespaldo(backup)">
+                                            <i class="ti ti-file-check" aria-hidden="true"></i>
+                                            {{ verificandoRespaldo === backup.id ? 'Verificando...' : 'Verificar' }}
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr v-if="backups.length === 0"><td colspan="6" class="empty-state">Todavía no hay respaldos automáticos registrados.</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </section>
 

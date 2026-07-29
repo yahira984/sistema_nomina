@@ -9,6 +9,12 @@ use App\Http\Controllers\BaseDatosController;
 use App\Http\Controllers\DiaFestivoController;
 use App\Http\Controllers\AuditoriaController;
 use App\Http\Controllers\UsuarioSeguridadController;
+use App\Http\Controllers\AsyncExportController;
+use App\Http\Controllers\PayrollPeriodController;
+use App\Http\Controllers\SystemHealthController;
+use App\Http\Controllers\SystemOperationController;
+use App\Http\Controllers\UserPreferenceController;
+use App\Http\Controllers\WorkRuleController;
 use App\Models\Empleado;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -58,11 +64,26 @@ Route::middleware(['auth', 'approved', 'audit'])->group(function () {
     Route::get('/sistema/base-datos', [BaseDatosController::class, 'index'])->middleware('permission:sistema.backups')->name('base-datos.index');
     Route::get('/sistema/base-datos/exportar', [BaseDatosController::class, 'exportar'])->middleware('permission:sistema.backups')->name('base-datos.exportar');
     Route::post('/sistema/base-datos/importar', [BaseDatosController::class, 'importar'])->middleware('permission:sistema.backups')->name('base-datos.importar');
+    Route::post('/sistema/base-datos/respaldos', [BaseDatosController::class, 'crearRespaldo'])->middleware('permission:sistema.backups')->name('base-datos.respaldos.store');
+    Route::post('/sistema/base-datos/respaldos/{systemBackup}/verificar', [BaseDatosController::class, 'verificarRespaldo'])->middleware('permission:sistema.backups')->name('base-datos.respaldos.verify');
     Route::get('/sistema/dias-festivos', [DiaFestivoController::class, 'index'])->middleware('permission:sistema.dias_festivos')->name('dias-festivos.index');
     Route::post('/sistema/dias-festivos', [DiaFestivoController::class, 'store'])->middleware('permission:sistema.dias_festivos')->name('dias-festivos.store');
     Route::put('/sistema/dias-festivos/{diaFestivo}', [DiaFestivoController::class, 'update'])->middleware('permission:sistema.dias_festivos')->name('dias-festivos.update');
     Route::delete('/sistema/dias-festivos/{diaFestivo}', [DiaFestivoController::class, 'destroy'])->middleware('permission:sistema.dias_festivos')->name('dias-festivos.destroy');
     Route::post('/sistema/dias-festivos/generar', [DiaFestivoController::class, 'generar'])->middleware('permission:sistema.dias_festivos')->name('dias-festivos.generar');
+    Route::get('/sistema/reglas-laborales', [WorkRuleController::class, 'index'])->middleware('permission:sistema.rules')->name('reglas-laborales.index');
+    Route::post('/sistema/reglas-laborales', [WorkRuleController::class, 'store'])->middleware('permission:sistema.rules')->name('reglas-laborales.store');
+    Route::put('/sistema/reglas-laborales/{workRule}', [WorkRuleController::class, 'update'])->middleware('permission:sistema.rules')->name('reglas-laborales.update');
+    Route::delete('/sistema/reglas-laborales/{workRule}', [WorkRuleController::class, 'destroy'])->middleware('permission:sistema.rules')->name('reglas-laborales.destroy');
+    Route::post('/sistema/calendario-laboral', [WorkRuleController::class, 'storeCalendarDay'])->middleware('permission:sistema.rules')->name('calendario-laboral.store');
+    Route::delete('/sistema/calendario-laboral/{laborCalendarDay}', [WorkRuleController::class, 'destroyCalendarDay'])->middleware('permission:sistema.rules')->name('calendario-laboral.destroy');
+    Route::get('/sistema/salud', [SystemHealthController::class, 'index'])->middleware('permission:sistema.health')->name('sistema.salud');
+    Route::patch('/preferencias', [UserPreferenceController::class, 'update'])->name('preferencias.update');
+    Route::get('/operaciones', [SystemOperationController::class, 'index'])->name('operaciones.index');
+    Route::delete('/operaciones', [SystemOperationController::class, 'dismissAll'])->name('operaciones.dismiss-all');
+    Route::get('/operaciones/{operation}', [SystemOperationController::class, 'show'])->name('operaciones.show');
+    Route::delete('/operaciones/{operation}', [SystemOperationController::class, 'dismiss'])->name('operaciones.dismiss');
+    Route::get('/operaciones/{operation}/descargar', [SystemOperationController::class, 'download'])->name('operaciones.descargar');
 
     // Empleados
     Route::get('/empleados', [EmpleadoController::class, 'index'])->middleware('permission:empleados.view')->name('empleados.index');
@@ -179,6 +200,8 @@ Route::middleware(['auth', 'approved', 'audit'])->group(function () {
     Route::put('/nominas/pagos-masivos', [NominaController::class, 'actualizarPagosMasivos'])->middleware('permission:nominas.pay')->name('nominas.pagos-masivos');
     Route::put('/nominas/{nomina}/pagar', [NominaController::class, 'pagar'])->middleware('permission:nominas.pay')->name('nominas.pagar');
     Route::get('/nominas/reporte-global/{semana}', [NominaController::class, 'reporteGlobal'])->middleware('permission:nominas.export')->name('nominas.reporte');
+    Route::post('/nominas/exportaciones', [AsyncExportController::class, 'store'])->middleware('permission:nominas.export')->name('nominas.exportaciones.store');
+    Route::patch('/nominas/periodo', [PayrollPeriodController::class, 'update'])->middleware('permission:nominas.pay')->name('nominas.periodo.update');
 });
 
 require __DIR__.'/auth.php';

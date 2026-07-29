@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
+use App\Models\SystemBackup;
+use App\Services\DatabaseBackupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Throwable;
 
@@ -20,7 +23,31 @@ class BaseDatosController extends Controller
             'baseDatos' => DB::getDatabaseName(),
             'tablas' => $tablas,
             'totalTablas' => count($tablas),
+            'backups' => Schema::hasTable('system_backups')
+                ? SystemBackup::latest()->limit(10)->get()
+                : [],
         ]);
+    }
+
+    public function crearRespaldo(DatabaseBackupService $backups)
+    {
+        $backup = $backups->createAutomatic();
+
+        AuditLog::record('database.backup_created', $backup, [
+            'description' => 'Respaldo automático creado manualmente.',
+        ]);
+
+        return back()->with('success', 'Respaldo creado y registrado correctamente.');
+    }
+
+    public function verificarRespaldo(SystemBackup $systemBackup, DatabaseBackupService $backups)
+    {
+        $backup = $backups->verify($systemBackup);
+
+        return back()->with(
+            $backup->status === 'verified' ? 'success' : 'error',
+            $backup->verification_message
+        );
     }
 
     public function exportar()

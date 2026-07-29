@@ -1,10 +1,17 @@
 ﻿<script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import AppPagination from '@/Components/AppPagination.vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 
 const props = defineProps({
     empleados: Array,
+    empleadosMeta: { type: Object, default: () => ({}) },
+    resumenPeriodo: { type: Object, default: () => ({}) },
+    bancosDisponibles: { type: Array, default: () => [] },
+    periodo: { type: Object, default: () => ({ status: 'open' }) },
+    operaciones: { type: Array, default: () => [] },
+    filtrosNomina: { type: Object, default: () => ({}) },
     historial: Array,
     historialMeta: {
         type: Object,
@@ -23,7 +30,7 @@ const canManage = computed(() => page.props.auth?.can?.['nominas.manage'] ?? fal
 const canPay = computed(() => page.props.auth?.can?.['nominas.pay'] ?? false);
 const canExport = computed(() => page.props.auth?.can?.['nominas.export'] ?? false);
 
-const searchQuery = ref('');
+const searchQuery = ref(props.filtrosNomina.search || '');
 const historialSearch = ref(props.filtros?.historial_busqueda || '');
 const showToast = ref(false);
 const toastTitle = ref('');
@@ -34,13 +41,14 @@ const guardandoAjuste = ref(null);
 const guardandoImss = ref(null);
 const pagandoMasivo = ref(null);
 const selectedEmpleadoIds = ref([]);
+const comparacionEmpleado = ref(null);
 
 const selectedCorte = ref(props.fechaCorteActual);
 
 // --- VARIABLES DE FILTRADO Y ORDENAMIENTO ---
-const filtroEstado = ref('todos'); // 'todos', 'pendiente', 'liquidado'
-const filtroBanco = ref('todos');
-const criterioOrden = ref('asc');   // 'asc', 'desc', 'num_asc', 'num_desc'
+const filtroEstado = ref(props.filtrosNomina.status || 'todos');
+const filtroBanco = ref(props.filtrosNomina.bank || 'todos');
+const criterioOrden = ref(props.filtrosNomina.sort || 'num_asc');
 
 const nombreBancoEmpleado = (empleado) => {
     const banco = String(empleado.banco || '').trim();
@@ -178,11 +186,6 @@ const temasBanco = {
 
 const temaBanco = (nombreBanco) => temasBanco[claveTemaBanco(nombreBanco)] || temasBanco.DEFAULT;
 
-const bancosDisponibles = computed(() => {
-    const bancos = new Set(props.empleados.map((empleado) => nombreBancoEmpleado(empleado)));
-    return Array.from(bancos).sort();
-});
-
 const numeroSemanaSeleccionada = computed(() => {
     const encontrada = props.semanasDisponibles.find(sem => sem.fecha_corte === selectedCorte.value);
     return encontrada ? encontrada.numero_semana : props.semanaActual;
@@ -192,8 +195,73 @@ watch(selectedCorte, (newDate) => {
     router.get(route('nominas.index'), {
         fecha_corte: newDate,
         historial_busqueda: historialSearch.value || undefined,
+        search: searchQuery.value || undefined,
+        status: filtroEstado.value,
+        bank: filtroBanco.value,
+        sort: criterioOrden.value,
     }, { preserveState: true, preserveScroll: true });
 });
+
+let nominaFilterTimer = null;
+const cargarNominas = (pageNumber = 1) => {
+    router.get(route('nominas.index'), {
+        fecha_corte: selectedCorte.value,
+        historial_busqueda: historialSearch.value || undefined,
+        search: searchQuery.value || undefined,
+        status: filtroEstado.value,
+        bank: filtroBanco.value,
+        sort: criterioOrden.value,
+        employee_page: pageNumber,
+    }, {
+        only: [
+            'empleados', 'empleadosMeta', 'resumenPeriodo', 'bancosDisponibles',
+            'filtrosNomina', 'periodo', 'operaciones',
+        ],
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+    });
+};
+
+watch([searchQuery, filtroEstado, filtroBanco, criterioOrden], () => {
+    clearTimeout(nominaFilterTimer);
+    nominaFilterTimer = setTimeout(() => {
+        window.axios?.patch(route('preferencias.update'), {
+            filter_key: 'payroll',
+            filter_value: {
+                search: searchQuery.value,
+                status: filtroEstado.value,
+                bank: filtroBanco.value,
+                sort: criterioOrden.value,
+            },
+        }).catch(() => {});
+        cargarNominas(1);
+    }, 300);
+});
+
+const exportarPdfEnSegundoPlano = (exportType, empleadoIds = []) => {
+    const signature = `${exportType}|${selectedCorte.value}|${[...empleadoIds].sort((a, b) => a - b).join(',')}`;
+    const hash = [...signature].reduce((value, character) => ((value << 5) - value + character.charCodeAt(0)) | 0, 0);
+    router.post(route('nominas.exportaciones.store'), {
+        export_type: exportType,
+        fecha_corte: selectedCorte.value,
+        empleado_ids: empleadoIds,
+        idempotency_key: `pdf-${Math.abs(hash)}-${Math.floor(Date.now() / 30000)}`,
+    }, {
+        preserveScroll: true,
+    });
+};
+
+const cambiarBloqueoPeriodo = () => {
+    const bloquear = props.periodo.status !== 'locked';
+    const accion = bloquear ? 'cerrar' : 'reabrir';
+    if (!confirm(`¿Confirmas que deseas ${accion} esta semana?`)) return;
+
+    router.patch(route('nominas.periodo.update'), {
+        fecha_corte: selectedCorte.value,
+        locked: bloquear,
+    }, { preserveScroll: true });
+};
 
 let historialSearchTimer = null;
 
@@ -547,7 +615,7 @@ const empleadosFiltrados = computed(() => {
             const nombreA = a.nombre_completo.toLowerCase();
             const nombreB = b.nombre_completo.toLowerCase();
             
-            if (criterioOrden.value === 'asc') {
+            if (criterioOrden.value === 'name_asc') {
                 return nombreA.localeCompare(nombreB);
             } else {
                 return nombreB.localeCompare(nombreA);
@@ -738,7 +806,10 @@ const cambiarEstadoPago = (nominaId, pagadoActual = false, empleado = null) => {
         return;
     }
 
-    const payload = !pagadoActual && empleado ? payloadAjustesEmpleado(empleado) : {};
+    const payload = {
+        ...(!pagadoActual && empleado ? payloadAjustesEmpleado(empleado) : {}),
+        pagado: !pagadoActual,
+    };
 
     router.put(route('nominas.pagar', nominaId), payload, {
         preserveScroll: true
@@ -795,7 +866,7 @@ const cambiarPagosMasivos = (accion) => {
                 </Link>
                 <div>
                     <p class="text-xs font-bold uppercase tracking-wider text-blue-600">Pagos y Recibos</p>
-                    <h2 class="font-['Sora'] text-2xl font-extrabold text-slate-900">Control de Nóminas</h2>
+                    <h2 class="font-['Sora'] text-2xl font-extrabold text-slate-900 dark:text-white">Control de Nóminas</h2>
                 </div>
             </div>
         </template>
@@ -813,9 +884,26 @@ const cambiarPagosMasivos = (accion) => {
                             <p class="text-xs font-medium text-slate-500">Selecciona la semana y localiza empleados para emitir recibos.</p>
                         </div>
                     </div>
+                    <button
+                        v-if="canManage"
+                        type="button"
+                        :class="periodo.status === 'locked' ? 'btn-secondary text-amber-700' : 'btn-secondary text-slate-700'"
+                        :title="periodo.status === 'locked' ? 'Permitir cambios en esta semana' : 'Evitar cambios en una semana terminada'"
+                        @click="cambiarBloqueoPeriodo"
+                    >
+                        <i :class="periodo.status === 'locked' ? 'ti ti-lock-open' : 'ti ti-lock'"></i>
+                        {{ periodo.status === 'locked' ? 'Reabrir semana' : 'Cerrar semana' }}
+                    </button>
                 </div>
 
                 <div class="p-6 sm:p-8 space-y-6 bg-white">
+                    <div class="grid grid-cols-2 gap-2 lg:grid-cols-5" aria-label="Resumen del periodo">
+                        <div class="metric-tile"><span class="metric-label">Personal</span><strong>{{ resumenPeriodo.employees ?? 0 }}</strong></div>
+                        <div :class="['metric-tile', Number(resumenPeriodo.attendance_incomplete || 0) ? 'border-amber-200 bg-amber-50' : '']"><span class="metric-label">Asistencias pendientes</span><strong>{{ resumenPeriodo.attendance_incomplete ?? 0 }}</strong></div>
+                        <div class="metric-tile"><span class="metric-label">Nóminas generadas</span><strong>{{ resumenPeriodo.generated ?? 0 }}</strong></div>
+                        <div class="metric-tile"><span class="metric-label">Pagos pendientes</span><strong>{{ resumenPeriodo.pending_payment ?? 0 }}</strong></div>
+                        <div class="metric-tile col-span-2 lg:col-span-1"><span class="metric-label">Total liquidado</span><strong>${{ moneda(resumenPeriodo.paid_total) }}</strong></div>
+                    </div>
                     <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(20rem,1.2fr)_minmax(12rem,1fr)_minmax(13rem,1fr)]">
                         
                         <div class="relative min-w-0">
@@ -841,8 +929,8 @@ const cambiarPagosMasivos = (accion) => {
 
                         <div class="relative min-w-0">
                             <select v-model="criterioOrden" class="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-4 pr-10 text-sm font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 appearance-none transition-all cursor-pointer">
-                                <option value="asc">Nombre (A - Z)</option>
-                                <option value="desc">Nombre (Z - A)</option>
+                                <option value="name_asc">Nombre (A - Z)</option>
+                                <option value="name_desc">Nombre (Z - A)</option>
                                 <option value="num_asc">No. Emp. (Menor a Mayor)</option>
                                 <option value="num_desc">No. Emp. (Mayor a Menor)</option>
                             </select>
@@ -876,14 +964,14 @@ const cambiarPagosMasivos = (accion) => {
                                 <span class="rounded-md bg-white px-1.5 py-0.5 text-[10px] text-cyan-600">{{ empleadosConImss }}</span>
                             </a>
 
-                            <a v-if="canExport" :href="urlRecibosDiferenciaImss()" target="_blank" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-cyan-700 text-white border border-cyan-700 hover:bg-cyan-800 hover:shadow-lg hover:shadow-cyan-700/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                            <button v-if="canExport" type="button" @click="exportarPdfEnSegundoPlano('imss_pdf')" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-cyan-700 text-white border border-cyan-700 hover:bg-cyan-800 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-printer text-lg"></i> PDF Diferencias IMSS
                                 <span class="rounded-md bg-white/15 px-1.5 py-0.5 text-[10px] text-white">{{ empleadosConDiferenciaImss }}</span>
-                            </a>
+                            </button>
                             
-                            <a v-if="canExport && seleccionadosCount > 0" :href="urlRecibosMasivos(false)" target="_blank" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                            <button v-if="canExport && seleccionadosCount > 0" type="button" @click="exportarPdfEnSegundoPlano('payroll_pdf', selectedEmpleadoIds)" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-printer text-lg"></i> PDF Seleccionados ({{ seleccionadosCount }})
-                            </a>
+                            </button>
                             <button v-else-if="canExport" disabled class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-50 text-slate-400 border border-slate-200 px-4 py-2.5 text-xs font-black uppercase tracking-wider cursor-not-allowed">
                                 <i class="ti ti-printer text-lg"></i> PDF Seleccionados
                             </button>
@@ -892,13 +980,13 @@ const cambiarPagosMasivos = (accion) => {
                                 <i class="ti ti-square-x text-lg"></i> Limpiar seleccion
                             </button>
 
-                            <a v-if="canExport" :href="urlRecibosMasivos(true)" target="_blank" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 hover:shadow-lg hover:shadow-slate-900/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
+                            <button v-if="canExport" type="button" @click="exportarPdfEnSegundoPlano('payroll_pdf')" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-printer text-lg"></i> PDF Todos
-                            </a>
+                            </button>
                         </div>
                     </div>
 
-                    <div v-if="seleccionadosCount > 0" class="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 via-white to-emerald-50 p-4 shadow-sm">
+                    <div v-if="seleccionadosCount > 0" class="sticky bottom-4 z-30 rounded-lg border border-blue-200 bg-white p-4 shadow-xl">
                         <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                             <div class="flex flex-wrap items-center gap-3">
                                 <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
@@ -970,9 +1058,9 @@ const cambiarPagosMasivos = (accion) => {
                                             <i :class="['ti text-base', empleadosGrupoSeleccionados(empleadosBanco) ? 'ti-square-x' : 'ti-checks']"></i>
                                             {{ empleadosGrupoSeleccionados(empleadosBanco) ? 'Quitar grupo' : 'Seleccionar grupo' }}
                                         </button>
-                                        <a v-if="canExport" :href="urlRecibosGrupo(empleadosBanco)" target="_blank" :class="['flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all hover:-translate-y-0.5 sm:w-auto', temaBanco(nombreBanco).pdf]">
+                                        <button v-if="canExport" type="button" @click="exportarPdfEnSegundoPlano('payroll_pdf', empleadosBanco.map((empleado) => empleado.id))" :class="['flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 py-2.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all sm:w-auto', temaBanco(nombreBanco).pdf]">
                                             <i class="ti ti-printer text-base"></i> PDF Grupo
-                                        </a>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -1052,6 +1140,15 @@ const cambiarPagosMasivos = (accion) => {
                                             </div>
 
                                             <div class="flex items-center gap-2 ml-auto">
+                                                <button
+                                                    v-if="empleado.comparacion_nomina?.has_previous"
+                                                    type="button"
+                                                    :class="['icon-button', empleado.comparacion_nomina.changed ? 'border-amber-200 bg-amber-50 text-amber-700' : 'text-slate-500']"
+                                                    title="Comparar nómina guardada con el cálculo actual"
+                                                    @click="comparacionEmpleado = empleado"
+                                                >
+                                                    <i class="ti ti-arrows-diff"></i>
+                                                </button>
                                                 <button v-if="canExport && asistenciaPendiente(empleado)" type="button" disabled class="flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-300" title="Captura asistencia primero">
                                                     <i class="ti ti-file-spreadsheet text-lg"></i>
                                                 </button>
@@ -1240,6 +1337,7 @@ const cambiarPagosMasivos = (accion) => {
                             </div>
                         </div>
                     </div>
+                    <AppPagination :meta="empleadosMeta" @change="cargarNominas" />
                 </div>
             </section>
 
@@ -1346,6 +1444,44 @@ const cambiarPagosMasivos = (accion) => {
                 </div>
             </section>
         </div>
+
+        <Teleport to="body">
+            <div v-if="comparacionEmpleado" class="fixed inset-0 z-[100] flex items-center justify-end bg-slate-950/45" role="dialog" aria-modal="true" @click.self="comparacionEmpleado = null">
+                <aside class="h-full w-full max-w-lg overflow-y-auto bg-white p-6 shadow-2xl">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <span :class="comparacionEmpleado.comparacion_nomina.changed ? 'status-warning' : 'status-success'">
+                                {{ comparacionEmpleado.comparacion_nomina.changed ? 'Cambios detectados' : 'Sin cambios' }}
+                            </span>
+                            <h3 class="mt-3 text-xl font-black text-slate-950">Comparar nómina</h3>
+                            <p class="mt-1 text-sm font-semibold text-slate-500">{{ comparacionEmpleado.nombre_completo }}</p>
+                        </div>
+                        <button type="button" class="icon-button" title="Cerrar comparación" @click="comparacionEmpleado = null"><i class="ti ti-x"></i></button>
+                    </div>
+
+                    <div class="mt-6 overflow-hidden rounded-lg border border-slate-200">
+                        <div class="grid grid-cols-[1fr_repeat(3,minmax(5rem,1fr))] bg-slate-50 px-4 py-3 text-[10px] font-black uppercase text-slate-500">
+                            <span>Concepto</span><span class="text-right">Guardado</span><span class="text-right">Actual</span><span class="text-right">Cambio</span>
+                        </div>
+                        <div v-for="(label, key) in { total_percepciones: 'Percepciones', total_deducciones: 'Deducciones', pago_neto: 'Pago neto' }" :key="key" class="grid grid-cols-[1fr_repeat(3,minmax(5rem,1fr))] border-t border-slate-100 px-4 py-4 text-sm">
+                            <strong class="text-slate-800">{{ label }}</strong>
+                            <span class="text-right text-slate-600">${{ moneda(comparacionEmpleado.comparacion_nomina.stored[key]) }}</span>
+                            <span class="text-right font-bold text-slate-900">${{ moneda(comparacionEmpleado.comparacion_nomina.preview[key]) }}</span>
+                            <span :class="['text-right font-black', Math.abs(Number(comparacionEmpleado.comparacion_nomina.difference[key])) >= 0.01 ? 'text-amber-700' : 'text-emerald-700']">
+                                {{ Number(comparacionEmpleado.comparacion_nomina.difference[key]) >= 0 ? '+' : '' }}${{ moneda(comparacionEmpleado.comparacion_nomina.difference[key]) }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
+                        Esta comparación no modifica la nómina. El recibo solo se actualiza cuando confirmas la regeneración.
+                    </div>
+                    <div class="mt-6 flex justify-end">
+                        <button type="button" class="btn-secondary" @click="comparacionEmpleado = null">Cerrar</button>
+                    </div>
+                </aside>
+            </div>
+        </Teleport>
 
         <div class="fixed inset-x-4 bottom-4 z-50 transition-all duration-500 sm:inset-x-auto sm:bottom-6 sm:right-6"
              :class="showToast ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0 pointer-events-none'">

@@ -10,6 +10,10 @@ const props = defineProps({
         type: Object,
         default: () => ({}),
     },
+    timeline: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const tabActiva = ref('perfil');
@@ -257,6 +261,16 @@ const desactivarAccesoApp = () => {
                             >
                                 <i class="ti ti-calendar-check" aria-hidden="true"></i>
                                 Asistencia y Vacaciones
+                            </button>
+
+                            <button
+                                @click="tabActiva = 'historial'"
+                                :class="tabActiva === 'historial' ? 'bg-amber-50 text-amber-700 border-amber-200 font-bold' : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700'"
+                                class="inline-flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all sm:w-auto"
+                            >
+                                <i class="ti ti-history" aria-hidden="true"></i>
+                                Historial
+                                <span class="status-warning">{{ timeline.length }}</span>
                             </button>
                         </div>
                     </div>
@@ -551,6 +565,41 @@ const desactivarAccesoApp = () => {
                             </p>
                             <p class="text-3xl font-black text-rose-600">{{ empleado.dias_faltas_totales }}</p>
                             <p class="text-xs text-rose-700 mt-1">Acumulado total</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-show="tabActiva === 'historial'" class="app-panel animate-fade-in">
+                    <div class="panel-header">
+                        <div>
+                            <h3 class="panel-title">Línea de tiempo del expediente</h3>
+                            <p class="panel-subtitle">Altas, cambios de datos, baja y restauración registrados por el sistema.</p>
+                        </div>
+                    </div>
+                    <div class="divide-y divide-slate-100">
+                        <article v-for="registro in timeline" :key="registro.id" class="flex gap-4 p-5">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700">
+                                <i class="ti ti-history-toggle" aria-hidden="true"></i>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex flex-wrap items-start justify-between gap-2">
+                                    <div>
+                                        <p class="text-sm font-black text-slate-900">{{ registro.description || registro.event }}</p>
+                                        <p class="mt-1 text-xs font-semibold text-slate-500">{{ registro.user || 'Sistema' }}</p>
+                                    </div>
+                                    <time class="text-xs font-bold text-slate-500">{{ new Date(registro.created_at).toLocaleString('es-MX') }}</time>
+                                </div>
+                                <details v-if="registro.old_values || registro.new_values" class="mt-3 rounded-lg border border-slate-200 bg-slate-50">
+                                    <summary class="cursor-pointer px-3 py-2 text-xs font-black text-slate-600">Ver datos modificados</summary>
+                                    <div class="grid gap-3 border-t border-slate-200 p-3 text-xs md:grid-cols-2">
+                                        <pre class="overflow-auto whitespace-pre-wrap text-rose-700">{{ JSON.stringify(registro.old_values || {}, null, 2) }}</pre>
+                                        <pre class="overflow-auto whitespace-pre-wrap text-emerald-700">{{ JSON.stringify(registro.new_values || {}, null, 2) }}</pre>
+                                    </div>
+                                </details>
+                            </div>
+                        </article>
+                        <div v-if="timeline.length === 0" class="empty-state">
+                            Aún no hay movimientos registrados para este expediente.
                         </div>
                     </div>
                 </div>

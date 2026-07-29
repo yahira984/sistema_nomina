@@ -6,12 +6,15 @@ use App\Models\Empleado;
 use App\Models\Asistencia;
 use App\Services\FirebaseSyncService;
 use App\Support\HorasExtraEmpleado;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionMethod;
 use Tests\TestCase;
 
 class HorasExtraEmpleadoTest extends TestCase
 {
+    use RefreshDatabase;
+
     #[DataProvider('horariosEntreSemana')]
     public function test_entre_semana_cuenta_bloques_completos_de_media_hora(string $salida, float $esperado): void
     {

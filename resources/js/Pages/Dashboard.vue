@@ -8,6 +8,10 @@ const page = usePage()
 const can = computed(() => page.props.auth?.can ?? {})
 
 const props = defineProps({
+  dashboardRole:     { type: String, default: 'consulta' },
+  resumenSemanal:    { type: Object, default: () => ({}) },
+  notificaciones:    { type: Object, default: () => ({}) },
+  operaciones:       { type: Array, default: () => [] },
   totalEmpleados:    { type: Number, default: 0 },
   semanaContable:    { type: Number, default: 0 },
   gastoSemanal:      { type: [Number, String], default: '0.00' },
@@ -24,6 +28,52 @@ const props = defineProps({
   diasFestivos:      { type: Object, default: () => ({}) },
   avanceLaboralAnual:{ type: Object, default: () => ({}) }
 })
+
+const roleDashboard = computed(() => ({
+  admin: {
+    label: 'Administración',
+    title: 'Panorama completo del sistema',
+    note: 'Operación, pagos, integridad y pendientes de la semana.',
+    icon: 'ti-shield-check',
+  },
+  gerente: {
+    label: 'Gerencia',
+    title: 'Resumen ejecutivo semanal',
+    note: 'Indicadores de personal, asistencia y pagos para decidir rápido.',
+    icon: 'ti-chart-dots',
+  },
+  capturista: {
+    label: 'Captura',
+    title: 'Pendientes de operación',
+    note: 'Asistencias e incidencias que requieren atención antes de nómina.',
+    icon: 'ti-clipboard-check',
+  },
+  consulta: {
+    label: 'Consulta',
+    title: 'Estado semanal',
+    note: 'Información actual del personal y la operación autorizada.',
+    icon: 'ti-eye',
+  },
+}[props.dashboardRole] || {
+  label: props.dashboardRole || 'Usuario',
+  title: 'Estado semanal',
+  note: 'Resumen de la operación disponible para tu rol.',
+  icon: 'ti-layout-dashboard',
+}))
+
+const weeklyAlerts = computed(() => [
+  { label: 'Asistencias incompletas', value: Number(props.resumenSemanal?.asistencias_incompletas || 0), icon: 'ti-clock-exclamation', tone: 'amber', route: 'asistencias.index', permission: 'asistencias.view' },
+  { label: 'Faltas registradas', value: Number(props.resumenSemanal?.faltas || 0), icon: 'ti-user-x', tone: 'rose', route: 'asistencias.index', permission: 'asistencias.view' },
+  { label: 'Pagos pendientes', value: Number(props.resumenSemanal?.pagos_pendientes || 0), icon: 'ti-clock-dollar', tone: 'blue', route: 'nominas.index', permission: 'nominas.view' },
+  { label: 'Nóminas pagadas', value: Number(props.resumenSemanal?.nominas_pagadas || 0), icon: 'ti-circle-check', tone: 'emerald', route: 'nominas.index', permission: 'nominas.view' },
+].filter(item => can.value[item.permission]))
+
+const weeklyTone = (tone) => ({
+  amber: 'text-amber-700',
+  rose: 'text-rose-700',
+  blue: 'text-blue-700',
+  emerald: 'text-emerald-700',
+}[tone] || 'text-slate-700')
 
 const kpisDashboard = computed(() => props.kpis ?? { faltas: 0, cumpleaneros: [] })
 const cumpleanerosMes = computed(() => kpisDashboard.value.cumpleaneros ?? [])
@@ -318,7 +368,56 @@ const antiguedadOptions = computed(() => ({
 
   <AuthenticatedLayout>
 
-    <section class="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:mb-8">
+    <section class="mb-6 rounded-lg border border-slate-200 bg-white shadow-sm md:mb-8">
+      <div class="flex flex-col gap-5 border-b border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex items-start gap-4">
+          <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 text-2xl text-teal-700">
+            <i :class="['ti', roleDashboard.icon]" aria-hidden="true"></i>
+          </div>
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="status-pill status-info">{{ roleDashboard.label }}</span>
+              <span :class="['status-pill', saludOperativa.tone]"><i :class="['ti', saludOperativa.icon]"></i>{{ saludOperativa.label }}</span>
+              <span class="status-pill status-neutral">Semana {{ semanaContable }} · {{ corteSemana }}</span>
+            </div>
+            <h1 class="mt-2 text-2xl font-black text-slate-950">{{ roleDashboard.title }}</h1>
+            <p class="mt-1 text-sm font-semibold text-slate-500">{{ roleDashboard.note }}</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <Link v-if="can['asistencias.view']" :href="route('asistencias.index')" class="btn-secondary"><i class="ti ti-clock-check"></i>Asistencias</Link>
+          <Link v-if="can['nominas.view']" :href="route('nominas.index')" class="btn-accent"><i class="ti ti-file-invoice"></i>Nóminas</Link>
+        </div>
+      </div>
+
+      <div class="grid gap-3 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-4">
+        <article v-for="card in metricCards" :key="card.label" :class="['relative overflow-hidden rounded-lg border bg-white p-4 shadow-sm', card.surface]">
+          <div :class="['absolute left-0 top-0 h-full w-1', card.rail]"></div>
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-[10px] font-black uppercase text-slate-500">{{ card.label }}</p>
+              <p :class="['mt-2 break-words text-2xl font-black leading-tight', card.valueClass]">{{ card.value }}</p>
+            </div>
+            <div :class="['flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-xl', card.iconClass]">
+              <i :class="['ti', card.icon]" aria-hidden="true"></i>
+            </div>
+          </div>
+          <p class="mt-3 text-xs font-bold text-slate-500">{{ card.note }}</p>
+        </article>
+      </div>
+
+      <div class="grid gap-px border-t border-slate-200 bg-slate-200 sm:grid-cols-2 xl:grid-cols-4">
+        <Link v-for="item in weeklyAlerts" :key="item.label" :href="route(item.route)" class="flex items-center justify-between gap-3 bg-white p-4 transition hover:bg-slate-50">
+          <div class="flex items-center gap-3">
+            <i :class="['ti text-xl', item.icon, weeklyTone(item.tone)]" aria-hidden="true"></i>
+            <span class="text-xs font-black text-slate-700">{{ item.label }}</span>
+          </div>
+          <strong :class="weeklyTone(item.tone)">{{ item.value }}</strong>
+        </Link>
+      </div>
+    </section>
+
+    <section v-if="false" class="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:mb-8">
       <div class="grid gap-0 xl:grid-cols-12">
         <div class="relative overflow-hidden border-b border-slate-100 bg-slate-950 p-6 text-white sm:p-8 xl:col-span-7 xl:border-b-0 xl:border-r">
           <div class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-teal-400 via-blue-500 to-amber-400"></div>
@@ -387,7 +486,7 @@ const antiguedadOptions = computed(() => ({
       </div>
     </section>
 
-    <section class="mb-8 overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-teal-50 shadow-sm">
+    <section class="mb-8 overflow-hidden rounded-lg border border-amber-100 bg-white shadow-sm">
       <div class="grid gap-0 lg:grid-cols-12">
         <div class="border-b border-amber-100/70 p-5 sm:p-6 lg:col-span-4 lg:border-b-0 lg:border-r">
           <div class="flex items-start justify-between gap-4">
@@ -426,8 +525,8 @@ const antiguedadOptions = computed(() => ({
                 <span class="text-lg font-black leading-none">{{ dia.fecha_corta?.split(' ')?.[0] || '' }}</span>
               </div>
               <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-black text-slate-900">{{ dia.nombre }}</p>
-                <p class="truncate text-xs font-semibold capitalize text-slate-500">{{ dia.dia_semana }} · {{ dia.fecha }}</p>
+                <p class="break-words text-sm font-black text-slate-900">{{ dia.nombre }}</p>
+                <p class="break-words text-xs font-semibold capitalize text-slate-500">{{ dia.dia_semana }} · {{ dia.fecha }}</p>
               </div>
               <span class="rounded-lg border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-700">
                 {{ textoDiasRestantes(dia.dias_restantes) }}
@@ -535,7 +634,7 @@ const antiguedadOptions = computed(() => ({
             <p class="text-xs font-black uppercase tracking-wider text-blue-700">Festivos que descuentan</p>
             <div v-if="(avanceLaboralData.festivos || []).length > 0" class="mt-3 max-h-36 space-y-2 overflow-y-auto pr-1">
               <div v-for="dia in avanceLaboralData.festivos" :key="`avance-${dia.id}`" class="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-xs shadow-sm">
-                <span class="truncate font-black text-slate-800">{{ dia.nombre }}</span>
+                <span class="break-words font-black text-slate-800">{{ dia.nombre }}</span>
                 <span class="shrink-0 font-bold text-blue-700">{{ dia.fecha_corta }}</span>
               </div>
             </div>
@@ -967,7 +1066,7 @@ const antiguedadOptions = computed(() => ({
           <div v-if="cumpleanerosMes.length > 0" class="max-h-72 space-y-3 overflow-y-auto pr-2 custom-scrollbar">
             <div v-for="emp in cumpleanerosMes" :key="emp.id" class="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 shadow-sm">
               <div class="min-w-0">
-                <p class="truncate text-sm font-black text-indigo-950">{{ emp.nombre_completo }}</p>
+                <p class="break-words text-sm font-black text-indigo-950">{{ emp.nombre_completo }}</p>
                 <p class="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-500">#{{ emp.numero_empleado || emp.id }}</p>
               </div>
               <span :class="['shrink-0 rounded-lg border px-2.5 py-1 text-xs font-black whitespace-nowrap', emp.es_hoy ? 'bg-indigo-700 text-white border-indigo-800 shadow-sm' : 'bg-white text-indigo-700 border-indigo-200']">

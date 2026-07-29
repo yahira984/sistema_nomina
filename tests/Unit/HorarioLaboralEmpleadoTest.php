@@ -4,10 +4,13 @@ namespace Tests\Unit;
 
 use App\Models\Empleado;
 use App\Support\HorarioLaboralEmpleado;
-use PHPUnit\Framework\TestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class HorarioLaboralEmpleadoTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_personal_general_solo_tiene_dias_laborales_de_lunes_a_viernes(): void
     {
         $empleado = new Empleado([

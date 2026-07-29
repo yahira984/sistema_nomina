@@ -3,11 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Exports\AsistenciasSemanalesExport;
+use App\Jobs\ApproveAttendanceImportJob;
+use App\Jobs\PrepareAttendanceImportJob;
 use App\Models\Asistencia;
 use App\Models\DiaFestivo;
 use App\Models\Empleado;
 use App\Models\Nomina;
+use App\Models\SystemOperation;
+use App\Models\UserPreference;
 use App\Services\FirebaseSyncService;
+use App\Services\FirebaseJobDispatcher;
+use App\Services\SystemOperationService;
 use App\Support\HorarioLaboralEmpleado;
 use App\Support\HorasExtraEmpleado;
 use App\Support\ReglasNominaEmpleado;
@@ -29,10 +35,28 @@ class AsistenciaController extends Controller
         $fechaReferencia = $this->fechaReferenciaAsistencias($request);
         $inicioSemana = $this->inicioSemanaNomina($fechaReferencia);
         $finSemana = $inicioSemana->copy()->addDays(6);
-        $empleadosBase = Empleado::where('estatus', true)
+        $savedFilters = Schema::hasTable('user_preferences')
+            ? UserPreference::where('user_id', $request->user()?->id)->first()?->saved_filters ?? []
+            : [];
+        $search = trim((string) $request->input(
+            'employee_search',
+            data_get($savedFilters, 'attendance.employee_search', '')
+        ));
+        $perPage = max(12, min(60, (int) $request->input('per_page', 24)));
+        $empleadosPaginator = Empleado::query()
+            ->where('estatus', true)
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($query) use ($search) {
+                    $query->where('nombre_completo', 'like', "%{$search}%")
+                        ->orWhere('numero_empleado', 'like', "%{$search}%")
+                        ->orWhere('puesto', 'like', "%{$search}%");
+                });
+            })
             ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), NULLIF(numero_empleado_baja, ''), id) AS UNSIGNED) ASC")
             ->orderBy('nombre_completo', 'asc')
-            ->get();
+            ->paginate($perPage, ['*'], 'attendance_page')
+            ->withQueryString();
+        $empleadosBase = $empleadosPaginator->getCollection();
         $empleadoIds = $empleadosBase->pluck('id')->all();
         $asistencias = Asistencia::query()
             ->select([
@@ -59,11 +83,41 @@ class AsistenciaController extends Controller
 
         return Inertia::render('Asistencias/Index', [
             'empleados' => $this->empleadosPantallaAsistencias($empleadosBase, $empleadoIds),
+            'empleadosSelector' => Empleado::query()
+                ->where('estatus', true)
+                ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), id) AS UNSIGNED) ASC")
+                ->get([
+                    'id', 'numero_empleado', 'numero_empleado_baja', 'nombre_completo',
+                    'puesto', 'es_estudiante', 'estatus', 'fecha_ingreso',
+                ])
+                ->map(fn (Empleado $empleado) => [
+                    'id' => $empleado->id,
+                    'numero_empleado' => $empleado->numero_empleado,
+                    'numero_empleado_baja' => $empleado->numero_empleado_baja,
+                    'nombre_completo' => $empleado->nombre_completo,
+                    'puesto' => $empleado->puesto,
+                    'es_estudiante' => (bool) $empleado->es_estudiante,
+                    'estatus' => (bool) $empleado->estatus,
+                    'fecha_ingreso' => $empleado->fecha_ingreso,
+                    'horario_24x24' => HorarioLaboralEmpleado::esVigilancia24x24($empleado),
+                    'sin_horas_extra' => ReglasNominaEmpleado::sinHorasExtra($empleado),
+                    'sin_retardos' => ReglasNominaEmpleado::sinRetardos($empleado),
+                ]),
+            'empleadosMeta' => [
+                'current_page' => $empleadosPaginator->currentPage(),
+                'last_page' => $empleadosPaginator->lastPage(),
+                'per_page' => $empleadosPaginator->perPage(),
+                'total' => $empleadosPaginator->total(),
+                'from' => $empleadosPaginator->firstItem(),
+                'to' => $empleadosPaginator->lastItem(),
+            ],
+            'filtrosAsistencia' => ['employee_search' => $search],
             'asistencias' => $asistencias,
             'fechaSemana' => $fechaReferencia,
             'fechaInicioSemana' => $inicioSemana->format('Y-m-d'),
             'fechaFinSemana' => $finSemana->format('Y-m-d'),
-            'previewImportacion' => $request->session()->get(self::PREVIEW_SESSION_KEY),
+            'previewImportacion' => $this->previewImportacionDisponible($request),
+            'operaciones' => app(SystemOperationService::class)->recentFor($request->user(), 8),
         ]);
     }
 
@@ -120,6 +174,8 @@ class AsistenciaController extends Controller
                 'nombre_completo' => $empleado->nombre_completo,
                 'puesto' => $empleado->puesto,
                 'horario_24x24' => HorarioLaboralEmpleado::esVigilancia24x24($empleado),
+                'sin_horas_extra' => ReglasNominaEmpleado::sinHorasExtra($empleado),
+                'sin_retardos' => ReglasNominaEmpleado::sinRetardos($empleado),
                 'estatus' => $empleado->estatus,
                 'fecha_ingreso' => $empleado->fecha_ingreso,
                 'fecha_baja' => $empleado->fecha_baja,
@@ -271,7 +327,7 @@ class AsistenciaController extends Controller
             'hora_salida' => $request->tipo_asistencia === 'Normal' ? $request->hora_salida : null,
         ], $datosCalculados));
 
-        FirebaseSyncService::sincronizarAsistencia($asistencia);
+        FirebaseJobDispatcher::attendance($asistencia);
 
         return redirect()
             ->route('asistencias.index', ['fecha' => $request->fecha])
@@ -295,7 +351,7 @@ class AsistenciaController extends Controller
             'hora_salida' => $request->tipo_asistencia === 'Normal' ? $request->hora_salida : null,
         ], $datosCalculados));
 
-        FirebaseSyncService::sincronizarAsistencia($asistencia->fresh('empleado'));
+        FirebaseJobDispatcher::attendance($asistencia);
 
         return redirect()
             ->route('asistencias.index', ['fecha' => $request->fecha])
@@ -307,7 +363,7 @@ class AsistenciaController extends Controller
         $asistencia = Asistencia::with('empleado')->findOrFail($id);
         $asistencia->delete();
 
-        FirebaseSyncService::eliminarAsistencia($asistencia);
+        FirebaseJobDispatcher::deleteAttendance($asistencia);
 
         return redirect()->back()->with('success', 'Asistencia eliminada.');
     }
@@ -343,15 +399,34 @@ class AsistenciaController extends Controller
             }
         }
 
-        $preview = $this->prepararRevisionImportacion(
-            $archivoReloj->getRealPath(),
-            $request->fecha_inicio,
-            $request->fecha_fin
+        $storedPath = $archivoReloj->store('imports/reloj', 'local');
+        $operations = app(SystemOperationService::class);
+        $operation = $operations->create(
+            'attendance_import_preview',
+            $request->user(),
+            [
+                'stored_path' => $storedPath,
+                'original_name' => $archivoReloj->getClientOriginalName(),
+                'fecha_inicio' => $request->fecha_inicio,
+                'fecha_fin' => $request->fecha_fin,
+            ],
+            $request->input('idempotency_key')
         );
 
-        $request->session()->put(self::PREVIEW_SESSION_KEY, $preview);
+        if ($operation->wasRecentlyCreated) {
+            $operation->forceFill([
+                'progress' => 1,
+                'message' => 'Archivo recibido. Preparando el análisis...',
+            ])->save();
 
-        return redirect()->back()->with('success', 'Archivo analizado. Revisa y aprueba las asistencias detectadas.');
+            PrepareAttendanceImportJob::dispatch($operation->id)
+                ->onConnection($operations->queueConnection('imports'))
+                ->afterCommit();
+        }
+
+        return redirect()->back()
+            ->with('operation_id', $operation->id)
+            ->with('success', 'Archivo recibido. Puedes seguir trabajando mientras se analiza.');
     }
 
     public function aprobarImportacion(Request $request)
@@ -364,13 +439,64 @@ class AsistenciaController extends Controller
             'filas.*.tipo_asistencia' => 'required|string|in:Normal,Falta,Incapacidad,Vacaciones',
             'filas.*.hora_entrada' => 'nullable|date_format:H:i',
             'filas.*.hora_salida' => 'nullable|date_format:H:i',
+            'preview_id' => 'nullable|string|max:80',
+            'idempotency_key' => 'nullable|string|max:120',
         ]);
 
+        $operations = app(SystemOperationService::class);
+        $operation = $operations->create(
+            'attendance_import_approval',
+            $request->user(),
+            [
+                'filas' => $validated['filas'],
+                'preview_id' => $validated['preview_id'] ?? null,
+            ],
+            $validated['idempotency_key'] ?? null
+        );
+
+        if ($operation->wasRecentlyCreated) {
+            $operation->forceFill([
+                'progress' => 1,
+                'message' => 'Aprobación recibida. Preparando los registros...',
+            ])->save();
+
+            ApproveAttendanceImportJob::dispatch($operation->id)
+                ->onConnection($operations->queueConnection('imports'))
+                ->afterCommit();
+        }
+
+        if (!empty($validated['preview_id'])) {
+            SystemOperation::query()
+                ->where('user_id', $request->user()?->id)
+                ->where('type', 'attendance_import_preview')
+                ->where('status', 'completed')
+                ->latest()
+                ->limit(10)
+                ->get()
+                ->first(function (SystemOperation $previewOperation) use ($validated) {
+                    return data_get($previewOperation->result, 'preview.preview_id') === $validated['preview_id'];
+                })
+                ?->forceFill(['status' => 'consumed'])
+                ->save();
+        }
+
+        $request->session()->forget(self::PREVIEW_SESSION_KEY);
+
+        return redirect()->back()
+            ->with('operation_id', $operation->id)
+            ->with('success', 'La aprobación se está guardando en segundo plano.');
+    }
+
+    public function procesarFilasImportacion(array $filas, ?callable $progress = null): array
+    {
         $guardadas = 0;
         $omitidas = 0;
         $asistenciasSincronizar = [];
+        $employeeIds = collect($filas)->pluck('empleado_id')->filter()->unique()->values()->all();
+        $employees = Empleado::whereIn('id', $employeeIds)->get()->keyBy('id');
+        $total = max(1, count($filas));
 
-        foreach ($validated['filas'] as $fila) {
+        foreach ($filas as $index => $fila) {
             if (!($fila['aprobado'] ?? false) || empty($fila['empleado_id'])) {
                 $omitidas++;
                 continue;
@@ -385,7 +511,13 @@ class AsistenciaController extends Controller
                 continue;
             }
 
-            $empleado = Empleado::find($fila['empleado_id']);
+            $empleado = $employees->get((int) $fila['empleado_id']);
+
+            if (!$empleado) {
+                $omitidas++;
+                continue;
+            }
+
             $datosCalculados = $this->calcularHoras($fila['fecha'], $horaEntrada, $horaSalida, $tipoAsistencia, $empleado);
 
             $asistencia = Asistencia::updateOrCreate(
@@ -402,15 +534,20 @@ class AsistenciaController extends Controller
 
             $asistenciasSincronizar[] = $asistencia->fresh('empleado');
             $guardadas++;
+
+            if ($progress && ($index % 25 === 0 || $index === $total - 1)) {
+                $percent = 10 + (int) floor((($index + 1) / $total) * 80);
+                $progress($percent, "Guardando registro " . ($index + 1) . " de {$total}...");
+            }
         }
 
-        FirebaseSyncService::sincronizarAsistencias($asistenciasSincronizar);
+        FirebaseJobDispatcher::attendances($asistenciasSincronizar);
 
-        if ($guardadas > 0) {
-            $request->session()->forget(self::PREVIEW_SESSION_KEY);
-        }
-
-        return redirect()->back()->with('success', "Importacion aprobada: {$guardadas} registro(s) guardado(s), {$omitidas} omitido(s).");
+        return [
+            'guardadas' => $guardadas,
+            'omitidas' => $omitidas,
+            'asistencia_ids' => collect($asistenciasSincronizar)->pluck('id')->values()->all(),
+        ];
     }
 
     public function descartarImportacion(Request $request)
@@ -431,10 +568,17 @@ class AsistenciaController extends Controller
         return $inicio;
     }
 
-    private function prepararRevisionImportacion(string $path, ?string $fechaInicio, ?string $fechaFin): array
+    public function prepararRevisionImportacion(
+        string $path,
+        ?string $fechaInicio,
+        ?string $fechaFin,
+        ?callable $progress = null
+    ): array
     {
+        $progress?->__invoke(10, 'Leyendo y agrupando marcajes...');
         [$agrupados, $fechasCsv] = $this->leerMarcajesCsv($path);
 
+        $progress?->__invoke(30, 'Relacionando empleados y fechas...');
         $rango = $this->resolverRangoRevision($fechasCsv, $fechaInicio, $fechaFin);
         $empleados = Empleado::where('estatus', true)
             ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), NULLIF(numero_empleado_baja, ''), id) AS UNSIGNED) ASC")
@@ -530,6 +674,7 @@ class AsistenciaController extends Controller
         $sinRegistro = 0;
 
         if ($rango) {
+            $progress?->__invoke(65, 'Detectando faltas y registros incompletos...');
             foreach ($empleados as $empleado) {
                 foreach ($this->diasLaboralesEmpleado($empleado, $rango['inicio'], $rango['fin']) as $fecha) {
                     $clave = $this->claveAsistencia($empleado->id, $fecha);
@@ -598,6 +743,8 @@ class AsistenciaController extends Controller
             ];
         });
 
+        $progress?->__invoke(90, 'Ordenando la revisión...');
+
         return [
             'preview_id' => (string) Str::uuid(),
             'filas' => $filas,
@@ -610,6 +757,29 @@ class AsistenciaController extends Controller
                 'fecha_fin' => $rango ? $rango['fin']->format('Y-m-d') : null,
             ],
         ];
+    }
+
+    private function previewImportacionDisponible(Request $request): ?array
+    {
+        $sessionPreview = $request->session()->get(self::PREVIEW_SESSION_KEY);
+
+        if ($sessionPreview) {
+            return $sessionPreview;
+        }
+
+        if (!Schema::hasTable('system_operations') || !$request->user()) {
+            return null;
+        }
+
+        $operation = SystemOperation::query()
+            ->where('user_id', $request->user()->id)
+            ->where('type', 'attendance_import_preview')
+            ->where('status', 'completed')
+            ->where('created_at', '>=', now()->subDay())
+            ->latest()
+            ->first();
+
+        return data_get($operation?->result, 'preview');
     }
 
     private function filasVigilanciaDesdeCsv(Empleado $empleado, array $fechas, array $rango, array $existentes): array

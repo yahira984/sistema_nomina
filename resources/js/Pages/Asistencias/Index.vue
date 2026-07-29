@@ -1,12 +1,25 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import AppPagination from '@/Components/AppPagination.vue';
 import { Head, useForm, router, Link, usePage } from '@inertiajs/vue3';
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 
 const props = defineProps({
     empleados: {
         type: Array,
         default: () => [],
+    },
+    empleadosSelector: {
+        type: Array,
+        default: () => [],
+    },
+    empleadosMeta: {
+        type: Object,
+        default: () => ({}),
+    },
+    filtrosAsistencia: {
+        type: Object,
+        default: () => ({}),
     },
     asistencias: {
         type: Array,
@@ -28,6 +41,10 @@ const props = defineProps({
         type: Object,
         default: null,
     },
+    operaciones: {
+        type: Array,
+        default: () => [],
+    },
 });
 const page = usePage();
 const canManage = computed(() => page.props.auth?.can?.['asistencias.manage'] ?? false);
@@ -48,7 +65,7 @@ const tabActiva = ref(props.previewImportacion && canImport.value
     ? 'revision'
     : ((canManage.value || canImport.value) ? 'captura' : 'vacaciones')
 );
-const busquedaGlobal = ref('');
+const busquedaGlobal = ref(props.filtrosAsistencia.employee_search || '');
 const busquedaEmpleadoManual = ref('');
 const busquedaRevision = ref('');
 const filtroRevision = ref('todas');
@@ -75,8 +92,10 @@ const anioFaltasSeleccionado = ref(new Date().getFullYear());
 const REGISTROS_POR_PAGINA = 25;
 const DIAS_SEMANA_NOMINA = ['JUEVES', 'VIERNES', 'SABADO', 'DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES'];
 const DIAS_SEMANA_CORTOS = ['JUE', 'VIE', 'SAB', 'DOM', 'LUN', 'MAR', 'MIE'];
-const empleadosSinHorasExtra = new Set(['8', '9', '22']);
-const empleadosSinRetardos = new Set(['14', '76', '78']);
+const nuevaClaveOperacion = () => {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    return `asistencia-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
 
 const form = useForm({
     empleado_id: '',
@@ -90,14 +109,48 @@ const formUpload = useForm({
     archivo_reloj: null,
     fecha_inicio: '',
     fecha_fin: '',
+    idempotency_key: nuevaClaveOperacion(),
 });
+const archivoRelojNombre = computed(() => formUpload.archivo_reloj?.name || 'Ningún archivo seleccionado');
 
 const formRevision = useForm({
     filas: [],
+    preview_id: '',
+    idempotency_key: nuevaClaveOperacion(),
 });
+const operacionActiva = ref(null);
+const operationTimers = new Set();
 
 let cargaSemanaTimer = null;
 let sincronizandoFechaServidor = false;
+let empleadoSearchTimer = null;
+
+const cargarPaginaEmpleados = (pageNumber = 1) => {
+    router.get(route('asistencias.index'), {
+        fecha: fechaSemanaReferencia.value,
+        employee_search: busquedaGlobal.value || undefined,
+        attendance_page: pageNumber,
+    }, {
+        only: [
+            'empleados', 'empleadosSelector', 'empleadosMeta', 'filtrosAsistencia',
+            'asistencias', 'fechaSemana', 'fechaInicioSemana', 'fechaFinSemana',
+        ],
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+    });
+};
+
+watch(busquedaGlobal, () => {
+    clearTimeout(empleadoSearchTimer);
+    empleadoSearchTimer = setTimeout(() => {
+        window.axios?.patch(route('preferencias.update'), {
+            filter_key: 'attendance',
+            filter_value: { employee_search: busquedaGlobal.value },
+        }).catch(() => {});
+        cargarPaginaEmpleados(1);
+    }, 300);
+});
 
 const cargarSemanaRegistros = (fecha) => {
     if (!fecha || sincronizandoFechaServidor) {
@@ -238,6 +291,76 @@ watch(
     }
 );
 
+const aplicarPreviewOperacion = (preview) => {
+    if (!preview) return;
+    const nuevoPreviewId = preview.preview_id || '';
+    previewIdActivo.value = nuevoPreviewId;
+    filasRevision.value = clonarFilasRevision(preview.filas || [], nuevoPreviewId);
+    fechaRevisionReferencia.value = preview.resumen?.fecha_inicio
+        || preview.filas?.[0]?.fecha
+        || fechaSemanaReferencia.value;
+    paginaRevision.value = 1;
+    filtroRevision.value = 'todas';
+    busquedaRevision.value = '';
+    tabActiva.value = 'revision';
+};
+
+const seguirOperacion = async (operationId) => {
+    if (!operationId) return;
+
+    try {
+        const response = await fetch(route('operaciones.show', operationId), {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        });
+        if (!response.ok) throw new Error('No se pudo consultar el proceso.');
+
+        const operation = await response.json();
+        operacionActiva.value = operation;
+
+        if (operation.status === 'completed') {
+            if (operation.type === 'attendance_import_preview') {
+                aplicarPreviewOperacion(operation.result?.preview);
+            } else if (operation.type === 'attendance_import_approval') {
+                router.reload({
+                    only: ['asistencias', 'fechaSemana', 'fechaInicioSemana', 'fechaFinSemana', 'operaciones'],
+                    preserveScroll: true,
+                });
+            }
+            return;
+        }
+
+        if (['failed', 'cancelled'].includes(operation.status)) return;
+
+        const timer = window.setTimeout(() => {
+            operationTimers.delete(timer);
+            seguirOperacion(operationId);
+        }, 1200);
+        operationTimers.add(timer);
+    } catch (error) {
+        operacionActiva.value = {
+            id: operationId,
+            status: 'failed',
+            progress: 0,
+            message: error.message,
+        };
+    }
+};
+
+watch(
+    () => props.operaciones,
+    (operations) => {
+        const active = operations?.find((operation) => ['queued', 'running'].includes(operation.status));
+        if (active && active.id !== operacionActiva.value?.id) seguirOperacion(active.id);
+    },
+    { immediate: true },
+);
+
+onBeforeUnmount(() => {
+    operationTimers.forEach((timer) => window.clearTimeout(timer));
+    operationTimers.clear();
+});
+
 const crearFechaLocal = (fecha) => {
     if (!fecha) {
         const hoy = new Date();
@@ -293,7 +416,9 @@ const fechasSemanaNomina = (fechaReferencia) => {
 };
 
 const empleadosPorId = computed(() => {
-    return new Map(props.empleados.map((empleado) => [Number(empleado.id), empleado]));
+    const mapa = new Map(props.empleadosSelector.map((empleado) => [Number(empleado.id), empleado]));
+    props.empleados.forEach((empleado) => mapa.set(Number(empleado.id), empleado));
+    return mapa;
 });
 
 const normalizarNumeroEmpleado = (numero) => {
@@ -321,8 +446,6 @@ const valorNumeroFilaRevision = (fila) => {
     const valor = parseInt(normalizarNumeroEmpleado(fila.numero_empleado || fila.csv_numero_empleado), 10);
     return Number.isFinite(valor) ? valor : Number.MAX_SAFE_INTEGER;
 };
-
-const empleadoEnRegla = (empleado, reglas) => reglas.has(numeroEmpleado(empleado));
 
 const esEmpleadoEstudiante = (empleado) => Boolean(empleado?.es_estudiante);
 const esVigilancia24x24 = (empleado) => Boolean(empleado?.horario_24x24);
@@ -362,7 +485,7 @@ const normalizarHorasExtraAsistencia = (asistencia, empleado) => {
 
     if (esEmpleadoEstudiante(empleado)
         || esVigilancia24x24(empleado)
-        || empleadoEnRegla(empleado, empleadosSinHorasExtra)) {
+        || Boolean(empleado?.sin_horas_extra)) {
         return { ...asistencia, horas_extra: 0 };
     }
 
@@ -494,6 +617,11 @@ const coincideFilaRevision = (fila, termino) => {
 const coincideFiltroRevision = (fila) => {
     if (filtroRevision.value === 'incompletas') return fila.estado === 'incompleta';
     if (filtroRevision.value === 'faltas') return fila.tipo_asistencia === 'Falta';
+    if (filtroRevision.value === 'domingos') return crearFechaLocal(fila.fecha).getDay() === 0;
+    if (filtroRevision.value === 'especiales') {
+        const empleado = empleadosPorId.value.get(Number(fila.empleado_id));
+        return Boolean(empleado?.horario_24x24 || empleado?.sin_horas_extra || empleado?.sin_retardos);
+    }
 
     return true;
 };
@@ -622,7 +750,7 @@ const textoCeldaVaciaRevision = (grupo, fecha) => {
 
     if ((inicio && fecha < inicio) || (fin && fecha > fin)) return 'Fuera del rango';
 
-    const empleado = props.empleados.find((item) => Number(item.id) === Number(grupo.empleado_id));
+    const empleado = empleadosPorId.value.get(Number(grupo.empleado_id));
 
     if (empleado?.fecha_ingreso && fecha < empleado.fecha_ingreso) return 'No laboraba';
     if (empleado?.fecha_baja && fecha > empleado.fecha_baja) return 'No laboraba';
@@ -657,26 +785,30 @@ const etiquetaEmpleado = (empleado) => {
     return `${empleado.numero_empleado ? '#' + empleado.numero_empleado + ' - ' : ''}${empleado.nombre_completo}`;
 };
 
-const empleadosOrdenadosFiltro = computed(() => ordenarEmpleados(props.empleados, 'num_asc'));
+const empleadosOrdenadosFiltro = computed(() => ordenarEmpleados(
+    props.empleadosSelector.length ? props.empleadosSelector : props.empleados,
+    'num_asc',
+));
 
 const empleadoRegistrosSeleccionado = computed(() => {
     if (!empleadoRegistrosId.value) return null;
-    return props.empleados.find((empleado) => Number(empleado.id) === Number(empleadoRegistrosId.value));
+    return empleadosPorId.value.get(Number(empleadoRegistrosId.value)) || null;
 });
 
 const empleadosFiltradosManual = computed(() => {
     const term = busquedaEmpleadoManual.value.toLowerCase().trim();
-    let resultado = props.empleados;
+    const directorio = props.empleadosSelector.length ? props.empleadosSelector : props.empleados;
+    let resultado = directorio;
 
     if (term) {
-        resultado = props.empleados.filter((empleado) => {
+        resultado = directorio.filter((empleado) => {
             return empleado.nombre_completo.toLowerCase().includes(term)
                 || (empleado.numero_empleado && String(empleado.numero_empleado).toLowerCase().includes(term));
         });
     }
 
     const limitados = ordenarEmpleados(resultado, 'num_asc').slice(0, 30);
-    const seleccionado = props.empleados.find((empleado) => Number(empleado.id) === Number(form.empleado_id));
+    const seleccionado = empleadosPorId.value.get(Number(form.empleado_id));
 
     if (seleccionado && !limitados.some((empleado) => Number(empleado.id) === Number(seleccionado.id))) {
         return [seleccionado, ...limitados];
@@ -687,7 +819,7 @@ const empleadosFiltradosManual = computed(() => {
 
 const empleadoSeleccionado = computed(() => {
     if (!form.empleado_id) return null;
-    return props.empleados.find((empleado) => Number(empleado.id) === Number(form.empleado_id));
+    return empleadosPorId.value.get(Number(form.empleado_id)) || null;
 });
 
 const sincronizarBusquedaManual = () => {
@@ -833,15 +965,16 @@ const subirArchivo = () => {
         return;
     }
 
+    formUpload.idempotency_key = nuevaClaveOperacion();
     formUpload.post(route('asistencias.importar'), {
         forceFormData: true,
         preserveScroll: true,
-        onSuccess: () => {
-            tabActiva.value = 'revision';
+        onSuccess: (response) => {
             formUpload.reset('archivo_reloj');
             if (archivoInput.value) {
                 archivoInput.value.value = null;
             }
+            seguirOperacion(response.props.flash?.operation_id);
         },
     });
 };
@@ -865,14 +998,13 @@ const editarAsistencia = (asistencia) => {
     editando.value = true;
     asistenciaId.value = asistencia.id;
     form.empleado_id = asistencia.empleado_id;
-    const empleado = props.empleados.find((item) => Number(item.id) === Number(asistencia.empleado_id));
+    const empleado = empleadosPorId.value.get(Number(asistencia.empleado_id));
     busquedaEmpleadoManual.value = empleado ? etiquetaEmpleado(empleado) : '';
     form.fecha = asistencia.fecha;
     form.tipo_asistencia = asistencia.tipo_asistencia || 'Normal';
     form.hora_entrada = asistencia.hora_entrada ? asistencia.hora_entrada.substring(0, 5) : '08:00';
     form.hora_salida = asistencia.hora_salida ? asistencia.hora_salida.substring(0, 5) : '17:00';
     tabActiva.value = 'captura';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
 const cancelarEdicion = () => {
@@ -1002,11 +1134,11 @@ const aplicarReglasFilaRevision = (fila) => {
         return;
     }
 
-    if (empleadoEnRegla(empleado, empleadosSinRetardos)) {
+    if (empleado?.sin_retardos) {
         fila.minutos_tarde = 0;
     }
 
-    if (empleadoEnRegla(empleado, empleadosSinHorasExtra)) {
+    if (empleado?.sin_horas_extra) {
         fila.horas_extra = 0;
     }
 };
@@ -1138,13 +1270,16 @@ const aprobarRevision = () => {
     }
 
     formRevision.filas = filas;
+    formRevision.preview_id = previewIdEnviado;
+    formRevision.idempotency_key = nuevaClaveOperacion();
     formRevision.post(route('asistencias.importar.aprobar'), {
         preserveScroll: true,
-        onSuccess: () => {
+        onSuccess: (response) => {
             limpiarEdicionesPreview(previewIdEnviado);
             previewIdActivo.value = '';
             filasRevision.value = [];
             tabActiva.value = 'captura';
+            seguirOperacion(response.props.flash?.operation_id);
         },
     });
 };
@@ -1202,7 +1337,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                     </Link>
                     <div class="min-w-0">
                         <p class="text-sm font-black uppercase tracking-wide text-teal-700">Registro y Control</p>
-                        <h2 class="text-xl font-black text-slate-950 sm:text-2xl">Jornadas e Incidencias</h2>
+                        <h2 class="text-xl font-black text-slate-950 dark:text-white sm:text-2xl">Jornadas e Incidencias</h2>
                     </div>
                 </div>
 
@@ -1218,11 +1353,34 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
 
         <div class="page-shell">
             <div class="content-wrap space-y-7">
+                <div
+                    v-if="operacionActiva && ['queued', 'running'].includes(operacionActiva.status)"
+                    class="rounded-lg border border-blue-200 bg-blue-50 p-4"
+                    role="status"
+                    aria-live="polite"
+                >
+                    <div class="flex items-center justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-sm font-black text-blue-950">{{ operacionActiva.message || 'Procesando asistencias...' }}</p>
+                            <p class="mt-1 text-xs font-semibold text-blue-700">Puedes seguir usando el sistema; esta tarea continuará en segundo plano.</p>
+                        </div>
+                        <strong class="text-lg text-blue-800">{{ operacionActiva.progress || 0 }}%</strong>
+                    </div>
+                    <div class="mt-3 h-2 overflow-hidden rounded-full bg-blue-100">
+                        <div class="h-full rounded-full bg-blue-600 transition-all duration-300" :style="{ width: `${operacionActiva.progress || 2}%` }"></div>
+                    </div>
+                </div>
+
+                <div v-else-if="operacionActiva?.status === 'failed'" class="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800" role="alert">
+                    <i class="ti ti-alert-circle mr-1" aria-hidden="true"></i>
+                    {{ operacionActiva.message || operacionActiva.error || 'No se pudo completar la operación.' }}
+                </div>
+
                 <div class="tab-strip sm:grid-cols-2 md:grid-cols-5">
                     <button
                         v-if="canManage || canImport"
                         @click="tabActiva = 'captura'"
-                        :class="tabActiva === 'captura' ? 'bg-gradient-to-br from-white to-teal-50 text-teal-700 shadow-sm ring-1 ring-teal-200/70 font-black' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
+                        :class="tabActiva === 'captura' ? 'bg-teal-50 text-teal-700 shadow-sm ring-1 ring-teal-200/70 font-black dark:bg-teal-950/50 dark:text-teal-200 dark:ring-teal-800' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'"
                         class="tab-button"
                         type="button"
                     >
@@ -1232,7 +1390,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                     <button
                         v-if="canImport"
                         @click="tabActiva = 'revision'"
-                        :class="tabActiva === 'revision' ? 'bg-gradient-to-br from-white to-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200/70 font-black' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
+                        :class="tabActiva === 'revision' ? 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200/70 font-black dark:bg-blue-950/50 dark:text-blue-200 dark:ring-blue-800' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'"
                         class="tab-button"
                         type="button"
                     >
@@ -1244,7 +1402,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                     </button>
                     <button
                         @click="tabActiva = 'vacaciones'"
-                        :class="tabActiva === 'vacaciones' ? 'bg-gradient-to-br from-white to-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200/70 font-black' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
+                        :class="tabActiva === 'vacaciones' ? 'bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200/70 font-black dark:bg-emerald-950/50 dark:text-emerald-200 dark:ring-emerald-800' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'"
                         class="tab-button"
                         type="button"
                     >
@@ -1253,7 +1411,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                     </button>
                     <button
                         @click="tabActiva = 'faltas'"
-                        :class="tabActiva === 'faltas' ? 'bg-gradient-to-br from-white to-rose-50 text-rose-700 shadow-sm ring-1 ring-rose-200/70 font-black' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
+                        :class="tabActiva === 'faltas' ? 'bg-rose-50 text-rose-700 shadow-sm ring-1 ring-rose-200/70 font-black dark:bg-rose-950/50 dark:text-rose-200 dark:ring-rose-800' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'"
                         class="tab-button"
                         type="button"
                     >
@@ -1262,12 +1420,18 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                     </button>
                     <Link
                         :href="route('asistencias.alumnos-horas')"
-                        class="tab-button text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                        class="tab-button text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                     >
                         <i class="ti ti-school" aria-hidden="true"></i>
                         Horas Alumnos
                     </Link>
                 </div>
+
+                <AppPagination
+                    v-if="tabActiva !== 'revision'"
+                    :meta="empleadosMeta"
+                    @change="cargarPaginaEmpleados"
+                />
 
                 <div v-if="tabActiva === 'captura' && (canManage || canImport)" class="space-y-8 animate-fade-in">
                     <section v-if="canImport" class="app-panel upload-panel">
@@ -1276,15 +1440,25 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                 <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
                             </div>
                             <div>
-                                <label class="field-label">Archivo CSV del reloj</label>
+                                <span class="field-label">Archivo CSV del reloj</span>
                                 <input
+                                    id="archivo-reloj"
                                     ref="archivoInput"
                                     type="file"
                                     accept=".csv,.txt"
                                     :disabled="formUpload.processing"
                                     @change="seleccionarArchivo"
-                                    class="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:px-4 file:py-2.5 file:text-sm file:font-semibold file:text-white hover:file:bg-emerald-700"
+                                    class="sr-only"
                                 />
+                                <div class="flex min-w-0 items-center gap-3">
+                                    <label for="archivo-reloj" class="btn-accent shrink-0 cursor-pointer">
+                                        <i class="ti ti-upload" aria-hidden="true"></i>
+                                        Seleccionar
+                                    </label>
+                                    <span class="min-w-0 truncate text-sm font-semibold text-slate-600 dark:text-slate-300" :title="archivoRelojNombre">
+                                        {{ archivoRelojNombre }}
+                                    </span>
+                                </div>
                                 <div v-if="formUpload.errors.archivo_reloj" class="mt-2 text-sm font-medium text-rose-600">
                                     {{ formUpload.errors.archivo_reloj }}
                                 </div>
@@ -1330,7 +1504,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                             <button v-if="editando" @click="cancelarEdicion" class="btn-secondary w-full sm:w-auto" type="button">Cancelar edicion</button>
                         </div>
 
-                        <div class="bg-slate-50/50 p-5 sm:p-6">
+                        <div class="bg-slate-50/50 p-5 dark:bg-slate-900 sm:p-6">
                             <div class="mb-6 grid gap-3 lg:grid-cols-[1fr_1.2fr]">
                                 <div>
                                     <label class="field-label text-base">Buscar empleado <span class="text-rose-500">*</span></label>
@@ -1458,7 +1632,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                     </section>
 
                     <section id="ultimos-registros" class="app-panel scroll-mt-6">
-                        <div class="border-b border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 px-5 py-5 sm:px-6">
+                        <div class="border-b border-slate-200/80 bg-slate-50 px-5 py-5 dark:border-slate-700 dark:bg-slate-900 sm:px-6">
                             <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                                 <div class="flex min-w-0 items-start gap-3">
                                     <div class="soft-icon-teal">
@@ -1660,7 +1834,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                     <i class="ti ti-file-analytics text-xl" aria-hidden="true"></i>
                                 </div>
                                 <div>
-                                <h3 class="panel-title">Revision de importacion CSV</h3>
+                                <h3 class="panel-title">Revisión de importación CSV</h3>
                                 <p class="panel-subtitle">
                                     {{ filasRevision.length ? 'Ajusta las filas detectadas antes de aprobarlas.' : 'Sube un CSV desde Captura y Reloj.' }}
                                 </p>
@@ -1673,13 +1847,13 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                 </button>
                                 <button @click="seleccionarRevision(false)" :disabled="!filasRevision.length" class="btn-secondary w-full sm:w-auto" type="button">
                                     <i class="ti ti-square-x" aria-hidden="true"></i>
-                                    Quitar seleccion
+                                    Quitar selección
                                 </button>
                             </div>
                         </div>
 
                         <div v-if="filasRevision.length" class="space-y-5 p-5 sm:p-6">
-                            <div class="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                            <div class="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">
                                 <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
                                     <p class="metric-label">Total</p>
                                     <p class="mt-2 text-2xl font-bold text-slate-950">{{ resumenRevision.total }}</p>
@@ -1706,45 +1880,62 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                 </div>
                             </div>
 
-                            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                <div class="text-sm font-medium text-slate-600">
-                                    Rango:
-                                    <span class="font-bold text-slate-900">
+                            <div class="grid gap-4 2xl:grid-cols-[minmax(0,auto)_minmax(0,720px)] 2xl:items-end 2xl:justify-between">
+                                <div class="flex min-w-0 flex-wrap items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+                                    <span>Rango:</span>
+                                    <span class="whitespace-nowrap font-bold text-slate-900 dark:text-white">
                                         {{ previewImportacion?.resumen?.fecha_inicio ? formatoFecha(previewImportacion.resumen.fecha_inicio) : '--' }}
                                         -
                                         {{ previewImportacion?.resumen?.fecha_fin ? formatoFecha(previewImportacion.resumen.fecha_fin) : '--' }}
                                     </span>
-                                    <span class="ml-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                                    <span class="status-pill status-info whitespace-nowrap">
                                         Ordenado por empleado
                                     </span>
                                 </div>
-                                <div class="grid w-full gap-3 xl:w-auto xl:grid-cols-[auto_1fr_auto_auto_1fr_1.35fr] xl:items-end">
-                                    <button type="button" class="btn-secondary px-3 text-xs" @click="cambiarSemana('revision', -1)">
-                                        <i class="ti ti-chevron-left" aria-hidden="true"></i>
-                                    </button>
-                                    <label class="block">
-                                        <span class="field-label mb-1">Semana a revisar</span>
-                                        <input v-model="fechaRevisionReferencia" type="date" class="field-input-soft" />
-                                    </label>
-                                    <button type="button" class="btn-secondary px-3 text-xs" @click="irSemanaActual('revision')">
-                                        Hoy
-                                    </button>
-                                    <button type="button" class="btn-secondary px-3 text-xs" @click="cambiarSemana('revision', 1)">
-                                        <i class="ti ti-chevron-right" aria-hidden="true"></i>
-                                    </button>
-                                    <label class="block">
-                                        <span class="field-label mb-1">Mostrar</span>
-                                        <select v-model="filtroRevision" class="field-input-soft">
-                                            <option value="todas">Todas las filas</option>
-                                            <option value="incompletas">Empleados con incompletas</option>
-                                            <option value="faltas">Empleados con faltas</option>
-                                        </select>
-                                    </label>
-                                    <label class="block">
-                                        <span class="field-label mb-1">Buscar en revision</span>
-                                        <input v-model="busquedaRevision" type="text" class="field-input-soft" placeholder="Numero, nombre, fecha o estado..." />
-                                    </label>
+                                <div class="w-full space-y-3">
+                                    <div class="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-end gap-2">
+                                        <button type="button" class="btn-secondary px-3 text-xs" title="Semana anterior" aria-label="Semana anterior" @click="cambiarSemana('revision', -1)">
+                                            <i class="ti ti-chevron-left" aria-hidden="true"></i>
+                                        </button>
+                                        <label class="min-w-0">
+                                            <span class="field-label mb-1">Semana a revisar</span>
+                                            <input v-model="fechaRevisionReferencia" type="date" class="field-input-soft" />
+                                        </label>
+                                        <button type="button" class="btn-secondary px-3 text-xs" @click="irSemanaActual('revision')">Hoy</button>
+                                        <button type="button" class="btn-secondary px-3 text-xs" title="Semana siguiente" aria-label="Semana siguiente" @click="cambiarSemana('revision', 1)">
+                                            <i class="ti ti-chevron-right" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                    <div class="grid gap-3 sm:grid-cols-2">
+                                        <label class="min-w-0">
+                                            <span class="field-label mb-1">Mostrar</span>
+                                            <select v-model="filtroRevision" class="field-input-soft">
+                                                <option value="todas">Todas las filas</option>
+                                                <option value="incompletas">Empleados con incompletas</option>
+                                                <option value="faltas">Empleados con faltas</option>
+                                                <option value="domingos">Registros de domingo</option>
+                                                <option value="especiales">Horarios especiales</option>
+                                            </select>
+                                        </label>
+                                        <label class="min-w-0">
+                                            <span class="field-label mb-1">Buscar en revisión</span>
+                                            <input v-model="busquedaRevision" type="text" class="field-input-soft" placeholder="Número, nombre, fecha o estado..." />
+                                        </label>
+                                    </div>
                                 </div>
+                            </div>
+
+                            <div class="segmented-control w-full overflow-x-auto" aria-label="Filtros rápidos de revisión">
+                                <button v-for="filtro in [
+                                    { value: 'todas', label: 'Todas', icon: 'ti-list' },
+                                    { value: 'incompletas', label: 'Incompletas', icon: 'ti-clock-exclamation' },
+                                    { value: 'faltas', label: 'Faltas', icon: 'ti-user-x' },
+                                    { value: 'domingos', label: 'Domingos', icon: 'ti-calendar-event' },
+                                    { value: 'especiales', label: 'Especiales', icon: 'ti-shield-check' },
+                                ]" :key="filtro.value" type="button" :class="{ active: filtroRevision === filtro.value }" @click="filtroRevision = filtro.value">
+                                    <i :class="['ti', filtro.icon]" aria-hidden="true"></i>
+                                    {{ filtro.label }}
+                                </button>
                             </div>
 
                             <div class="rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm font-bold text-blue-900">
@@ -1755,10 +1946,10 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                 <table class="asistencia-week-table revision-week-table">
                                     <thead>
                                         <tr class="asistencia-title-row">
-                                            <th colspan="13">REVISION CSV - ASISTENCIAS POR EMPLEADO</th>
+                                            <th colspan="13">REVISIÓN CSV - ASISTENCIAS POR EMPLEADO</th>
                                         </tr>
                                         <tr>
-                                            <th class="w-14">No.</th>
+                                            <th class="w-14">Núm.</th>
                                             <th class="min-w-80">Empleado</th>
                                             <th v-for="dia in fechasSemanaRevision" :key="dia.iso" class="min-w-52 text-center">
                                                 {{ dia.nombre }} {{ dia.diaMes }}
@@ -2132,6 +2323,94 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                 </div>
             </div>
         </div>
+
+        <div
+            v-if="editando"
+            class="fixed inset-0 z-[80] bg-slate-950/40"
+            aria-hidden="true"
+            @click="cancelarEdicion"
+        ></div>
+        <aside
+            v-if="editando"
+            class="fixed inset-y-0 right-0 z-[90] flex w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="attendance-editor-title"
+        >
+            <header class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+                <div class="min-w-0">
+                    <p class="text-xs font-bold uppercase text-blue-600 dark:text-blue-300">Edición rápida</p>
+                    <h2 id="attendance-editor-title" class="mt-1 text-lg font-extrabold text-slate-950 dark:text-white">
+                        Corregir asistencia
+                    </h2>
+                    <p class="mt-1 truncate text-sm font-semibold text-slate-500 dark:text-slate-400">
+                        {{ empleadoSeleccionado ? etiquetaEmpleado(empleadoSeleccionado) : 'Empleado' }}
+                    </p>
+                </div>
+                <button type="button" class="topbar-icon shrink-0" title="Cerrar editor" aria-label="Cerrar editor" @click="cancelarEdicion">
+                    <i class="ti ti-x text-lg" aria-hidden="true"></i>
+                </button>
+            </header>
+
+            <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="guardarAsistencia">
+                <div class="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+                    <div class="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
+                        Los cambios se aplicarán al registro seleccionado sin perder tu posición en la tabla.
+                    </div>
+
+                    <label class="block">
+                        <span class="field-label">Fecha</span>
+                        <input v-model="form.fecha" type="date" required class="field-input-soft" />
+                    </label>
+
+                    <label class="block">
+                        <span class="field-label">Tipo de registro</span>
+                        <select v-model="form.tipo_asistencia" required class="field-input-soft">
+                            <option value="Normal">Asistencia</option>
+                            <option value="Falta">Falta injustificada</option>
+                            <option value="Incapacidad">Incapacidad</option>
+                            <option value="Vacaciones">Vacaciones</option>
+                        </select>
+                    </label>
+
+                    <div v-if="form.tipo_asistencia === 'Normal'" class="grid grid-cols-2 gap-3">
+                        <label>
+                            <span class="field-label">Entrada</span>
+                            <input
+                                v-model="form.hora_entrada"
+                                type="time"
+                                required
+                                class="field-input-soft"
+                                :class="!form.hora_entrada ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/30' : ''"
+                            />
+                        </label>
+                        <label>
+                            <span class="field-label">Salida</span>
+                            <input
+                                v-model="form.hora_salida"
+                                type="time"
+                                required
+                                class="field-input-soft"
+                                :class="!form.hora_salida ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/30' : ''"
+                            />
+                        </label>
+                    </div>
+
+                    <div v-if="form.tipo_asistencia === 'Normal' && (!form.hora_entrada || !form.hora_salida)" class="status-critical">
+                        <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+                        Falta capturar {{ !form.hora_entrada ? 'la entrada' : 'la salida' }}.
+                    </div>
+                </div>
+
+                <footer class="flex gap-3 border-t border-slate-200 p-5 dark:border-slate-700">
+                    <button type="button" class="btn-secondary flex-1 justify-center" @click="cancelarEdicion">Cancelar</button>
+                    <button type="submit" class="btn-accent flex-1 justify-center" :disabled="form.processing">
+                        <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                        {{ form.processing ? 'Guardando...' : 'Guardar cambios' }}
+                    </button>
+                </footer>
+            </form>
+        </aside>
     </AuthenticatedLayout>
 </template>
 
@@ -2142,9 +2421,12 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
 
 .upload-panel {
     border-color: rgba(45, 212, 191, 0.36);
-    background:
-        linear-gradient(135deg, rgba(236, 253, 245, 0.98), rgba(255, 255, 255, 0.96) 52%, rgba(239, 246, 255, 0.78)),
-        #ffffff;
+    background: #ffffff;
+}
+
+:global(html.dark) .upload-panel {
+    border-color: rgba(45, 212, 191, 0.3);
+    background: #0f172a;
 }
 
 .btn-secondary.px-0 {

@@ -1,18 +1,25 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import AppPagination from '@/Components/AppPagination.vue';
 import { Head, useForm, router, Link, usePage } from '@inertiajs/vue3';
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { clavesFotoEmpleado, fotoEmpleadoSrc, mostrarFotoEmpleado, probarSiguienteFotoEmpleado } from '@/Utils/employeePhotos';
 
-const props = defineProps({ empleados: Array });
+const props = defineProps({
+    empleados: Array,
+    empleadosMeta: { type: Object, default: () => ({}) },
+    resumen: { type: Object, default: () => ({}) },
+    filtros: { type: Object, default: () => ({}) },
+});
 const page = usePage();
 const canManage = computed(() => page.props.auth?.can?.['empleados.manage'] ?? false);
 
 const editando = ref(false);
 const empleadoId = ref(null);
-const searchQuery = ref('');
-const filtroEstado = ref('activos');
-const criterioOrdenDirectorio = ref('num_asc');
+const searchQuery = ref(props.filtros.search || '');
+const filtroEstado = ref(props.filtros.status || 'activos');
+const criterioOrdenDirectorio = ref(props.filtros.sort || 'num_asc');
+const vistaDirectorio = ref(localStorage.getItem('empleados:vista') || 'tabla');
 const empleadoFotoAmpliada = ref(null);
 const fotosDisponibles = ref(new Set());
 
@@ -104,8 +111,8 @@ const empleadosFiltrados = computed(() => {
     return ordenarEmpleadosDirectorio(resultado);
 });
 
-const empleadosActivos = computed(() => props.empleados.filter(emp => empleadoActivo(emp)).length);
-const empleadosBaja = computed(() => props.empleados.length - empleadosActivos.value);
+const empleadosActivos = computed(() => Number(props.resumen.activos ?? 0));
+const empleadosBaja = computed(() => Number(props.resumen.bajas ?? 0));
 const tituloDirectorio = computed(() => {
     if (filtroEstado.value === 'papelera') return 'Papelera de bajas';
     if (filtroEstado.value === 'prestamo') return 'Empleados con préstamo';
@@ -124,7 +131,42 @@ const sueldoSemanalEmpleado = (empleado) => {
 const moneda = (valor) => Number(valor ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const saldoPrestamoEmpleado = (empleado) => Number(empleado.saldo_prestamo ?? 0);
 const tieneDeuda = (empleado) => saldoPrestamoEmpleado(empleado) > 0;
-const empleadosConDeuda = computed(() => props.empleados.filter(emp => empleadoActivo(emp) && tieneDeuda(emp)).length);
+const empleadosConDeuda = computed(() => Number(props.resumen.con_deuda ?? 0));
+
+const cambiarVista = (vista) => {
+    vistaDirectorio.value = vista;
+    localStorage.setItem('empleados:vista', vista);
+};
+
+let filtroTimer = null;
+const cargarDirectorio = (pageNumber = 1) => {
+    router.get(route('empleados.index'), {
+        search: searchQuery.value || undefined,
+        status: filtroEstado.value,
+        sort: criterioOrdenDirectorio.value,
+        page: pageNumber,
+    }, {
+        only: ['empleados', 'empleadosMeta', 'resumen', 'filtros'],
+        preserveScroll: true,
+        preserveState: true,
+        replace: true,
+    });
+};
+
+watch([searchQuery, filtroEstado, criterioOrdenDirectorio], () => {
+    clearTimeout(filtroTimer);
+    filtroTimer = setTimeout(() => {
+        window.axios?.patch(route('preferencias.update'), {
+            filter_key: 'employees',
+            filter_value: {
+                search: searchQuery.value,
+                status: filtroEstado.value,
+                sort: criterioOrdenDirectorio.value,
+            },
+        }).catch(() => {});
+        cargarDirectorio(1);
+    }, 300);
+});
 
 const submitForm = () => {
     if (Number(form.saldo_prestamo || 0) <= 0) form.cuota_prestamo = 0;
@@ -147,7 +189,11 @@ const editarEmpleado = (empleado) => {
 };
 
 const cancelarEdicion = () => { editando.value = false; empleadoId.value = null; form.reset(); };
-const recargarEmpleados = () => router.reload({ only: ['empleados'], preserveScroll: true, preserveState: false });
+const recargarEmpleados = () => router.reload({
+    only: ['empleados', 'empleadosMeta', 'resumen'],
+    preserveScroll: true,
+    preserveState: true,
+});
 const eliminarEmpleado = (id, nombre) => {
     if (!confirm(`¿Dar de baja a ${nombre}?`)) return;
 
@@ -186,7 +232,7 @@ const restaurarEmpleado = (id, nombre) => {
                 </Link>
                 <div>
                     <p class="text-xs font-bold uppercase tracking-wider text-blue-600">Gestión de Personal</p>
-                    <h2 class="font-['Sora'] text-2xl font-extrabold text-slate-900">Directorio de Empleados</h2>
+                    <h2 class="font-['Sora'] text-2xl font-extrabold text-slate-900 dark:text-white">Directorio de Empleados</h2>
                 </div>
             </div>
         </template>
@@ -366,7 +412,7 @@ const restaurarEmpleado = (id, nombre) => {
                     <div class="flex justify-end">
                         <button type="submit" :disabled="form.processing" :class="[
                             'flex w-full items-center justify-center gap-2 rounded-2xl px-8 py-3.5 text-sm font-extrabold text-white shadow-lg transition-all duration-300 hover:-translate-y-1 sm:w-auto',
-                            editando ? 'bg-gradient-to-r from-amber-500 to-amber-400 shadow-amber-500/30 hover:shadow-amber-500/50' : 'bg-gradient-to-r from-blue-600 to-blue-500 shadow-blue-500/30 hover:shadow-blue-500/50'
+                            editando ? 'bg-amber-500 shadow-amber-500/30 hover:bg-amber-600 hover:shadow-amber-500/50' : 'bg-blue-600 shadow-blue-500/30 hover:bg-blue-700 hover:shadow-blue-500/50'
                         ]">
                             <i :class="['ti text-xl', editando ? 'ti-device-floppy' : 'ti-user-plus']"></i>
                             {{ form.processing ? 'Procesando...' : (editando ? 'Guardar Cambios' : 'Registrar Empleado') }}
@@ -380,7 +426,9 @@ const restaurarEmpleado = (id, nombre) => {
                 <div class="border-b border-slate-100 bg-slate-50/50 p-6 flex flex-col lg:flex-row justify-between gap-4">
                     <div>
                         <h3 class="font-['Sora'] text-lg font-bold text-slate-900">{{ tituloDirectorio }}</h3>
-                        <p class="text-xs font-medium text-slate-500">{{ empleadosFiltrados.length }} colaborador(es) • {{ empleadosConDeuda }} con deuda</p>
+                        <p class="text-xs font-medium text-slate-500">
+                            {{ empleadosMeta.total ?? empleadosFiltrados.length }} colaborador(es) · {{ empleadosConDeuda }} con deuda
+                        </p>
                     </div>
                     
                     <div class="flex flex-col sm:flex-row gap-3">
@@ -402,10 +450,24 @@ const restaurarEmpleado = (id, nombre) => {
                             <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
                             <input v-model="searchQuery" type="text" class="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-4 text-sm font-semibold text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="Buscar empleado..." />
                         </div>
+                        <select v-model="criterioOrdenDirectorio" class="field-input min-w-44" aria-label="Ordenar directorio">
+                            <option value="num_asc">Número ascendente</option>
+                            <option value="num_desc">Número descendente</option>
+                            <option value="name_asc">Nombre A - Z</option>
+                            <option value="name_desc">Nombre Z - A</option>
+                        </select>
+                        <div class="segmented-control shrink-0" aria-label="Vista del directorio">
+                            <button type="button" :class="{ active: vistaDirectorio === 'tabla' }" title="Vista de tabla" @click="cambiarVista('tabla')">
+                                <i class="ti ti-list" aria-hidden="true"></i><span class="sr-only">Tabla</span>
+                            </button>
+                            <button type="button" :class="{ active: vistaDirectorio === 'cuadricula' }" title="Vista de cuadrícula" @click="cambiarVista('cuadricula')">
+                                <i class="ti ti-layout-grid" aria-hidden="true"></i><span class="sr-only">Cuadrícula</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="overflow-x-auto custom-scrollbar">
+                <div v-if="vistaDirectorio === 'tabla'" class="overflow-x-auto custom-scrollbar">
                     <table class="w-full text-left text-sm text-slate-600">
                         <thead class="bg-slate-50/80 text-[10px] font-bold uppercase tracking-widest text-slate-400">
                             <tr>
@@ -529,6 +591,64 @@ const restaurarEmpleado = (id, nombre) => {
                         </tbody>
                     </table>
                 </div>
+
+                <div v-else class="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <article v-for="empleado in empleadosFiltrados" :key="`grid-${empleado.id}`" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-md">
+                        <div class="flex items-start gap-3">
+                            <button
+                                type="button"
+                                class="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-blue-100 bg-blue-50 text-sm font-black text-blue-700 disabled:cursor-default"
+                                :disabled="!fotoDisponible(empleado)"
+                                :title="fotoDisponible(empleado) ? 'Ampliar fotografía' : 'Sin fotografía'"
+                                @click="abrirFotoEmpleado(empleado)"
+                            >
+                                {{ numeroDirectorio(empleado) || 'S/N' }}
+                                <img
+                                    v-if="clavesFotoEmpleado(empleado).length"
+                                    :src="fotoEmpleadoSrc(empleado)"
+                                    :alt="`Foto de ${empleado.nombre_completo}`"
+                                    loading="lazy"
+                                    decoding="async"
+                                    class="absolute inset-0 h-full w-full object-cover"
+                                    @load="marcarFotoDisponible(empleado, $event)"
+                                    @error="probarSiguienteFotoEmpleado(empleado, $event)"
+                                />
+                            </button>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="min-w-0">
+                                        <p class="break-words text-sm font-black text-slate-900">{{ empleado.nombre_completo }}</p>
+                                        <p class="mt-0.5 text-xs font-semibold text-slate-500">#{{ numeroDirectorio(empleado) || 'S/N' }} · {{ empleado.puesto || 'Sin puesto' }}</p>
+                                    </div>
+                                    <span :class="empleadoActivo(empleado) ? 'status-success' : 'status-danger'">
+                                        {{ empleadoActivo(empleado) ? 'Activo' : 'Baja' }}
+                                    </span>
+                                </div>
+                                <div class="mt-3 flex flex-wrap gap-1.5">
+                                    <span v-if="!numeroDirectorio(empleado)" class="status-warning">Sin número</span>
+                                    <span v-if="!clavesFotoEmpleado(empleado).length" class="status-warning">Sin fotografía</span>
+                                    <span v-if="tieneDeuda(empleado)" class="status-warning">Debe ${{ moneda(empleado.saldo_prestamo) }}</span>
+                                    <span v-if="esEstudiante(empleado)" class="status-info">Estudiante</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                            <span class="text-xs font-bold text-slate-500">${{ sueldoSemanalEmpleado(empleado) }}/sem</span>
+                            <div class="flex gap-1">
+                                <Link :href="route('empleados.show', empleado.id)" class="icon-button" title="Ver perfil"><i class="ti ti-eye"></i></Link>
+                                <button v-if="canManage" type="button" class="icon-button" title="Editar empleado" @click="editarEmpleado(empleado)"><i class="ti ti-pencil"></i></button>
+                                <button v-if="canManage && empleadoActivo(empleado)" type="button" class="icon-button text-rose-600" title="Dar de baja" @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)"><i class="ti ti-user-off"></i></button>
+                                <button v-else-if="canManage" type="button" class="icon-button text-emerald-700" title="Restaurar" @click="restaurarEmpleado(empleado.id, empleado.nombre_completo)"><i class="ti ti-user-check"></i></button>
+                            </div>
+                        </div>
+                    </article>
+                    <div v-if="empleadosFiltrados.length === 0" class="col-span-full py-12 text-center text-slate-500">
+                        <i class="ti ti-users-off text-4xl" aria-hidden="true"></i>
+                        <p class="mt-2 font-bold">No hay empleados con estos filtros.</p>
+                    </div>
+                </div>
+
+                <AppPagination :meta="empleadosMeta" @change="cargarDirectorio" />
             </section>
         </div>
 

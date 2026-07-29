@@ -5,15 +5,17 @@
 @layer base {
     html {
         @apply bg-slate-50 text-slate-900;
+        color-scheme: light;
+    }
+
+    html.dark {
+        @apply bg-slate-950 text-slate-100;
+        color-scheme: dark;
     }
 
     body {
         @apply min-h-screen bg-slate-50 antialiased;
-        background:
-            radial-gradient(circle at 8% -10%, rgba(20, 184, 166, 0.12), transparent 28rem),
-            radial-gradient(circle at 92% 4%, rgba(37, 99, 235, 0.10), transparent 30rem),
-            linear-gradient(180deg, #f8fafc 0%, #eef4f8 100%);
-        font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
 
     * {
@@ -41,12 +43,11 @@
 
     .panel-header {
         @apply flex flex-col gap-4 border-b border-slate-200/70 px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between;
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.84) 100%);
     }
 
     .panel-title {
         @apply text-base font-black text-slate-950 sm:text-lg;
-        font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
     }
 
     .panel-subtitle {
@@ -107,6 +108,27 @@
 
     .metric-label {
         @apply text-xs font-black uppercase text-slate-500;
+    }
+
+    .metric-tile {
+        @apply flex min-h-20 flex-col justify-between rounded-lg border border-slate-200 bg-white p-3 text-2xl font-black text-slate-900 shadow-sm;
+    }
+
+    .data-table {
+        @apply w-full min-w-[44rem] text-left text-sm text-slate-600;
+    }
+
+    .data-table thead {
+        @apply border-b border-slate-200 bg-slate-50 text-[0.68rem] font-black uppercase text-slate-500;
+    }
+
+    .data-table th,
+    .data-table td {
+        @apply px-4 py-3;
+    }
+
+    .data-table tbody tr {
+        @apply border-b border-slate-100 last:border-0 hover:bg-slate-50/70;
     }
 
     .metric-value {
@@ -185,9 +207,12 @@
         @apply border-blue-200 bg-blue-50 text-blue-700;
     }
 
+    .status-danger {
+        @apply border-rose-200 bg-rose-50 text-rose-700;
+    }
+
     .empty-state {
         @apply px-6 py-14 text-center text-sm font-bold text-slate-500;
-        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
     }
 
     .auth-card {
@@ -246,9 +271,162 @@
     }
 
     .overflow-x-auto::-webkit-scrollbar-thumb {
-        background: linear-gradient(135deg, #14b8a6, #2563eb);
+        background: #64748b;
         border-radius: 999px;
         border: 2px solid #f1f5f9;
+    }
+
+    .app-frame {
+        @apply flex min-h-screen bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-100;
+    }
+
+    .app-sidebar {
+        @apply fixed inset-y-0 left-0 z-50 flex w-[248px] flex-col border-r border-slate-200 bg-white transition-[width,transform] duration-200 lg:sticky lg:top-0 lg:h-screen dark:border-slate-800 dark:bg-slate-900;
+    }
+
+    .app-topbar {
+        @apply sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-3 shadow-sm backdrop-blur sm:px-5 dark:border-slate-800 dark:bg-slate-900/95;
+    }
+
+    .app-main {
+        @apply min-h-[calc(100vh-4rem)] overflow-x-hidden p-3 sm:p-5 lg:p-6;
+    }
+
+    .nav-link {
+        @apply flex min-h-10 items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white;
+    }
+
+    .nav-link-active {
+        @apply border-blue-700 bg-blue-50 text-blue-800 dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-200;
+    }
+
+    .topbar-icon {
+        @apply relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-500/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white;
+    }
+
+    .notification-count {
+        @apply absolute -right-1 -top-1 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black text-white;
+    }
+
+    .topbar-menu {
+        @apply absolute right-0 z-50 mt-2 w-72 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900;
+    }
+
+    .topbar-menu-title {
+        @apply border-b border-slate-200 px-4 py-3 text-sm font-extrabold text-slate-950 dark:border-slate-700 dark:text-white;
+    }
+
+    .topbar-menu-row {
+        @apply flex items-center justify-between border-b border-slate-100 px-4 py-3 text-sm text-slate-700 last:border-b-0 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800;
+    }
+
+    .segmented-control {
+        @apply grid grid-flow-col overflow-hidden rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-800;
+    }
+
+    .segmented-control button {
+        @apply rounded-md px-2.5 py-2 text-xs font-bold text-slate-600 transition-colors dark:text-slate-300;
+    }
+
+    .segmented-control button.active {
+        @apply bg-white text-blue-800 shadow-sm dark:bg-slate-700 dark:text-blue-200;
+    }
+
+    .app-toast {
+        @apply fixed bottom-5 right-5 z-[80] flex max-w-[min(90vw,440px)] items-center gap-3 rounded-lg border bg-white px-4 py-3 text-sm font-bold shadow-xl dark:bg-slate-900;
+    }
+
+    .app-toast-success {
+        @apply border-emerald-200 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200;
+    }
+
+    .app-toast-error {
+        @apply border-rose-200 text-rose-800 dark:border-rose-800 dark:text-rose-200;
+    }
+
+    .toast-enter-active,
+    .toast-leave-active {
+        transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .toast-enter-from,
+    .toast-leave-to {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    html.density-compact .app-main {
+        @apply p-3;
+    }
+
+    html.density-compact .panel-header,
+    html.density-compact .metric-card {
+        @apply p-3;
+    }
+
+    html.density-compact .table-premium td {
+        @apply py-2.5;
+    }
+
+    html.dark .app-panel,
+    html.dark .metric-card,
+    html.dark .action-card,
+    html.dark .form-surface,
+    html.dark .app-panel-muted {
+        @apply border-slate-700 bg-slate-900 text-slate-100;
+    }
+
+    html.dark .panel-header,
+    html.dark .table-premium tbody,
+    html.dark .table-premium thead {
+        @apply border-slate-700 bg-slate-900;
+    }
+
+    html.dark .panel-title,
+    html.dark .section-title,
+    html.dark .metric-value {
+        @apply text-white;
+    }
+
+    html.dark .field-input,
+    html.dark .field-input-soft {
+        @apply border-slate-700 bg-slate-900 text-white placeholder:text-slate-500;
+    }
+
+    html.dark .tab-strip {
+        @apply border-slate-700 bg-slate-900;
+    }
+
+    html.dark .app-main .bg-white,
+    html.dark .app-main .bg-slate-50 {
+        @apply border-slate-700 bg-slate-900;
+    }
+
+    html.dark .app-main [class~="bg-slate-50/50"],
+    html.dark .app-main [class~="bg-slate-50/70"],
+    html.dark .app-main [class~="bg-slate-50/80"],
+    html.dark .app-main [class~="bg-slate-50/95"] {
+        background-color: rgb(15 23 42);
+    }
+
+    html.dark .app-main [class~="bg-slate-100/80"] {
+        background-color: rgb(30 41 59);
+    }
+
+    html.dark .app-main .text-slate-950,
+    html.dark .app-main .text-slate-900,
+    html.dark .app-main .text-slate-800 {
+        @apply text-slate-100;
+    }
+
+    html.dark .app-main .text-slate-700,
+    html.dark .app-main .text-slate-600 {
+        @apply text-slate-300;
+    }
+
+    .rounded-2xl,
+    .rounded-3xl {
+        border-radius: 0.5rem !important;
     }
 
     @media (max-width: 640px) {

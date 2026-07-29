@@ -7,19 +7,23 @@ use App\Models\Empleado;
 use App\Models\Asistencia;
 use App\Models\DiaFestivo;
 use App\Models\Nomina;
+use App\Models\IntegrationFailure;
 use App\Services\DiasFestivosMexicoService;
+use App\Services\SystemOperationService;
 use App\Support\HorarioLaboralEmpleado;
 use App\Support\HorasExtraEmpleado;
 use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
     private const UMBRAL_RETARDO_SEMANAL_MINUTOS = 30;
 
-    public function index()
+    public function index(Request $request)
     {
         $hoy = Carbon::now();
         $mesActual = $hoy->month;
@@ -52,6 +56,18 @@ class DashboardController extends Controller
             ->with('empleado')
             ->whereBetween('fecha', [$hoy->copy()->startOfMonth()->format('Y-m-d'), $hoy->copy()->endOfMonth()->format('Y-m-d')])
             ->get(['empleado_id', 'fecha', 'tipo_asistencia', 'horas_extra']);
+        $activeEmployeeIds = Empleado::where('estatus', true)->pluck('id');
+        $employeesWithAttendance = Asistencia::query()
+            ->whereIn('empleado_id', $activeEmployeeIds)
+            ->whereBetween('fecha', [$inicioSemana->format('Y-m-d'), $finSemana->format('Y-m-d')])
+            ->distinct()
+            ->count('empleado_id');
+        $incompleteMarks = Asistencia::query()
+            ->whereIn('empleado_id', $activeEmployeeIds)
+            ->whereBetween('fecha', [$inicioSemana->format('Y-m-d'), $finSemana->format('Y-m-d')])
+            ->where('tipo_asistencia', 'Normal')
+            ->where(fn ($query) => $query->whereNull('hora_entrada')->orWhereNull('hora_salida'))
+            ->count();
 
         $faltasMes = $asistenciasMes
             ->where('tipo_asistencia', 'Falta')
@@ -119,11 +135,26 @@ class DashboardController extends Controller
         }
 
         return Inertia::render('Dashboard', [
+            'dashboardRole' => $request->user()?->role ?? 'consulta',
             'totalEmpleados' => $totalEmpleados,
             'semanaContable' => $semanaActual,
             'gastoSemanal' => number_format($gastoSemanal, 2, '.', ''),
             'corteSemana' => 'Jueves a miércoles',
             'nominasPendientes' => $nominasPendientes,
+            'resumenSemanal' => [
+                'asistencias_incompletas' => max(0, $totalEmpleados - $employeesWithAttendance) + $incompleteMarks,
+                'faltas' => Asistencia::query()
+                    ->whereBetween('fecha', [$inicioSemana->format('Y-m-d'), $finSemana->format('Y-m-d')])
+                    ->where('tipo_asistencia', 'Falta')
+                    ->count(),
+                'pagos_pendientes' => $nominasPendientes,
+                'nominas_pagadas' => Nomina::query()
+                    ->whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
+                    ->whereDate('fecha_fin', $finSemana->format('Y-m-d'))
+                    ->where('pagado', true)
+                    ->count(),
+                'total_pagado' => round((float) $gastoSemanal, 2),
+            ],
             'kpis' => [
                 'faltas' => $faltasMes,
                 'cumpleaneros' => $cumpleaneros
@@ -134,14 +165,14 @@ class DashboardController extends Controller
                 'datos' => $ultimos7Dias->pluck('horas')
             ],
             'retardosControl' => [
-                'semana' => $this->rankingImpuntuales($inicioSemana, $finSemana, 'Semana ' . $semanaActual),
-                'mes' => $this->rankingImpuntuales($hoy->copy()->startOfMonth(), $hoy->copy()->endOfMonth(), $hoy->locale('es')->isoFormat('MMMM YYYY')),
-                'anio' => $this->rankingImpuntuales($hoy->copy()->startOfYear(), $hoy->copy()->endOfYear(), (string) $anioActual),
+                'semana' => Cache::remember("dashboard:late:week:{$finSemana->format('Y-m-d')}", 60, fn () => $this->rankingImpuntuales($inicioSemana, $finSemana, 'Semana ' . $semanaActual)),
+                'mes' => Cache::remember("dashboard:late:month:{$anioActual}:{$mesActual}", 120, fn () => $this->rankingImpuntuales($hoy->copy()->startOfMonth(), $hoy->copy()->endOfMonth(), $hoy->locale('es')->isoFormat('MMMM YYYY'))),
+                'anio' => Cache::remember("dashboard:late:year:{$anioActual}", 300, fn () => $this->rankingImpuntuales($hoy->copy()->startOfYear(), $hoy->copy()->endOfYear(), (string) $anioActual)),
             ],
             'tempranoControl' => [
-                'semana' => $this->rankingPuntuales($inicioSemana, $finSemana, 'Semana ' . $semanaActual),
-                'mes' => $this->rankingPuntuales($hoy->copy()->startOfMonth(), $hoy->copy()->endOfMonth(), $hoy->locale('es')->isoFormat('MMMM YYYY')),
-                'anio' => $this->rankingPuntuales($hoy->copy()->startOfYear(), $hoy->copy()->endOfYear(), (string) $anioActual),
+                'semana' => Cache::remember("dashboard:early:week:{$finSemana->format('Y-m-d')}", 60, fn () => $this->rankingPuntuales($inicioSemana, $finSemana, 'Semana ' . $semanaActual)),
+                'mes' => Cache::remember("dashboard:early:month:{$anioActual}:{$mesActual}", 120, fn () => $this->rankingPuntuales($hoy->copy()->startOfMonth(), $hoy->copy()->endOfMonth(), $hoy->locale('es')->isoFormat('MMMM YYYY'))),
+                'anio' => Cache::remember("dashboard:early:year:{$anioActual}", 300, fn () => $this->rankingPuntuales($hoy->copy()->startOfYear(), $hoy->copy()->endOfYear(), (string) $anioActual)),
             ],
             'finanzasNomina' => [
                 'desgloseGasto' => $this->desgloseGastoSemanal($inicioSemana, $finSemana),
@@ -159,6 +190,20 @@ class DashboardController extends Controller
             ],
             'diasFestivos' => $diasFestivosDashboard,
             'avanceLaboralAnual' => $this->avanceLaboralAnual($hoy),
+            'notificaciones' => [
+                'total' => max(0, $totalEmpleados - $employeesWithAttendance)
+                    + $incompleteMarks
+                    + (Schema::hasTable('integration_failures')
+                        ? IntegrationFailure::where('status', '!=', 'resolved')->count()
+                        : 0),
+                'asistencias' => max(0, $totalEmpleados - $employeesWithAttendance) + $incompleteMarks,
+                'integraciones' => Schema::hasTable('integration_failures')
+                    ? IntegrationFailure::where('status', '!=', 'resolved')->count()
+                    : 0,
+            ],
+            'operaciones' => Schema::hasTable('system_operations')
+                ? app(SystemOperationService::class)->recentFor($request->user(), 6)
+                : [],
         ]);
     }
 

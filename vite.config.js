@@ -10,11 +10,10 @@ export default defineConfig({
         }),
         vue(),
     ],
-    
     server: {
-        host: '0.0.0.0', // Escuchar en todas las IPs
-        hmr: {
-            host: '10.0.0.83', // <--- CAMBIA ESTO POR LA IP QUE ANOTASTE (ej. 192.168.1.15)
-        },
+        host: '0.0.0.0',
+        hmr: process.env.VITE_HMR_HOST
+            ? { host: process.env.VITE_HMR_HOST }
+            : undefined,
     },
 });
