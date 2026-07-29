@@ -3,8 +3,12 @@
 use App\Models\Empleado;
 use App\Models\Nomina;
 use App\Services\FirebaseSyncService;
+use App\Services\DatabaseBackupService;
+use App\Services\SystemHealthService;
+use App\Jobs\QueueHeartbeatJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -79,3 +83,72 @@ Artisan::command('firebase:link-user {uid} {empleado}', function (string $uid, s
 
     $this->info("Usuario Firebase {$uid} vinculado con empleado {$empleadoModel->id} - {$empleadoModel->nombre_completo}");
 })->purpose('Vincula un UID de Firebase Auth con un empleado para que la app solo lea su informacion.');
+
+Artisan::command('firebase:deploy-rules {--force}', function () {
+    if (!$this->option('force')) {
+        $this->error('Usa --force para confirmar la actualización remota de reglas.');
+        return 1;
+    }
+
+    $path = base_path('firebase/database.rules.json');
+
+    if (!is_file($path)) {
+        $this->error("No existe el archivo de reglas: {$path}");
+        return 1;
+    }
+
+    $rules = json_decode(file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+    FirebaseSyncService::actualizarReglas($rules);
+    $this->info('Reglas seguras de Firebase actualizadas correctamente.');
+})->purpose('Publica las reglas versionadas de Realtime Database.');
+
+Artisan::command('system:backup', function (DatabaseBackupService $backups) {
+    $backup = $backups->createAutomatic();
+    $this->info("Respaldo creado: {$backup->path}");
+})->purpose('Genera un respaldo SQL automático con checksum.');
+
+Artisan::command('system:backup-verify', function (DatabaseBackupService $backups) {
+    $backup = $backups->verifyLatest();
+
+    if (!$backup) {
+        $this->warn('No hay respaldos para verificar.');
+        return 1;
+    }
+
+    $this->line($backup->verification_message);
+
+    return $backup->status === 'verified' ? 0 : 1;
+})->purpose('Verifica integridad y estructura crítica del último respaldo.');
+
+Artisan::command('system:backup-restore-test', function (DatabaseBackupService $backups) {
+    $backup = $backups->testLatestRestore();
+
+    if (!$backup) {
+        $this->warn('No hay respaldos para probar.');
+        return 1;
+    }
+
+    $this->line($backup->verification_message);
+
+    return $backup->status === 'verified' ? 0 : 1;
+})->purpose('Restaura el último respaldo en una base aislada y elimina la base temporal.');
+
+Artisan::command('system:health', function (SystemHealthService $health) {
+    $snapshot = $health->snapshot();
+
+    foreach ($snapshot['services'] as $service) {
+        $this->line(strtoupper($service['status']) . " | {$service['label']}: {$service['message']}");
+    }
+
+    $this->line("Inconsistencias detectadas: {$snapshot['inconsistencies']['total']}");
+})->purpose('Muestra el estado de base de datos, colas, Firebase, almacenamiento y respaldos.');
+
+Schedule::command('system:backup')->dailyAt('23:30')->withoutOverlapping();
+Schedule::command('system:backup-verify')->weeklyOn(1, '02:00')->withoutOverlapping();
+Schedule::command('system:backup-restore-test')->monthlyOn(1, '02:30')->withoutOverlapping();
+Schedule::job(new QueueHeartbeatJob())
+    ->name('system-queue-heartbeat')
+    ->everyMinute()
+    ->withoutOverlapping();
+Schedule::command('queue:prune-failed --hours=336')->dailyAt('03:00');
+Schedule::command('model:prune')->dailyAt('03:30');

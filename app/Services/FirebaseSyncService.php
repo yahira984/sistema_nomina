@@ -10,38 +10,53 @@ use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use Kreait\Firebase\Database\RuleSet;
 use Kreait\Firebase\Exception\Auth\UserNotFound;
 use Kreait\Firebase\Factory;
 use Kreait\Firebase\Http\HttpClientOptions;
+use RuntimeException;
 use Throwable;
 
 class FirebaseSyncService
 {
-    public static function sincronizarEmpleado(Empleado $empleado): void
+    public static function actualizarReglas(array $rules): void
+    {
+        $database = self::database();
+
+        if (!$database) {
+            throw new RuntimeException('Firebase no está configurado; no se actualizaron las reglas.');
+        }
+
+        $database->updateRules(RuleSet::fromArray($rules));
+    }
+
+    public static function sincronizarEmpleado(Empleado $empleado): bool
     {
         try {
             $database = self::database();
 
             if (!$database) {
-                return;
+                return true;
             }
 
             self::sincronizarEmpleadoConDatabase($database, $empleado);
+            return true;
         } catch (Throwable $e) {
             Log::error('Error sincronizando empleado con Firebase', [
                 'empleado_id' => $empleado->id,
                 'error' => $e->getMessage(),
             ]);
+            return false;
         }
     }
 
-    public static function sincronizarEmpleadoCompleto(Empleado $empleado): void
+    public static function sincronizarEmpleadoCompleto(Empleado $empleado): bool
     {
         try {
             $database = self::database();
 
             if (!$database) {
-                return;
+                return true;
             }
 
             $empleado = $empleado->fresh() ?: $empleado;
@@ -60,7 +75,6 @@ class FirebaseSyncService
                         self::sincronizarAsistenciaConDatabase($database, $asistencia);
                     }
                 });
-
             Nomina::where('empleado_id', $empleado->id)
                 ->where('pagado', true)
                 ->orderBy('fecha_inicio')
@@ -69,26 +83,29 @@ class FirebaseSyncService
                         self::sincronizarNominaPagadaConDatabase($database, $empleado, $nomina, []);
                     }
                 });
+
+            return true;
         } catch (Throwable $e) {
             Log::error('Error sincronizando empleado completo con Firebase', [
                 'empleado_id' => $empleado->id,
                 'error' => $e->getMessage(),
             ]);
+            return false;
         }
     }
 
-    public static function sincronizarAsistencia(Asistencia $asistencia): void
+    public static function sincronizarAsistencia(Asistencia $asistencia): bool
     {
-        self::sincronizarAsistencias([$asistencia]);
+        return self::sincronizarAsistencias([$asistencia]);
     }
 
-    public static function sincronizarAsistencias(iterable $asistencias): void
+    public static function sincronizarAsistencias(iterable $asistencias): bool
     {
         try {
             $database = self::database();
 
             if (!$database) {
-                return;
+                return true;
             }
 
             $empleados = [];
@@ -126,78 +143,86 @@ class FirebaseSyncService
             }
 
             self::aplicarUpdatesDatabase($database, $updates);
+            return true;
         } catch (Throwable $e) {
             Log::error('Error sincronizando asistencias con Firebase', [
                 'error' => $e->getMessage(),
             ]);
+            return false;
         }
     }
 
-    public static function eliminarAsistencia(Asistencia $asistencia): void
+    public static function eliminarAsistencia(Asistencia $asistencia): bool
     {
         try {
             $database = self::database();
 
             if (!$database) {
-                return;
+                return true;
             }
 
             $asistencia->loadMissing('empleado');
             $empleado = $asistencia->empleado;
 
             if (!$empleado) {
-                return;
+                return true;
             }
 
             $database->getReference(self::pathAsistenciaEmpleado($empleado, $asistencia))->remove();
             self::sincronizarEmpleadoConDatabase($database, $empleado->fresh() ?: $empleado);
+            return true;
         } catch (Throwable $e) {
             Log::error('Error eliminando asistencia de Firebase', [
                 'asistencia_id' => $asistencia->id,
                 'empleado_id' => $asistencia->empleado_id,
                 'error' => $e->getMessage(),
             ]);
+            return false;
         }
     }
 
-    public static function sincronizarNominaPagada(Empleado $empleado, Nomina $nomina, array $desglose): void
+    public static function sincronizarNominaPagada(Empleado $empleado, Nomina $nomina, array $desglose): bool
     {
         try {
             $database = self::database();
 
             if (!$database) {
-                return;
+                return true;
             }
 
             self::sincronizarNominaPagadaConDatabase($database, $empleado, $nomina, $desglose);
             self::sincronizarEmpleadoConDatabase($database, $empleado->fresh() ?: $empleado);
+            return true;
         } catch (Throwable $e) {
             Log::error('Error sincronizando nomina pagada con Firebase', [
                 'empleado_id' => $empleado->id,
                 'nomina_id' => $nomina->id,
                 'error' => $e->getMessage(),
             ]);
+            return false;
         }
     }
 
-    public static function eliminarNominaPagada(Empleado $empleado, Nomina $nomina): void
+    public static function eliminarNominaPagada(Empleado $empleado, Nomina $nomina): bool
     {
         try {
             $database = self::database();
 
             if (!$database) {
-                return;
+                return true;
             }
 
             $database->getReference(self::pathNominaEmpleado($empleado, $nomina))->remove();
             $database->getReference(self::pathNominaEmpleadoLegacy($empleado, $nomina))->remove();
             self::sincronizarEmpleadoConDatabase($database, $empleado->fresh() ?: $empleado);
+            return true;
         } catch (Throwable $e) {
             Log::error('Error eliminando nomina de Firebase', [
                 'empleado_id' => $empleado->id,
                 'nomina_id' => $nomina->id,
                 'error' => $e->getMessage(),
             ]);
+            return false;
         }
     }
 

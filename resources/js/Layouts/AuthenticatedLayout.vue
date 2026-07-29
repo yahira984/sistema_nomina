@@ -1,168 +1,352 @@
 <script setup>
-import { ref, computed } from 'vue'
-import { Link, usePage } from '@inertiajs/vue3'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Link, router, usePage } from '@inertiajs/vue3'
+import OperationCenter from '@/Components/OperationCenter.vue'
 
 const page = usePage()
-const user = computed(() => page.props.auth.user)
-const can = computed(() => page.props.auth.can ?? {})
+const user = computed(() => page.props.auth?.user)
+const can = computed(() => page.props.auth?.can ?? {})
+const preferences = computed(() => user.value?.preferences ?? {})
+const systemContext = computed(() => page.props.systemContext ?? {})
+const flash = computed(() => page.props.flash ?? {})
 
-// Estados del menú
 const isSidebarOpenMobile = ref(false)
-const isSidebarCollapsedDesktop = ref(false)
+const isSidebarCollapsedDesktop = ref(Boolean(preferences.value.sidebar_collapsed))
+const openGroups = ref(new Set(['Principal', 'Operación', 'Sistema', 'Seguridad']))
+const globalSearch = ref('')
+const showNotifications = ref(false)
+const showPreferences = ref(false)
+const online = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
+const toastVisible = ref(false)
+let toastTimer = null
 
 const navItems = [
-  {
-    label: 'Principal',
-    links: [
-      { name: 'Panel',        route: 'dashboard',         icon: 'ti-layout-dashboard', permission: 'dashboard.view' },
-      { name: 'Empleados',    route: 'empleados.index',   icon: 'ti-users', permission: 'empleados.view' },
-      { name: 'Asistencias',  route: 'asistencias.index', icon: 'ti-calendar-check', permission: 'asistencias.view' },
-      { name: 'Nóminas',      route: 'nominas.index',     icon: 'ti-report-money' },
-    ]
-  },
-  {
-    label: 'Sistema',
-    links: [
-      { name: 'Configuración', route: 'profile.edit', icon: 'ti-settings' },
-      { name: 'Dias festivos', route: 'dias-festivos.index', icon: 'ti-calendar-event' },
-      { name: 'Base de datos', route: 'base-datos.index', icon: 'ti-database' },
-    ]
-  },
-  {
-    label: 'Seguridad',
-    links: [
-      { name: 'Usuarios', route: 'seguridad.usuarios.index', icon: 'ti-user-shield' },
-      { name: 'Auditoria', route: 'seguridad.auditoria.index', icon: 'ti-clipboard-list' },
-    ]
-  }
+    {
+        label: 'Principal',
+        icon: 'ti-home',
+        links: [
+            { name: 'Panel', route: 'dashboard', icon: 'ti-layout-dashboard', permission: 'dashboard.view' },
+            { name: 'Empleados', route: 'empleados.index', icon: 'ti-users', permission: 'empleados.view' },
+        ],
+    },
+    {
+        label: 'Operación',
+        icon: 'ti-briefcase',
+        links: [
+            { name: 'Asistencias', route: 'asistencias.index', icon: 'ti-calendar-check', permission: 'asistencias.view' },
+            { name: 'Nóminas', route: 'nominas.index', icon: 'ti-report-money', permission: 'nominas.view' },
+        ],
+    },
+    {
+        label: 'Sistema',
+        icon: 'ti-settings',
+        links: [
+            { name: 'Reglas laborales', route: 'reglas-laborales.index', icon: 'ti-adjustments', permission: 'sistema.rules' },
+            { name: 'Días festivos', route: 'dias-festivos.index', icon: 'ti-calendar-event', permission: 'sistema.dias_festivos' },
+            { name: 'Base de datos', route: 'base-datos.index', icon: 'ti-database', permission: 'sistema.backups' },
+            { name: 'Salud del sistema', route: 'sistema.salud', icon: 'ti-heart-rate-monitor', permission: 'sistema.health' },
+            { name: 'Preferencias', route: 'profile.edit', icon: 'ti-user-cog' },
+        ],
+    },
+    {
+        label: 'Seguridad',
+        icon: 'ti-shield-lock',
+        links: [
+            { name: 'Usuarios', route: 'seguridad.usuarios.index', icon: 'ti-user-shield', permission: 'sistema.users' },
+            { name: 'Auditoría', route: 'seguridad.auditoria.index', icon: 'ti-clipboard-list', permission: 'sistema.audit' },
+        ],
+    },
 ]
 
-const routePermissions = {
-  dashboard: 'dashboard.view',
-  'empleados.index': 'empleados.view',
-  'asistencias.index': 'asistencias.view',
-  'nominas.index': 'nominas.view',
-  'dias-festivos.index': 'sistema.dias_festivos',
-  'base-datos.index': 'sistema.backups',
-  'seguridad.usuarios.index': 'sistema.users',
-  'seguridad.auditoria.index': 'sistema.audit',
-}
-
 const visibleNavItems = computed(() => navItems
-  .map(group => ({
-    ...group,
-    links: group.links.filter(item => {
-      const permission = item.permission || routePermissions[item.route]
+    .map(group => ({
+        ...group,
+        links: group.links.filter(item => !item.permission || can.value[item.permission]),
+    }))
+    .filter(group => group.links.length > 0))
 
-      return !permission || can.value[permission]
-    }),
-  }))
-  .filter(group => group.links.length > 0)
-)
+const notificationCount = computed(() => {
+    const notifications = systemContext.value.notifications || {}
+    return Number(notifications.failed_operations || 0) + Number(notifications.integration_failures || 0)
+})
 
-function isActive(routeName) {
-  return route().current(routeName) || route().current(routeName + '.*')
+const selectedPeriod = computed(() => {
+    const value = systemContext.value.selected_period
+    if (!value) return 'Periodo actual'
+
+    const date = new Date(`${String(value).substring(0, 10)}T12:00:00`)
+    return Number.isNaN(date.getTime())
+        ? String(value)
+        : new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }).format(date)
+})
+
+const isActive = routeName => route().current(routeName) || route().current(`${routeName}.*`)
+const groupIsOpen = label => openGroups.value.has(label)
+
+const toggleGroup = label => {
+    const next = new Set(openGroups.value)
+    next.has(label) ? next.delete(label) : next.add(label)
+    openGroups.value = next
 }
 
-function toggleSidebar() {
-  if (window.innerWidth < 1024) {
-    isSidebarOpenMobile.value = !isSidebarOpenMobile.value
-  } else {
+const toggleSidebar = () => {
+    if (window.innerWidth < 1024) {
+        isSidebarOpenMobile.value = !isSidebarOpenMobile.value
+        return
+    }
+
     isSidebarCollapsedDesktop.value = !isSidebarCollapsedDesktop.value
-  }
+    persistPreferences({ sidebar_collapsed: isSidebarCollapsedDesktop.value })
 }
+
+const applyPreferences = () => {
+    const root = document.documentElement
+    const theme = preferences.value.theme || localStorage.getItem('app-theme') || 'system'
+    const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    root.classList.toggle('dark', dark)
+    root.classList.toggle('density-compact', (preferences.value.density || 'comfortable') === 'compact')
+    localStorage.setItem('app-theme', theme)
+}
+
+const persistPreferences = values => {
+    router.patch(route('preferencias.update'), values, {
+        preserveScroll: true,
+        preserveState: true,
+        only: ['auth', 'flash'],
+    })
+}
+
+const setTheme = theme => {
+    user.value.preferences.theme = theme
+    applyPreferences()
+    persistPreferences({ theme })
+}
+
+const setDensity = density => {
+    user.value.preferences.density = density
+    applyPreferences()
+    persistPreferences({ density })
+}
+
+const searchEmployees = () => {
+    const search = globalSearch.value.trim()
+    if (!search) return
+    router.get(route('empleados.index'), { search, status: 'todos' })
+    globalSearch.value = ''
+}
+
+const showToast = () => {
+    clearTimeout(toastTimer)
+    toastVisible.value = Boolean(flash.value.success || flash.value.error)
+    if (toastVisible.value) toastTimer = setTimeout(() => { toastVisible.value = false }, 4200)
+}
+
+const updateOnline = () => { online.value = navigator.onLine }
+
+watch(preferences, () => nextTick(applyPreferences), { deep: true })
+watch(flash, showToast, { deep: true, immediate: true })
+
+onMounted(() => {
+    applyPreferences()
+    window.addEventListener('online', updateOnline)
+    window.addEventListener('offline', updateOnline)
+})
+
+onBeforeUnmount(() => {
+    window.removeEventListener('online', updateOnline)
+    window.removeEventListener('offline', updateOnline)
+    clearTimeout(toastTimer)
+})
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-slate-50 font-['DM_Sans'] text-slate-800">
-    
-    <!-- Overlay Mobile -->
-    <div v-if="isSidebarOpenMobile" class="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm lg:hidden" @click="isSidebarOpenMobile = false"></div>
+    <div class="app-frame">
+        <div
+            v-if="isSidebarOpenMobile"
+            class="fixed inset-0 z-40 bg-slate-950/45 lg:hidden"
+            @click="isSidebarOpenMobile = false"
+        ></div>
 
-    <!-- Sidebar Premium -->
-    <aside :class="[
-      'fixed inset-y-0 left-0 z-50 flex flex-col bg-white border-r border-slate-200/60 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300 lg:sticky lg:top-0 lg:h-screen',
-      isSidebarCollapsedDesktop && !isSidebarOpenMobile ? 'w-20' : 'w-72',
-      isSidebarOpenMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-    ]">
-      <!-- Logo Area -->
-      <div class="flex h-20 shrink-0 items-center gap-3 border-b border-slate-100 px-5">
-        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white shadow-md shadow-blue-500/10 border border-slate-100 p-1.5">
-          <img :src="'/img/lugarth.png'" alt="LUGARTH" class="h-full w-full object-contain" />
-        </div>
-        <div v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="flex flex-col whitespace-nowrap transition-opacity">
-          <span class="font-['Sora'] text-sm font-extrabold tracking-wide text-slate-900 leading-tight">PROMATEC</span>
-          <span class="text-[10px] font-black tracking-[0.2em] text-blue-600">LUGARTH</span>
-        </div>
-      </div>
-
-      <!-- Navigation -->
-      <nav class="flex-1 overflow-y-auto overflow-x-hidden p-4 custom-scrollbar">
-        <template v-for="group in visibleNavItems" :key="group.label">
-          <p v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="mb-2 mt-6 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">{{ group.label }}</p>
-          <div v-show="isSidebarCollapsedDesktop && !isSidebarOpenMobile" class="my-4 h-px w-full bg-slate-100"></div>
-
-          <Link v-for="item in group.links" :key="item.route" :href="route(item.route)" :title="isSidebarCollapsedDesktop && !isSidebarOpenMobile ? item.name : ''"
+        <aside
             :class="[
-              'group flex items-center gap-3 rounded-2xl px-3 py-3 mb-1.5 transition-all duration-300',
-              isActive(item.route) 
-                ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25 font-bold' 
-                : 'text-slate-500 hover:bg-blue-50/50 hover:text-blue-700 font-semibold'
-            ]">
-            <i :class="['ti text-xl transition-transform group-hover:scale-110 shrink-0', item.icon, isActive(item.route) ? 'text-white' : '']"></i>
-            <span v-show="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="whitespace-nowrap text-sm">{{ item.name }}</span>
-          </Link>
-        </template>
-      </nav>
-    </aside>
-
-    <!-- Main Wrapper -->
-    <div class="flex min-w-0 flex-1 flex-col">
-      <!-- Topbar Glassmorphism -->
-      <header class="sticky top-0 z-30 flex h-20 shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/90 px-4 shadow-sm shadow-slate-200/40 backdrop-blur-lg sm:px-8">
-        <div class="flex items-center gap-4">
-          <button @click="toggleSidebar" class="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:bg-slate-50 hover:text-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-500/10">
-            <i class="ti ti-menu-2 text-xl"></i>
-          </button>
-          <div class="hidden items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 lg:flex">
-            <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></span> Sistema en línea
-          </div>
-        </div>
-
-        <div class="flex items-center gap-4 sm:gap-6">
-          <div class="flex items-center gap-3">
-            <div class="hidden text-right sm:block">
-              <p class="text-sm font-bold text-slate-900">{{ user?.name }}</p>
-              <p class="text-[11px] font-semibold text-slate-400">{{ user?.role_label || user?.email }}</p>
+                'app-sidebar',
+                isSidebarCollapsedDesktop && !isSidebarOpenMobile ? 'lg:w-[76px]' : 'lg:w-[248px]',
+                isSidebarOpenMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+            ]"
+        >
+            <div class="flex h-16 items-center gap-3 border-b border-slate-200 px-4 dark:border-slate-800">
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
+                    <img :src="'/img/lugarth.png'" alt="LUGARTH" class="h-full w-full object-contain" />
+                </div>
+                <div v-if="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="min-w-0">
+                    <p class="truncate text-sm font-extrabold text-slate-950 dark:text-white">PROMATEC</p>
+                    <p class="text-[10px] font-bold uppercase text-blue-700 dark:text-blue-300">LUGARTH</p>
+                </div>
             </div>
-            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 text-sm font-black text-white shadow-md shadow-indigo-500/20">
-              {{ user?.name?.charAt(0)?.toUpperCase() ?? 'U' }}
-            </div>
-          </div>
-          <div class="h-8 w-px bg-slate-200"></div>
-          <Link :href="route('logout')" method="post" as="button" class="group flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-slate-500 transition-all hover:bg-rose-50 hover:text-rose-600">
-            <i class="ti ti-logout text-xl transition-transform group-hover:translate-x-1"></i>
-            <span class="hidden sm:inline">Salir</span>
-          </Link>
-        </div>
-      </header>
 
-      <!-- Page Content -->
-      <main class="flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">
-        <div class="mx-auto max-w-[1500px]">
-          <section v-if="$slots.header" class="mb-6 rounded-3xl border border-slate-200/60 bg-white p-6 shadow-sm sm:mb-8 sm:p-8">
-            <slot name="header" />
-          </section>
-          <slot />
+            <nav class="flex-1 overflow-y-auto p-2.5" aria-label="Navegación principal">
+                <section v-for="group in visibleNavItems" :key="group.label" class="mb-2">
+                    <button
+                        v-if="!isSidebarCollapsedDesktop || isSidebarOpenMobile"
+                        type="button"
+                        class="flex w-full items-center justify-between rounded-md px-2.5 py-2 text-xs font-bold uppercase text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                        :aria-expanded="groupIsOpen(group.label)"
+                        @click="toggleGroup(group.label)"
+                    >
+                        <span class="flex items-center gap-2">
+                            <i :class="['ti text-base', group.icon]" aria-hidden="true"></i>
+                            {{ group.label }}
+                        </span>
+                        <i :class="['ti text-sm', groupIsOpen(group.label) ? 'ti-chevron-up' : 'ti-chevron-down']" aria-hidden="true"></i>
+                    </button>
+
+                    <div v-show="groupIsOpen(group.label) || isSidebarCollapsedDesktop" class="mt-1 space-y-1">
+                        <Link
+                            v-for="item in group.links"
+                            :key="item.route"
+                            :href="route(item.route)"
+                            :title="isSidebarCollapsedDesktop && !isSidebarOpenMobile ? item.name : ''"
+                            :class="['nav-link', isActive(item.route) ? 'nav-link-active' : '']"
+                            @click="isSidebarOpenMobile = false"
+                        >
+                            <i :class="['ti shrink-0 text-lg', item.icon]" aria-hidden="true"></i>
+                            <span v-if="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="truncate">{{ item.name }}</span>
+                        </Link>
+                    </div>
+                </section>
+            </nav>
+
+            <div class="border-t border-slate-200 p-3 dark:border-slate-800">
+                <div v-if="!isSidebarCollapsedDesktop || isSidebarOpenMobile" class="flex items-center justify-between gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    <span class="truncate">{{ user?.role_label }}</span>
+                    <span class="shrink-0 font-mono text-[10px]">v{{ page.props.appVersion }}</span>
+                </div>
+            </div>
+        </aside>
+
+        <div class="min-w-0 flex-1">
+            <header class="app-topbar">
+                <div class="flex min-w-0 items-center gap-2">
+                    <button type="button" class="topbar-icon" title="Contraer menú" aria-label="Contraer o abrir menú" @click="toggleSidebar">
+                        <i class="ti ti-menu-2 text-lg" aria-hidden="true"></i>
+                    </button>
+
+                    <div class="hidden min-w-0 items-center gap-2 border-l border-slate-200 pl-3 md:flex dark:border-slate-700">
+                        <i class="ti ti-calendar-week text-blue-700 dark:text-blue-300" aria-hidden="true"></i>
+                        <div class="min-w-0">
+                            <p class="text-[10px] font-bold uppercase text-slate-400">Periodo</p>
+                            <p class="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{{ selectedPeriod }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <form class="mx-3 hidden max-w-md flex-1 lg:block" role="search" @submit.prevent="searchEmployees">
+                    <label class="relative block">
+                        <span class="sr-only">Buscar empleado</span>
+                        <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true"></i>
+                        <input
+                            v-model="globalSearch"
+                            type="search"
+                            class="field-input h-10 py-2 pl-9"
+                            placeholder="Buscar por nombre, número o puesto"
+                        />
+                    </label>
+                </form>
+
+                <div class="flex items-center gap-1.5">
+                    <span
+                        :class="[
+                            'hidden items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-bold sm:flex',
+                            online
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300',
+                        ]"
+                    >
+                        <span :class="['h-2 w-2 rounded-full', online ? 'bg-emerald-500' : 'bg-rose-500']"></span>
+                        {{ online ? 'En línea' : 'Sin conexión' }}
+                    </span>
+
+                    <OperationCenter
+                        :initial-operations="$page.props.operaciones || $page.props.operations || []"
+                        :highlighted-id="flash.operation_id || ''"
+                    />
+
+                    <div class="relative">
+                        <button type="button" class="topbar-icon" title="Notificaciones" aria-label="Abrir notificaciones" @click="showNotifications = !showNotifications">
+                            <i class="ti ti-bell text-lg" aria-hidden="true"></i>
+                            <span v-if="notificationCount" class="notification-count">{{ notificationCount }}</span>
+                        </button>
+                        <div v-if="showNotifications" class="topbar-menu">
+                            <p class="topbar-menu-title">Notificaciones</p>
+                            <p v-if="!notificationCount" class="p-4 text-sm text-slate-500 dark:text-slate-400">Todo está en orden.</p>
+                            <Link v-if="systemContext.notifications?.failed_operations" :href="can['sistema.health'] ? route('sistema.salud') : route('dashboard')" class="topbar-menu-row">
+                                <span>Operaciones con error</span>
+                                <strong>{{ systemContext.notifications.failed_operations }}</strong>
+                            </Link>
+                            <Link v-if="systemContext.notifications?.integration_failures && can['sistema.health']" :href="route('sistema.salud')" class="topbar-menu-row">
+                                <span>Sincronizaciones pendientes</span>
+                                <strong>{{ systemContext.notifications.integration_failures }}</strong>
+                            </Link>
+                        </div>
+                    </div>
+
+                    <div class="relative">
+                        <button type="button" class="topbar-icon" title="Preferencias de vista" aria-label="Abrir preferencias de vista" @click="showPreferences = !showPreferences">
+                            <i class="ti ti-adjustments-horizontal text-lg" aria-hidden="true"></i>
+                        </button>
+                        <div v-if="showPreferences" class="topbar-menu w-72">
+                            <p class="topbar-menu-title">Vista</p>
+                            <div class="p-3">
+                                <p class="mb-2 text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Tema</p>
+                                <div class="segmented-control">
+                                    <button v-for="theme in ['light', 'dark', 'system']" :key="theme" type="button" :class="{ active: preferences.theme === theme }" @click="setTheme(theme)">
+                                        {{ { light: 'Claro', dark: 'Oscuro', system: 'Sistema' }[theme] }}
+                                    </button>
+                                </div>
+                                <p class="mb-2 mt-4 text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Densidad</p>
+                                <div class="segmented-control">
+                                    <button type="button" :class="{ active: preferences.density !== 'compact' }" @click="setDensity('comfortable')">Cómoda</button>
+                                    <button type="button" :class="{ active: preferences.density === 'compact' }" @click="setDensity('compact')">Compacta</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ml-1 hidden text-right sm:block">
+                        <p class="max-w-40 truncate text-xs font-bold text-slate-900 dark:text-white">{{ user?.name }}</p>
+                        <p class="text-[10px] text-slate-500 dark:text-slate-400">{{ user?.role_label }}</p>
+                    </div>
+                    <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-700 text-xs font-extrabold text-white">
+                        {{ user?.name?.charAt(0)?.toUpperCase() || 'U' }}
+                    </div>
+                    <Link :href="route('logout')" method="post" as="button" class="topbar-icon" title="Cerrar sesión" aria-label="Cerrar sesión">
+                        <i class="ti ti-logout text-lg" aria-hidden="true"></i>
+                    </Link>
+                </div>
+            </header>
+
+            <main class="app-main">
+                <div class="mx-auto w-full max-w-[1600px]">
+                    <section v-if="$slots.header" class="mb-5 border-b border-slate-200 pb-5 dark:border-slate-700">
+                        <slot name="header" />
+                    </section>
+                    <slot />
+                </div>
+            </main>
         </div>
-      </main>
+
+        <transition name="toast">
+            <div
+                v-if="toastVisible"
+                :class="['app-toast', flash.error ? 'app-toast-error' : 'app-toast-success']"
+                role="status"
+            >
+                <i :class="['ti text-lg', flash.error ? 'ti-alert-circle' : 'ti-circle-check']" aria-hidden="true"></i>
+                <span>{{ flash.error || flash.success }}</span>
+                <button type="button" class="ml-auto" aria-label="Cerrar mensaje" @click="toastVisible = false">
+                    <i class="ti ti-x" aria-hidden="true"></i>
+                </button>
+            </div>
+        </transition>
     </div>
-  </div>
 </template>
-
-<style scoped>
-.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-</style>

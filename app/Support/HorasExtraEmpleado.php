@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Empleado;
+use App\Services\WorkRuleResolver;
 use Carbon\Carbon;
 
 class HorasExtraEmpleado
@@ -28,6 +29,7 @@ class HorasExtraEmpleado
         $dia = $fecha instanceof Carbon
             ? $fecha->copy()->startOfDay()
             : Carbon::parse($fecha)->startOfDay();
+        $rule = $empleado ? WorkRuleResolver::for($empleado) : [];
         $entrada = Carbon::parse($dia->format('Y-m-d').' '.$horaEntrada);
         $salida = Carbon::parse($dia->format('Y-m-d').' '.$horaSalida);
 
@@ -36,13 +38,13 @@ class HorasExtraEmpleado
         }
 
         if ($dia->isWeekend()) {
-            $horaInicio = Carbon::parse($dia->format('Y-m-d').' '.self::HORA_INICIO);
+            $horaInicio = Carbon::parse($dia->format('Y-m-d').' '.($rule['hora_entrada'] ?? self::HORA_INICIO));
             $inicioExtra = $entrada->lessThan($horaInicio) ? $horaInicio : $entrada;
 
             return self::redondearMediaHoraCercana($inicioExtra->diffInMinutes($salida) / 60);
         }
 
-        $limiteOrdinario = Carbon::parse($dia->format('Y-m-d').' '.self::HORA_FIN_ORDINARIA);
+        $limiteOrdinario = Carbon::parse($dia->format('Y-m-d').' '.($rule['hora_salida'] ?? self::HORA_FIN_ORDINARIA));
 
         if (!$salida->greaterThan($limiteOrdinario)) {
             return 0;

@@ -9,7 +9,12 @@ use App\Models\Asistencia;
 use App\Models\DiaFestivo;
 use App\Models\Empleado;
 use App\Models\Nomina;
+use App\Models\PayrollPeriod;
+use App\Models\UserPreference;
 use App\Services\FirebaseSyncService;
+use App\Services\FirebaseJobDispatcher;
+use App\Services\PayrollPeriodService;
+use App\Services\SystemOperationService;
 use App\Support\HorarioLaboralEmpleado;
 use App\Support\HorasExtraEmpleado;
 use App\Support\ReglasNominaEmpleado;
@@ -34,9 +39,20 @@ class NominaController extends Controller
 
     public function index(Request $request)
     {
+        $savedFilters = Schema::hasTable('user_preferences')
+            ? UserPreference::where('user_id', $request->user()?->id)->first()?->saved_filters ?? []
+            : [];
+        $nominaFilters = [
+            'search' => trim((string) $request->input('search', data_get($savedFilters, 'payroll.search', ''))),
+            'bank' => (string) $request->input('bank', data_get($savedFilters, 'payroll.bank', 'todos')),
+            'status' => (string) $request->input('status', data_get($savedFilters, 'payroll.status', 'todos')),
+            'sort' => (string) $request->input('sort', data_get($savedFilters, 'payroll.sort', 'num_asc')),
+        ];
         [$inicioSemana, $finSemana, $semanaActual] = $this->resolverSemanaNomina($request);
         $semanasDisponibles = SemanaNomina::disponibles(SemanaNomina::corteActual(), 12);
-        $empleadosBase = $this->empleadosBaseNomina();
+        $periodo = app(PayrollPeriodService::class)->findOrCreate($inicioSemana, $finSemana);
+        $empleadosPaginator = $this->empleadosBaseNomina($request, $inicioSemana, $finSemana);
+        $empleadosBase = $empleadosPaginator->getCollection();
         $empleadoIds = $empleadosBase->pluck('id')->all();
         $nominasPeriodo = $this->nominasPeriodoPorEmpleado($empleadoIds, $inicioSemana, $finSemana);
         $asistenciasPeriodo = $this->asistenciasPeriodoPorEmpleado($empleadoIds, $inicioSemana, $finSemana);
@@ -68,6 +84,7 @@ class NominaController extends Controller
                 'nomina_generada' => (bool) $nomina,
                 'nomina_id' => $nomina ? $nomina->id : null,
                 'pagado' => $nomina ? (bool) $nomina->pagado : false,
+                'comparacion_nomina' => $this->comparacionNomina($nomina, $desglose),
                 'ajustes_nomina' => $this->resumenAjustesNomina(
                     $empleado,
                     $nomina,
@@ -80,12 +97,35 @@ class NominaController extends Controller
 
         return Inertia::render('Nominas/Index', [
             'empleados' => $empleados,
+            'empleadosMeta' => [
+                'current_page' => $empleadosPaginator->currentPage(),
+                'last_page' => $empleadosPaginator->lastPage(),
+                'per_page' => $empleadosPaginator->perPage(),
+                'total' => $empleadosPaginator->total(),
+                'from' => $empleadosPaginator->firstItem(),
+                'to' => $empleadosPaginator->lastItem(),
+            ],
+            'resumenPeriodo' => $this->resumenPeriodo($inicioSemana, $finSemana),
+            'bancosDisponibles' => Empleado::query()
+                ->where('estatus', true)
+                ->selectRaw("COALESCE(NULLIF(UPPER(TRIM(banco)), ''), 'EFECTIVO / SIN BANCO') as banco_nombre")
+                ->distinct()
+                ->orderBy('banco_nombre')
+                ->pluck('banco_nombre'),
             'historial' => $historialPayload['data'],
             'historialMeta' => $historialPayload['meta'],
             'filtros' => $historialPayload['filtros'],
             'semanaActual' => $semanaActual,
             'semanasDisponibles' => $semanasDisponibles,
             'fechaCorteActual' => $finSemana->format('Y-m-d'),
+            'periodo' => [
+                'id' => $periodo->id,
+                'status' => $periodo->status,
+                'locked_at' => $periodo->locked_at?->toISOString(),
+                'notes' => $periodo->notes,
+            ],
+            'operaciones' => app(SystemOperationService::class)->recentFor($request->user(), 8),
+            'filtrosNomina' => $nominaFilters,
         ]);
     }
 
@@ -93,6 +133,7 @@ class NominaController extends Controller
     {
         $empleado = Empleado::findOrFail($empleado_id);
         [$inicioSemana, $finSemana] = $this->resolverSemanaNomina($request);
+        app(PayrollPeriodService::class)->assertOpen($inicioSemana, $finSemana);
         $estadoCaptura = $this->estadoCapturaAsistencia($empleado, $inicioSemana, $finSemana);
 
         if (!$estadoCaptura['lista_para_nomina']) {
@@ -116,7 +157,8 @@ class NominaController extends Controller
         $ajustes = $this->resolverAjustesParaPeriodo($request, $empleado, $inicioSemana, $finSemana);
         $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
 
-        $nomina = $this->guardarNominaPeriodo($empleado, $inicioSemana, $finSemana, $desglose);
+        $nominaExistente = $this->buscarNominaPeriodo($empleado->id, $inicioSemana, $finSemana);
+        $nomina = $this->nominaParaExportar($nominaExistente, $empleado, $inicioSemana, $finSemana, $desglose);
         $nomina->setRelation('empleado', $empleado);
 
         $pdf = Pdf::loadView('pdf.recibo_nomina', $this->datosVistaRecibo($nomina, $empleado, $desglose));
@@ -133,7 +175,8 @@ class NominaController extends Controller
         $ajustes = $this->resolverAjustesParaPeriodo($request, $empleado, $inicioSemana, $finSemana);
         $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
 
-        $nomina = $this->guardarNominaPeriodo($empleado, $inicioSemana, $finSemana, $desglose);
+        $nominaExistente = $this->buscarNominaPeriodo($empleado->id, $inicioSemana, $finSemana);
+        $nomina = $this->nominaParaExportar($nominaExistente, $empleado, $inicioSemana, $finSemana, $desglose);
 
         $nomina->setRelation('empleado', $empleado);
         $datosExcel = $this->datosVistaRecibo($nomina, $empleado, $desglose);
@@ -167,7 +210,13 @@ class NominaController extends Controller
                 $empleado
             );
             $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
-            $nomina = $this->guardarNominaPeriodo($empleado, $inicioSemana, $finSemana, $desglose);
+            $nomina = $this->nominaParaExportar(
+                $this->buscarNominaPeriodo($empleado->id, $inicioSemana, $finSemana),
+                $empleado,
+                $inicioSemana,
+                $finSemana,
+                $desglose
+            );
 
             $nomina->setRelation('empleado', $empleado);
 
@@ -220,6 +269,7 @@ class NominaController extends Controller
 
         $empleado = Empleado::findOrFail($empleado_id);
         [$inicioSemana, $finSemana] = $this->resolverSemanaNomina($request);
+        app(PayrollPeriodService::class)->assertOpen($inicioSemana, $finSemana);
         $estadoCaptura = $this->estadoCapturaAsistencia($empleado, $inicioSemana, $finSemana);
 
         if (!$estadoCaptura['lista_para_nomina']) {
@@ -251,7 +301,9 @@ class NominaController extends Controller
         $ajustes = $this->ajustesDesdeNomina($nomina, $empleado);
         $desglose = $this->calcularDesgloseNomina($empleado, $inicioSemana, $finSemana, $ajustes);
 
-        $nomina = $this->guardarNominaPeriodo($empleado, $inicioSemana, $finSemana, $desglose);
+        if (!$this->periodoBloqueado($inicioSemana, $finSemana)) {
+            $nomina = $this->guardarNominaPeriodo($empleado, $inicioSemana, $finSemana, $desglose);
+        }
         $nomina->setRelation('empleado', $empleado);
 
         $pdf = Pdf::loadView('pdf.recibo_nomina', $this->datosVistaRecibo($nomina, $empleado, $desglose));
@@ -261,14 +313,26 @@ class NominaController extends Controller
 
     public function pagar(Request $request, Nomina $nomina)
     {
-        $resultadoPago = $this->procesarCambioPagoNomina($request, $nomina);
+        $validated = $request->validate([
+            'pagado' => ['required', 'boolean'],
+        ]);
+
+        app(PayrollPeriodService::class)->assertOpen(
+            Carbon::parse($nomina->fecha_inicio)->startOfDay(),
+            Carbon::parse($nomina->fecha_fin)->endOfDay()
+        );
+        $resultadoPago = $this->procesarCambioPagoNomina($request, $nomina, (bool) $validated['pagado']);
         $this->sincronizarCambioPago($resultadoPago);
 
         return back()->with(
             'success',
-            $resultadoPago['pagado']
+            ($resultadoPago['sin_cambio'] ?? false)
+                ? ($resultadoPago['pagado']
+                    ? 'La nómina ya estaba marcada como pagada.'
+                    : 'La nómina ya estaba pendiente.')
+                : ($resultadoPago['pagado']
                 ? 'Nomina marcada como pagada. Prestamos y vacaciones aplicados al saldo del empleado.'
-                : 'Nomina regresada a pendiente. Prestamos y vacaciones revertidos del saldo del empleado.'
+                : 'Nomina regresada a pendiente. Prestamos y vacaciones revertidos del saldo del empleado.')
         );
     }
 
@@ -282,6 +346,7 @@ class NominaController extends Controller
         ]);
 
         [$inicioSemana, $finSemana] = $this->resolverSemanaNomina($request);
+        app(PayrollPeriodService::class)->assertOpen($inicioSemana, $finSemana);
         $empleadoIds = collect($validated['empleado_ids'])->map(fn ($id) => (int) $id)->unique()->values();
         $forzarPagado = $validated['accion'] === 'pagar';
         $nominas = Nomina::whereIn('empleado_id', $empleadoIds)
@@ -441,9 +506,9 @@ class NominaController extends Controller
 
         if ($empleadoSync && $nominaSync) {
             if ($resultadoPago['pagado']) {
-                FirebaseSyncService::sincronizarNominaPagada($empleadoSync, $nominaSync, $resultadoPago['desglose'] ?? []);
+                FirebaseJobDispatcher::paidPayroll($nominaSync, $resultadoPago['desglose'] ?? []);
             } else {
-                FirebaseSyncService::eliminarNominaPagada($empleadoSync, $nominaSync);
+                FirebaseJobDispatcher::deletePayroll($nominaSync);
             }
         }
     }
@@ -453,14 +518,27 @@ class NominaController extends Controller
         return SemanaNomina::desdeCorte($request->input('fecha_corte'));
     }
 
-    private function empleadosBaseNomina(): Collection
+    private function empleadosBaseNomina(Request $request, Carbon $inicioSemana, Carbon $finSemana)
     {
-        return Empleado::query()
+        $savedFilters = Schema::hasTable('user_preferences')
+            ? UserPreference::where('user_id', $request->user()?->id)->first()?->saved_filters ?? []
+            : [];
+        $search = trim((string) $request->input('search', data_get($savedFilters, 'payroll.search', '')));
+        $bank = trim((string) $request->input('bank', data_get($savedFilters, 'payroll.bank', 'todos')));
+        $status = trim((string) $request->input('status', data_get($savedFilters, 'payroll.status', 'todos')));
+        $sort = trim((string) $request->input('sort', data_get($savedFilters, 'payroll.sort', 'num_asc')));
+        $perPage = max(8, min(48, (int) $request->input('per_page', 18)));
+        $periodConstraint = fn ($query) => $query
+            ->whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
+            ->whereDate('fecha_fin', $finSemana->format('Y-m-d'));
+
+        $query = Empleado::query()
             ->select([
                 'id',
                 'numero_empleado',
                 'numero_empleado_baja',
                 'nombre_completo',
+                'puesto',
                 'banco',
                 'numero_cuenta',
                 'saldo_prestamo',
@@ -476,10 +554,46 @@ class NominaController extends Controller
                 'estatus',
             ])
             ->where('estatus', true)
-            ->orderBy('banco')
-            ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), NULLIF(numero_empleado_baja, ''), id) AS UNSIGNED) ASC")
-            ->orderBy('nombre_completo')
-            ->get();
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($query) use ($search) {
+                    $query->where('nombre_completo', 'like', "%{$search}%")
+                        ->orWhere('numero_empleado', 'like', "%{$search}%")
+                        ->orWhere('numero_empleado_baja', 'like', "%{$search}%")
+                        ->orWhere('puesto', 'like', "%{$search}%");
+                });
+            })
+            ->when($bank !== '' && $bank !== 'todos', function ($query) use ($bank) {
+                if ($bank === 'EFECTIVO / SIN BANCO') {
+                    $query->where(fn ($query) => $query->whereNull('banco')->orWhere('banco', ''));
+                } else {
+                    $query->whereRaw('UPPER(TRIM(banco)) = ?', [strtoupper($bank)]);
+                }
+            })
+            ->when($status === 'liquidado', fn ($query) => $query->whereHas(
+                'nominas',
+                fn ($query) => $periodConstraint($query)->where('pagado', true)
+            ))
+            ->when($status === 'generada', fn ($query) => $query->whereHas(
+                'nominas',
+                fn ($query) => $periodConstraint($query)->where('pagado', false)
+            ))
+            ->when($status === 'pendiente', fn ($query) => $query->whereDoesntHave(
+                'nominas',
+                fn ($query) => $periodConstraint($query)->where('pagado', true)
+            ));
+
+        match ($sort) {
+            'name_desc' => $query->orderByDesc('nombre_completo'),
+            'name_asc' => $query->orderBy('nombre_completo'),
+            'num_desc' => $query
+                ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), NULLIF(numero_empleado_baja, ''), id) AS UNSIGNED) DESC")
+                ->orderByDesc('nombre_completo'),
+            default => $query
+                ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), NULLIF(numero_empleado_baja, ''), id) AS UNSIGNED) ASC")
+                ->orderBy('nombre_completo'),
+        };
+
+        return $query->paginate($perPage, ['*'], 'employee_page')->withQueryString();
     }
 
     private function empleadoNominaPayload(Empleado $empleado): array
@@ -489,6 +603,7 @@ class NominaController extends Controller
             'numero_empleado' => $empleado->numero_empleado,
             'numero_empleado_baja' => $empleado->numero_empleado_baja,
             'nombre_completo' => $empleado->nombre_completo,
+            'puesto' => $empleado->puesto,
             'banco' => $empleado->banco,
             'numero_cuenta' => $empleado->numero_cuenta,
             'saldo_prestamo' => (float) ($empleado->saldo_prestamo ?? 0),
@@ -502,6 +617,61 @@ class NominaController extends Controller
             'fecha_ingreso' => $empleado->fecha_ingreso,
             'fecha_baja' => $empleado->fecha_baja,
             'estatus' => (bool) $empleado->estatus,
+        ];
+    }
+
+    private function resumenPeriodo(Carbon $inicioSemana, Carbon $finSemana): array
+    {
+        $activeEmployees = Empleado::where('estatus', true)->count();
+        $employeeIdsWithAttendance = Asistencia::query()
+            ->whereBetween('fecha', [$inicioSemana->format('Y-m-d'), $finSemana->format('Y-m-d')])
+            ->distinct()
+            ->count('empleado_id');
+        $incompleteMarks = Asistencia::query()
+            ->whereBetween('fecha', [$inicioSemana->format('Y-m-d'), $finSemana->format('Y-m-d')])
+            ->where('tipo_asistencia', 'Normal')
+            ->where(fn ($query) => $query->whereNull('hora_entrada')->orWhereNull('hora_salida'))
+            ->count();
+        $payrolls = Nomina::query()
+            ->whereDate('fecha_inicio', $inicioSemana->format('Y-m-d'))
+            ->whereDate('fecha_fin', $finSemana->format('Y-m-d'));
+
+        return [
+            'employees' => $activeEmployees,
+            'attendance_incomplete' => max(0, $activeEmployees - $employeeIdsWithAttendance) + $incompleteMarks,
+            'absences' => Asistencia::query()
+                ->whereBetween('fecha', [$inicioSemana->format('Y-m-d'), $finSemana->format('Y-m-d')])
+                ->where('tipo_asistencia', 'Falta')
+                ->count(),
+            'generated' => (clone $payrolls)->count(),
+            'paid' => (clone $payrolls)->where('pagado', true)->count(),
+            'pending_payment' => (clone $payrolls)->where('pagado', false)->count(),
+            'paid_total' => round((float) (clone $payrolls)->where('pagado', true)->sum('pago_neto'), 2),
+        ];
+    }
+
+    private function comparacionNomina(?Nomina $nomina, array $desglose): array
+    {
+        $preview = [
+            'total_percepciones' => round((float) ($desglose['total_percepciones'] ?? 0), 2),
+            'total_deducciones' => round((float) ($desglose['total_deducciones'] ?? 0), 2),
+            'pago_neto' => round((float) ($desglose['pago_neto'] ?? 0), 2),
+        ];
+        $stored = [
+            'total_percepciones' => round((float) ($nomina?->total_percepciones ?? 0), 2),
+            'total_deducciones' => round((float) ($nomina?->total_deducciones ?? 0), 2),
+            'pago_neto' => round((float) ($nomina?->pago_neto ?? 0), 2),
+        ];
+        $difference = collect($preview)
+            ->mapWithKeys(fn ($value, $key) => [$key => round($value - $stored[$key], 2)])
+            ->all();
+
+        return [
+            'has_previous' => (bool) $nomina,
+            'stored' => $stored,
+            'preview' => $preview,
+            'difference' => $difference,
+            'changed' => (bool) $nomina && collect($difference)->contains(fn ($value) => abs($value) >= 0.01),
         ];
     }
 
@@ -869,7 +1039,7 @@ class NominaController extends Controller
             $horasParaPagoPorHora = $horasNormales + $horasExtraParaTope + ($faltasPagadas * self::HORAS_FALTA_COMPLETA) + $horasFestivasPagadas;
             $topeHorasPagables = max(
                 0,
-                ReglasNominaEmpleado::TOPE_HORAS_POR_HORA - ($faltasDescontables * self::HORAS_FALTA_COMPLETA)
+                ReglasNominaEmpleado::topeHorasSemanales($empleado) - ($faltasDescontables * self::HORAS_FALTA_COMPLETA)
             );
             $pagoNormal = min($horasParaPagoPorHora, $topeHorasPagables) * $sueldoPorHora;
             $pagoExtra = 0;
@@ -1105,6 +1275,31 @@ class NominaController extends Controller
 
             return $nomina->fresh();
         });
+    }
+
+    private function nominaParaExportar(
+        ?Nomina $nomina,
+        Empleado $empleado,
+        Carbon $inicioSemana,
+        Carbon $finSemana,
+        array $desglose
+    ): Nomina {
+        if ($this->periodoBloqueado($inicioSemana, $finSemana)) {
+            abort_if(!$nomina, 422, 'La semana está cerrada y este empleado no tiene recibo guardado.');
+
+            return $nomina;
+        }
+
+        return $this->guardarNominaPeriodo($empleado, $inicioSemana, $finSemana, $desglose);
+    }
+
+    private function periodoBloqueado(Carbon $inicioSemana, Carbon $finSemana): bool
+    {
+        return PayrollPeriod::query()
+            ->whereDate('start_date', $inicioSemana->format('Y-m-d'))
+            ->whereDate('end_date', $finSemana->format('Y-m-d'))
+            ->where('status', 'locked')
+            ->exists();
     }
 
     private function prestamoAplicadoAnterior(?Nomina $nomina, bool $controlPrestamoAplicado): array
@@ -1577,6 +1772,14 @@ class NominaController extends Controller
             'pago_neto' => $desglose['pago_neto'],
         ];
 
+        if (Schema::hasColumn('nominas', 'calculation_snapshot')) {
+            $datos['calculation_snapshot'] = $desglose;
+        }
+
+        if (Schema::hasColumn('nominas', 'generated_by')) {
+            $datos['generated_by'] = auth()->id();
+        }
+
         foreach ([
             'faltas_cubiertas_vacaciones',
             'faltas_cubiertas_incapacidad',
@@ -1595,6 +1798,10 @@ class NominaController extends Controller
 
     private function datosVistaRecibo(Nomina $nomina, Empleado $empleado, array $desglose): array
     {
+        if (is_array($nomina->calculation_snapshot) && count($nomina->calculation_snapshot) > 0) {
+            $desglose = array_merge($desglose, $nomina->calculation_snapshot);
+        }
+
         return array_merge([
             'nomina' => $nomina,
             'empleado' => $empleado,

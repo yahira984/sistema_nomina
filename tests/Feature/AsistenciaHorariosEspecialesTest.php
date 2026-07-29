@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Http\Controllers\AsistenciaController;
 use App\Models\Asistencia;
 use App\Models\Empleado;
+use App\Models\WorkRule;
 use App\Support\HorarioLaboralEmpleado;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -111,6 +112,36 @@ class AsistenciaHorariosEspecialesTest extends TestCase
         $this->assertSame(0.5, (float) $nomina['horas_extra_pagadas']);
         $this->assertSame(100.0, (float) $nomina['pago_extra']);
         $this->assertSame(5700.0, (float) $nomina['total_percepciones']);
+    }
+
+    public function test_regla_configurada_para_un_puesto_se_aplica_al_calculo_de_nomina(): void
+    {
+        $empleado = $this->crearEmpleado([
+            'numero_empleado' => '151',
+            'puesto' => 'CONTROL DE ACCESO',
+            'sueldo_semanal' => 5600,
+        ]);
+
+        foreach (['2026-07-16', '2026-07-20', '2026-07-21', '2026-07-22'] as $fecha) {
+            $this->registrarAsistencia($empleado, $fecha, '08:00', '17:30');
+        }
+
+        $this->registrarAsistencia($empleado, '2026-07-17', '08:00', '18:00');
+
+        WorkRule::create([
+            'name' => 'Control de acceso sin horas extra',
+            'scope_type' => 'position',
+            'scope_value' => 'CONTROL DE ACCESO',
+            'sin_horas_extra' => true,
+            'priority' => 300,
+            'active' => true,
+        ]);
+
+        $nomina = $this->calcularNomina($empleado, '2026-07-16', '2026-07-22');
+
+        $this->assertSame(0.0, (float) $nomina['horas_extra_pagadas']);
+        $this->assertSame(0.0, (float) $nomina['pago_extra']);
+        $this->assertSame(5600.0, (float) $nomina['total_percepciones']);
     }
 
     public function test_nomina_vigilancia_completa_paga_sueldo_semanal_sin_retardos_ni_extras(): void

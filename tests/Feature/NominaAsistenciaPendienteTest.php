@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Asistencia;
 use App\Models\Empleado;
+use App\Models\Nomina;
 use App\Models\User;
 use App\Support\SemanaNomina;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -108,6 +109,29 @@ class NominaAsistenciaPendienteTest extends TestCase
             'total_percepciones' => 314.29,
             'pago_neto' => 314.29,
         ]);
+    }
+
+    public function test_repeated_payment_request_keeps_the_requested_state(): void
+    {
+        $admin = User::factory()->create();
+        $empleado = $this->crearEmpleado();
+        $this->crearAsistenciasLaborables($empleado, '2026-06-24');
+
+        $this->actingAs($admin)->put(route('nominas.ajustes', $empleado), [
+            'fecha_corte' => '2026-06-24',
+            'prestamo_descuento' => 0,
+        ])->assertSessionHasNoErrors();
+
+        $nomina = Nomina::where('empleado_id', $empleado->id)->firstOrFail();
+
+        $this->actingAs($admin)
+            ->put(route('nominas.pagar', $nomina), ['pagado' => true])
+            ->assertSessionHasNoErrors();
+        $this->actingAs($admin)
+            ->put(route('nominas.pagar', $nomina), ['pagado' => true])
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue((bool) $nomina->fresh()->pagado);
     }
 
     private function crearEmpleado(array $overrides = []): Empleado
