@@ -12,6 +12,11 @@ class AuditHttpRequest
 {
     public function handle(Request $request, Closure $next): Response
     {
+        // Uploaded files may be moved by the controller, so capture their safe
+        // metadata while PHP's temporary upload still exists.
+        $safeInput = $request->files->count() > 0
+            ? $this->safeInput($request)
+            : null;
         $response = $next($request);
 
         if ($this->shouldAudit($request, $response)) {
@@ -20,7 +25,7 @@ class AuditHttpRequest
                 'metadata' => [
                     'route' => $request->route()?->getName(),
                     'status' => $response->getStatusCode(),
-                    'input' => $this->safeInput($request),
+                    'input' => $safeInput ?? $this->safeInput($request),
                 ],
             ]);
         }
@@ -70,12 +75,26 @@ class AuditHttpRequest
         foreach ($request->files->all() as $key => $file) {
             $input[$key] = is_array($file)
                 ? '[archivos]'
-                : [
-                    'name' => $file?->getClientOriginalName(),
-                    'size' => $file?->getSize(),
-                ];
+                : $this->safeFileMetadata($file);
         }
 
         return $input;
+    }
+
+    private function safeFileMetadata(mixed $file): array
+    {
+        try {
+            return [
+                'name' => $file?->getClientOriginalName(),
+                'size' => $file?->getSize(),
+            ];
+        } catch (\Throwable) {
+            return [
+                'name' => is_object($file) && method_exists($file, 'getClientOriginalName')
+                    ? $file->getClientOriginalName()
+                    : null,
+                'size' => null,
+            ];
+        }
     }
 }

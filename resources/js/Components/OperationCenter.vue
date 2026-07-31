@@ -16,11 +16,15 @@ const props = defineProps({
 const open = ref(false)
 const operations = ref([...props.initialOperations])
 const actionInProgress = ref('')
+const toast = ref(null)
+const unreadIds = ref(new Set())
 let timer = null
+let toastTimer = null
 
 const activeCount = computed(() => operations.value.filter(item => ['queued', 'running'].includes(item.status)).length)
 const failedCount = computed(() => operations.value.filter(item => item.status === 'failed').length)
 const hasFinished = computed(() => operations.value.some(item => !['queued', 'running'].includes(item.status)))
+const attentionCount = computed(() => Math.max(unreadIds.value.size, activeCount.value, failedCount.value))
 
 const labels = {
     attendance_import_preview: 'Análisis de CSV',
@@ -48,6 +52,34 @@ const statusClass = status => ({
 
 const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
 
+const showToast = operation => {
+    if (!operation) return
+
+    clearTimeout(toastTimer)
+    toast.value = operation
+    unreadIds.value = new Set([...unreadIds.value, operation.id])
+    toastTimer = setTimeout(() => {
+        toast.value = null
+    }, ['completed', 'failed'].includes(operation.status) ? 9000 : 5500)
+}
+
+const toggleCenter = () => {
+    open.value = !open.value
+
+    if (open.value) {
+        unreadIds.value = new Set()
+        toast.value = null
+        clearTimeout(toastTimer)
+    }
+}
+
+const openFromToast = () => {
+    open.value = true
+    unreadIds.value = new Set()
+    toast.value = null
+    clearTimeout(toastTimer)
+}
+
 const refresh = async () => {
     try {
         const response = await fetch(route('operaciones.index', { limit: 12 }), {
@@ -56,7 +88,17 @@ const refresh = async () => {
 
         if (response.ok) {
             const data = await response.json()
-            operations.value = data.operations || []
+            const updatedOperations = data.operations || []
+            const previousStatuses = new Map(operations.value.map(item => [item.id, item.status]))
+
+            updatedOperations.forEach(operation => {
+                const previousStatus = previousStatuses.get(operation.id)
+                if (previousStatus && previousStatus !== operation.status && ['completed', 'failed'].includes(operation.status)) {
+                    showToast(operation)
+                }
+            })
+
+            operations.value = updatedOperations
         }
     } catch (error) {
         // La siguiente actualización recuperará el estado cuando vuelva la conexión.
@@ -135,13 +177,22 @@ watch(
 
 watch(() => props.highlightedId, id => {
     if (id) {
-        open.value = true
-        refresh().finally(schedule)
+        refresh().then(() => {
+            showToast(operations.value.find(operation => operation.id === id) || {
+                id,
+                type: 'mass_export',
+                status: 'queued',
+                message: 'La tarea quedó registrada y continuará en segundo plano.',
+            })
+        }).finally(schedule)
     }
 }, { immediate: true })
 
 watch(activeCount, schedule, { immediate: true })
-onBeforeUnmount(() => clearTimeout(timer))
+onBeforeUnmount(() => {
+    clearTimeout(timer)
+    clearTimeout(toastTimer)
+})
 </script>
 
 <template>
@@ -152,12 +203,29 @@ onBeforeUnmount(() => clearTimeout(timer))
             title="Centro de operaciones"
             aria-label="Abrir centro de operaciones"
             :aria-expanded="open"
-            @click="open = !open"
+            @click="toggleCenter"
         >
             <i class="ti ti-progress-check text-lg" aria-hidden="true"></i>
-            <span v-if="activeCount || failedCount" class="notification-count">
-                {{ activeCount || failedCount }}
+            <span v-if="attentionCount" class="notification-count">
+                {{ attentionCount }}
             </span>
+        </button>
+
+        <button
+            v-if="toast"
+            type="button"
+            class="fixed right-4 top-20 z-[70] flex w-[min(calc(100vw-2rem),360px)] items-start gap-3 rounded-lg border border-slate-200 bg-white p-4 text-left shadow-2xl transition dark:border-slate-700 dark:bg-slate-900 sm:right-6"
+            @click="openFromToast"
+        >
+            <span :class="['flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', toast.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : toast.status === 'failed' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700']">
+                <i :class="['ti text-xl', toast.status === 'completed' ? 'ti-circle-check' : toast.status === 'failed' ? 'ti-alert-circle' : 'ti-loader-2 animate-spin']" aria-hidden="true"></i>
+            </span>
+            <span class="min-w-0 flex-1">
+                <span class="block text-sm font-black text-slate-950 dark:text-white">{{ labels[toast.type] || 'Nueva operación' }}</span>
+                <span class="mt-1 block text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300">{{ toast.message }}</span>
+                <span class="mt-2 block text-[11px] font-black text-blue-700 dark:text-blue-300">Consultar en el centro de operaciones</span>
+            </span>
+            <i class="ti ti-chevron-right mt-1 text-slate-400" aria-hidden="true"></i>
         </button>
 
         <div

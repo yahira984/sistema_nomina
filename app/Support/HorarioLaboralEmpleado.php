@@ -67,8 +67,8 @@ class HorarioLaboralEmpleado
             return Carbon::parse($configured)->startOfDay();
         }
 
-        if ($empleado->fecha_ingreso) {
-            return Carbon::parse($empleado->fecha_ingreso)->startOfDay();
+        if ($empleado->inicioPeriodoActual()) {
+            return $empleado->inicioPeriodoActual();
         }
 
         $numero = (int) (ReglasNominaEmpleado::numero($empleado) ?? $empleado->id ?? 0);
@@ -78,7 +78,9 @@ class HorarioLaboralEmpleado
 
     private static function estaDentroDeRelacionLaboral(Empleado $empleado, Carbon $fecha): bool
     {
-        if ($empleado->fecha_ingreso && $fecha->lt(Carbon::parse($empleado->fecha_ingreso)->startOfDay())) {
+        $inicio = $empleado->inicioPeriodoActual();
+
+        if ($inicio && $fecha->lt($inicio)) {
             return false;
         }
 

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\SystemBackup;
 use App\Services\DatabaseBackupService;
+use App\Services\SystemOperationService;
+use App\Jobs\CreateVerifiedBackupJob;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -29,15 +31,15 @@ class BaseDatosController extends Controller
         ]);
     }
 
-    public function crearRespaldo(DatabaseBackupService $backups)
+    public function crearRespaldo(Request $request, SystemOperationService $operations)
     {
-        $backup = $backups->createAutomatic();
+        $operation = $operations->create('verified_backup', $request->user(), [], 'backup-' . now()->format('Y-m-d-H'));
+        if ($operation->wasRecentlyCreated) {
+            CreateVerifiedBackupJob::dispatch($operation->id)
+                ->onConnection($operations->queueConnection('exports'));
+        }
 
-        AuditLog::record('database.backup_created', $backup, [
-            'description' => 'Respaldo automático creado manualmente.',
-        ]);
-
-        return back()->with('success', 'Respaldo creado y registrado correctamente.');
+        return back()->with('success', 'El respaldo se está creando y verificando en segundo plano.');
     }
 
     public function verificarRespaldo(SystemBackup $systemBackup, DatabaseBackupService $backups)

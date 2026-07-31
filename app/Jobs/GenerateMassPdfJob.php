@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Http\Controllers\NominaController;
 use App\Models\SystemOperation;
+use App\Services\ReceiptHistoryService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Request;
@@ -25,7 +26,7 @@ class GenerateMassPdfJob implements ShouldQueue
         $this->onQueue('exports');
     }
 
-    public function handle(NominaController $controller): void
+    public function handle(NominaController $controller, ReceiptHistoryService $history): void
     {
         $operation = SystemOperation::findOrFail($this->operationId);
         $payload = $operation->payload ?? [];
@@ -33,6 +34,7 @@ class GenerateMassPdfJob implements ShouldQueue
         $request = Request::create('/', 'GET', [
             'fecha_corte' => $payload['fecha_corte'] ?? null,
             'empleado_ids' => $payload['empleado_ids'] ?? [],
+            'background_operation_id' => $operation->id,
         ]);
 
         $operation->markRunning('Preparando datos del periodo...');
@@ -53,6 +55,17 @@ class GenerateMassPdfJob implements ShouldQueue
             $path = 'exports/' . $operation->id . '/' . $fileName;
 
             Storage::disk('local')->put($path, $content);
+
+            $history->record(
+                $type === 'imss_pdf' ? 'imss_mass' : 'payroll_mass_async',
+                \Carbon\Carbon::parse($payload['fecha_corte'])->subDays(6),
+                \Carbon\Carbon::parse($payload['fecha_corte']),
+                $fileName,
+                max(1, count($payload['empleado_ids'] ?? [])),
+                userId: $operation->user_id,
+                content: $content,
+                metadata: ['operation_id' => $operation->id]
+            );
 
             $operation->markCompleted(
                 'PDF generado y listo para descargar.',

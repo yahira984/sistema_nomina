@@ -270,7 +270,7 @@ const desactivarAccesoApp = () => {
                             >
                                 <i class="ti ti-history" aria-hidden="true"></i>
                                 Historial
-                                <span class="status-warning">{{ timeline.length }}</span>
+                                <span class="status-warning">{{ timeline.length + (empleado.reingresos || []).length }}</span>
                             </button>
                         </div>
                     </div>
@@ -535,7 +535,10 @@ const desactivarAccesoApp = () => {
                                 Antigüedad
                             </p>
                             <p class="text-2xl font-bold text-slate-800">{{ empleado.antiguedad_anios }} año(s)</p>
-                            <p class="text-xs text-slate-500 mt-1">Ingreso: {{ empleado.fecha_ingreso || 'N/A' }}</p>
+                            <p class="text-xs text-slate-500 mt-1">
+                                {{ empleado.fecha_reingreso ? 'Periodo actual' : 'Ingreso' }}: {{ empleado.fecha_inicio_periodo_actual || 'N/A' }}
+                            </p>
+                            <p v-if="empleado.fecha_reingreso" class="mt-1 text-[11px] font-semibold text-slate-400">Ingreso original: {{ empleado.fecha_ingreso || 'N/A' }}</p>
                         </div>
 
                         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -577,6 +580,18 @@ const desactivarAccesoApp = () => {
                         </div>
                     </div>
                     <div class="divide-y divide-slate-100">
+                        <article v-for="reingreso in (empleado.reingresos || [])" :key="`reingreso-${reingreso.id}`" class="flex gap-4 bg-emerald-50/40 p-5">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-100 text-emerald-700">
+                                <i class="ti ti-user-check" aria-hidden="true"></i>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-black text-slate-900">Reingreso laboral · {{ reingreso.fecha_reingreso }}</p>
+                                <p class="mt-1 text-xs font-semibold text-slate-500">
+                                    Baja anterior: {{ reingreso.fecha_baja_anterior || 'Sin fecha' }}
+                                    · Registró: {{ reingreso.usuario_registro?.name || 'Sistema' }}
+                                </p>
+                            </div>
+                        </article>
                         <article v-for="registro in timeline" :key="registro.id" class="flex gap-4 p-5">
                             <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700">
                                 <i class="ti ti-history-toggle" aria-hidden="true"></i>
@@ -598,7 +613,7 @@ const desactivarAccesoApp = () => {
                                 </details>
                             </div>
                         </article>
-                        <div v-if="timeline.length === 0" class="empty-state">
+                        <div v-if="timeline.length === 0 && !(empleado.reingresos || []).length" class="empty-state">
                             Aún no hay movimientos registrados para este expediente.
                         </div>
                     </div>

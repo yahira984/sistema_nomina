@@ -36,6 +36,7 @@
         }
 
         .sheet {
+            position: relative;
             height: 100%;
             box-sizing: border-box;
             border: 1px solid #111827;
@@ -44,11 +45,23 @@
         }
 
         .company {
+            padding: 0 1.1in;
             color: #1e5f88;
             font-size: 9px;
             font-weight: 800;
             text-align: center;
             text-transform: uppercase;
+        }
+
+        .employee-number {
+            position: absolute;
+            top: 6px;
+            right: 8px;
+            color: #111827;
+            font-size: 10px;
+            font-weight: 900;
+            text-align: right;
+            white-space: nowrap;
         }
 
         .title {
@@ -157,13 +170,14 @@
 
                     <div class="slot">
                         <div class="sheet">
+                            <div class="employee-number">NÚM. EMPLEADO: {{ $numeroEmpleado }}</div>
                             <div class="company">PROMATEC SERVICIOS TECNICOS S.A. de C.V. / LUGARTH</div>
                             <div class="title">Registro de Horas</div>
 
                             <table class="meta">
                                 <tr>
                                     <td class="label">Nombre del prestante:</td>
-                                    <td class="line" colspan="3">#{{ $numeroEmpleado }} - {{ strtoupper($empleado->nombre_completo ?? '') }}</td>
+                                    <td class="line" colspan="3">{{ strtoupper($empleado->nombre_completo ?? '') }}</td>
                                 </tr>
                                 <tr>
                                     <td class="label">Universidad:</td>

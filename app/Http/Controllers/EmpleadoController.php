@@ -11,7 +11,10 @@ use App\Support\DiasLaborados;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use RuntimeException;
 
 class EmpleadoController extends Controller
 {
@@ -26,10 +29,14 @@ class EmpleadoController extends Controller
         $perPage = max(12, min(60, (int) $request->input('per_page', 24)));
         $query = Empleado::query()
             ->withCount([
-                'asistencias as vacaciones_capturadas_count' => fn ($query) => $query->where('tipo_asistencia', 'Vacaciones'),
+                'asistencias as vacaciones_capturadas_count' => fn ($query) => $query
+                    ->where('tipo_asistencia', 'Vacaciones')
+                    ->whereRaw('asistencias.fecha >= COALESCE(empleados.fecha_reingreso, empleados.fecha_ingreso)'),
             ])
             ->withSum([
-                'nominas as vacaciones_pagadas_sum' => fn ($query) => $query->where('pagado', true),
+                'nominas as vacaciones_pagadas_sum' => fn ($query) => $query
+                    ->where('pagado', true)
+                    ->whereRaw('nominas.fecha_fin >= COALESCE(empleados.fecha_reingreso, empleados.fecha_ingreso)'),
             ], 'dias_vacaciones_pagadas')
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($query) use ($search) {
@@ -82,9 +89,12 @@ class EmpleadoController extends Controller
     public function show($id)
     {
         // Jalamos al empleado y sus últimos 30 días de asistencia para no saturar
-        $empleado = Empleado::with(['asistencias' => function($query) {
-            $query->orderBy('fecha', 'desc')->take(30);
-        }])->findOrFail($id);
+        $empleado = Empleado::with([
+            'asistencias' => function ($query) {
+                $query->orderBy('fecha', 'desc')->take(30);
+            },
+            'reingresos.usuarioRegistro:id,name',
+        ])->findOrFail($id);
 
         return Inertia::render('Empleados/Show', [
             'empleado' => $empleado,
@@ -124,8 +134,8 @@ class EmpleadoController extends Controller
         ]);
     }
 
-    if ($empleado->fecha_ingreso) {
-        $fechaIngreso = Carbon::parse($empleado->fecha_ingreso);
+    if ($empleado->inicioPeriodoActual()) {
+        $fechaIngreso = $empleado->inicioPeriodoActual();
         $fechaBaja = Carbon::parse($data['fecha_baja']);
 
         if ($fechaBaja->lt($fechaIngreso)) {
@@ -138,10 +148,10 @@ class EmpleadoController extends Controller
     $empleado->fecha_baja = $data['fecha_baja'];
 
     if (
-        $empleado->fecha_ingreso &&
+        $empleado->inicioPeriodoActual() &&
         Schema::hasColumn('empleados', 'dias_laborados')
     ) {
-        $fechaIngreso = Carbon::parse($empleado->fecha_ingreso);
+        $fechaIngreso = $empleado->inicioPeriodoActual();
         $fechaBaja = Carbon::parse($data['fecha_baja']);
 
         $empleado->dias_laborados = DiasLaborados::contarSinDomingos($fechaIngreso, $fechaBaja);
@@ -182,7 +192,7 @@ class EmpleadoController extends Controller
             'es_estudiante' => 'nullable|boolean',
         ]);
 
-        $datos = $request->all();
+        $datos = $request->except(['fecha_reingreso', 'fecha_baja', 'estatus']);
         $datos['rfc'] = $request->filled('rfc') ? strtoupper($request->input('rfc')) : null;
         $datos['curp'] = $request->filled('curp') ? strtoupper($request->input('curp')) : null;
         $datos['correo'] = $request->filled('correo') ? strtolower($request->input('correo')) : null;
@@ -244,7 +254,7 @@ class EmpleadoController extends Controller
             'es_estudiante' => 'nullable|boolean',
         ]);
 
-        $datos = $request->all();
+        $datos = $request->except(['fecha_reingreso', 'fecha_baja', 'estatus']);
         $datos['rfc'] = $request->filled('rfc') ? strtoupper($request->input('rfc')) : null;
         $datos['curp'] = $request->filled('curp') ? strtoupper($request->input('curp')) : null;
         $datos['correo'] = $request->filled('correo') ? strtolower($request->input('correo')) : null;
@@ -282,7 +292,7 @@ class EmpleadoController extends Controller
     public function destroy(Empleado $empleado)
     {
         $fechaBaja = Carbon::now()->startOfDay();
-        $fechaIngreso = $empleado->fecha_ingreso ? Carbon::parse($empleado->fecha_ingreso)->startOfDay() : null;
+        $fechaIngreso = $empleado->inicioPeriodoActual();
         $diasLaborados = $fechaIngreso ? DiasLaborados::contarSinDomingos($fechaIngreso, $fechaBaja) : 0;
         $diasLaboradosAnioBaja = $fechaIngreso ? DiasLaborados::contarAnioDeBaja($fechaIngreso, $fechaBaja) : 0;
         $this->moverFotoEmpleadoABajas($empleado);
@@ -308,8 +318,30 @@ class EmpleadoController extends Controller
         return redirect()->back()->with('success', 'Empleado enviado a papelera y numero liberado.');
     }
 
-    public function restaurar(Empleado $empleado)
+    public function restaurar(Request $request, Empleado $empleado)
     {
+        $validated = $request->validate([
+            'fecha_reingreso' => ['required', 'date', 'before_or_equal:today'],
+        ], [
+            'fecha_reingreso.required' => 'Indica la fecha real del reingreso.',
+            'fecha_reingreso.before_or_equal' => 'La fecha de reingreso no puede ser futura.',
+        ]);
+
+        if ($empleado->estatus) {
+            return back()->withErrors(['fecha_reingreso' => 'El empleado ya se encuentra activo.']);
+        }
+
+        $fechaReingreso = Carbon::parse($validated['fecha_reingreso'])->startOfDay();
+        $fechaBajaAnterior = $empleado->fecha_baja
+            ? Carbon::parse($empleado->fecha_baja)->startOfDay()
+            : null;
+
+        if ($fechaBajaAnterior && $fechaReingreso->lte($fechaBajaAnterior)) {
+            return back()->withErrors([
+                'fecha_reingreso' => 'El reingreso debe ser posterior a la última fecha de baja.',
+            ]);
+        }
+
         $numeroAnterior = $empleado->numero_empleado ?: $empleado->numero_empleado_baja;
         $numeroOcupado = $numeroAnterior
             ? $this->numeroEmpleadoActivoOcupado($empleado, $numeroAnterior)
@@ -318,8 +350,10 @@ class EmpleadoController extends Controller
         $datosRestaurar = [
             'estatus' => true,
             'numero_empleado' => $numeroRestaurado,
+            'fecha_reingreso' => $fechaReingreso->format('Y-m-d'),
             'fecha_baja' => null,
             'dias_laborados' => 0,
+            'ajuste_vacaciones' => 0,
             'motivo_baja' => null,
         ];
 
@@ -327,7 +361,16 @@ class EmpleadoController extends Controller
             $datosRestaurar['dias_laborados_anio_baja'] = 0;
         }
 
-        $empleado->update($datosRestaurar);
+        DB::transaction(function () use ($empleado, $datosRestaurar, $fechaReingreso, $fechaBajaAnterior, $request) {
+            $empleado->reingresos()->create([
+                'fecha_reingreso' => $fechaReingreso->format('Y-m-d'),
+                'fecha_baja_anterior' => $fechaBajaAnterior?->format('Y-m-d'),
+                'registrado_por' => $request->user()?->id,
+            ]);
+
+            $empleado->update($datosRestaurar);
+        });
+
         $empleado->refresh();
         $this->moverFotoEmpleadoAActivos($empleado);
 
@@ -338,6 +381,22 @@ class EmpleadoController extends Controller
             : 'Empleado restaurado correctamente.';
 
         return redirect()->back()->with('success', $mensaje);
+    }
+
+    public function actualizarFoto(Request $request, Empleado $empleado)
+    {
+        $validated = $request->validate([
+            'foto' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+        ], [
+            'foto.required' => 'Selecciona una fotografía.',
+            'foto.image' => 'El archivo debe ser una imagen válida.',
+            'foto.mimes' => 'La fotografía debe ser JPG, PNG o WEBP.',
+            'foto.max' => 'La fotografía no debe superar 5 MB.',
+        ]);
+
+        $this->reemplazarFotoEmpleado($empleado, $validated['foto']);
+
+        return back()->with('success', 'Fotografía actualizada correctamente.');
     }
 
     public function guardarAccesoApp(Request $request, Empleado $empleado)
@@ -376,6 +435,85 @@ class EmpleadoController extends Controller
         }
 
         return back()->with('success', 'Acceso de app desactivado para este empleado.');
+    }
+
+    private function reemplazarFotoEmpleado(Empleado $empleado, $foto): void
+    {
+        $directorioActivo = public_path('img/empleados');
+        $directorioDestino = $empleado->estatus
+            ? $directorioActivo
+            : $directorioActivo . DIRECTORY_SEPARATOR . 'bajas';
+
+        if (!is_dir($directorioDestino) && !mkdir($directorioDestino, 0755, true) && !is_dir($directorioDestino)) {
+            throw new RuntimeException('No se pudo preparar la carpeta de fotografías.');
+        }
+
+        $extension = strtolower((string) ($foto->extension() ?: $foto->getClientOriginalExtension()));
+        $nombreDestino = "id-{$empleado->id}.{$extension}";
+        $destino = $directorioDestino . DIRECTORY_SEPARATOR . $nombreDestino;
+        $temporal = $directorioDestino . DIRECTORY_SEPARATOR . '.upload-' . Str::uuid() . ".{$extension}";
+        $respaldo = null;
+
+        $foto->move($directorioDestino, basename($temporal));
+
+        if (is_file($destino)) {
+            $respaldo = $destino . '.backup-' . Str::uuid();
+
+            if (!@rename($destino, $respaldo)) {
+                @unlink($temporal);
+                throw new RuntimeException('No se pudo respaldar la fotografía anterior.');
+            }
+        }
+
+        if (!@rename($temporal, $destino)) {
+            if ($respaldo && is_file($respaldo)) {
+                @rename($respaldo, $destino);
+            }
+
+            @unlink($temporal);
+            throw new RuntimeException('No se pudo guardar la fotografía nueva.');
+        }
+
+        foreach ($this->rutasFotoEmpleado($empleado) as $rutaAnterior) {
+            if ($rutaAnterior !== $destino && is_file($rutaAnterior)) {
+                @unlink($rutaAnterior);
+            }
+        }
+
+        if ($respaldo && is_file($respaldo)) {
+            @unlink($respaldo);
+        }
+    }
+
+    private function rutasFotoEmpleado(Empleado $empleado): array
+    {
+        $directorioActivo = public_path('img/empleados');
+        $directorioBajas = $directorioActivo . DIRECTORY_SEPARATOR . 'bajas';
+        $clavesId = collect([
+            "id-{$empleado->id}",
+            "empleado-{$empleado->id}",
+        ]);
+        $rutas = $clavesId->flatMap(fn (string $clave) => collect([$directorioActivo, $directorioBajas])
+            ->flatMap(fn (string $directorio) => collect($this->extensionesFotoEmpleado())
+                ->map(fn (string $extension) => $directorio . DIRECTORY_SEPARATOR . "{$clave}.{$extension}")));
+
+        $numero = $this->limpiarClaveFoto(
+            $empleado->estatus ? $empleado->numero_empleado : $empleado->numero_empleado_baja
+        );
+        $numeroDisponible = $numero !== '' && !$this->numeroEmpleadoActivoOcupado($empleado, $numero);
+
+        if ($numeroDisponible) {
+            $clavesNumero = collect([$numero, ltrim($numero, '0') ?: $numero])->unique();
+            $rutas = $rutas->merge($clavesNumero
+                ->flatMap(fn (string $clave) => collect([$directorioActivo, $directorioBajas])
+                    ->flatMap(fn (string $directorio) => collect($this->extensionesFotoEmpleado())
+                        ->map(fn (string $extension) => $directorio . DIRECTORY_SEPARATOR . "{$clave}.{$extension}"))));
+        }
+
+        return $rutas
+            ->unique()
+            ->values()
+            ->all();
     }
 
     private function moverFotoEmpleadoABajas(Empleado $empleado): void
@@ -500,7 +638,7 @@ class EmpleadoController extends Controller
     private function directoryPayload(Empleado $employee): array
     {
         $attributes = $employee->getAttributes();
-        $start = $employee->fecha_ingreso ? Carbon::parse($employee->fecha_ingreso)->startOfDay() : null;
+        $start = $employee->inicioPeriodoActual();
         $end = $employee->fecha_baja ? Carbon::parse($employee->fecha_baja)->startOfDay() : now()->startOfDay();
         $years = $start && $end->gte($start) ? (int) floor($start->diffInYears($end)) : 0;
         $vacationTotal = $years < 1
@@ -514,6 +652,7 @@ class EmpleadoController extends Controller
         return array_merge($attributes, [
             'estatus' => (bool) $employee->estatus,
             'es_estudiante' => (bool) ($employee->es_estudiante ?? false),
+            'fecha_inicio_periodo_actual' => $start?->format('Y-m-d'),
             'antiguedad_anios' => $years,
             'dias_vacaciones_totales' => $vacationTotal,
             'dias_vacaciones_tomados' => $vacationTaken,

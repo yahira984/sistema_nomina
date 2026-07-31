@@ -541,6 +541,8 @@ class FirebaseSyncService
             'estatus' => (bool) $empleado->estatus,
             'es_estudiante' => (bool) ($empleado->es_estudiante ?? false),
             'fecha_ingreso' => self::fecha($empleado->fecha_ingreso),
+            'fecha_reingreso' => self::fecha($empleado->fecha_reingreso),
+            'fecha_inicio_periodo_actual' => self::fecha($empleado->fecha_inicio_periodo_actual),
             'fecha_baja' => self::fecha($empleado->fecha_baja),
             'dias_laborados' => (int) ($empleado->dias_laborados ?? 0),
             'antiguedad_anios' => (int) ($empleado->antiguedad_anios ?? 0),

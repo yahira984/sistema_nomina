@@ -8,11 +8,13 @@ use App\Models\LaborCalendarDay;
 use App\Models\SystemOperation;
 use App\Models\User;
 use App\Models\WorkRule;
+use App\Jobs\GenerateMassPdfJob;
 use App\Jobs\PrepareAttendanceImportJob;
 use App\Jobs\QueueHeartbeatJob;
 use App\Jobs\SyncFirebaseJob;
 use App\Services\FirebaseJobDispatcher;
 use App\Services\PayrollPeriodService;
+use App\Services\PayrollPreflightService;
 use App\Services\SystemOperationService;
 use App\Support\HorarioLaboralEmpleado;
 use App\Support\HorasExtraEmpleado;
@@ -204,6 +206,69 @@ class ScalabilityControlsTest extends TestCase
         Cache::put('system:queue-heartbeat', now()->toISOString(), now()->addMinutes(10));
 
         $this->assertSame('database', app(SystemOperationService::class)->queueConnection('imports'));
+    }
+
+    public function test_payroll_pdf_falls_back_to_deferred_when_no_export_worker_is_available(): void
+    {
+        Queue::fake();
+        Cache::forget('system:queue-heartbeat');
+        config()->set('queue.workload_connections.exports', 'auto');
+        $user = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($user)
+            ->post(route('nominas.exportaciones.store'), [
+                'export_type' => 'payroll_pdf',
+                'fecha_corte' => '2026-07-29',
+                'empleado_ids' => [],
+                'idempotency_key' => 'payroll-pdf-deferred-test',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('operation_id');
+
+        Queue::assertPushed(GenerateMassPdfJob::class, function (GenerateMassPdfJob $job) {
+            return $job->connection === 'deferred' && $job->queue === 'exports';
+        });
+
+        $this->assertDatabaseHas('system_operations', [
+            'type' => 'mass_export',
+            'status' => 'queued',
+        ]);
+    }
+
+    public function test_payroll_preflight_only_blocks_critical_employees_in_the_selected_pdf_scope(): void
+    {
+        $included = $this->employee([
+            'numero_empleado' => '507',
+            'sueldo_semanal' => 2200,
+            'sueldo_por_hora' => 0,
+        ]);
+        $this->employee([
+            'numero_empleado' => '508',
+            'sueldo_semanal' => 0,
+            'sueldo_por_hora' => 0,
+        ]);
+        $start = \Carbon\Carbon::parse('2026-07-23');
+        $end = \Carbon\Carbon::parse('2026-07-29');
+
+        foreach (\Carbon\CarbonPeriod::create($start, $end) as $date) {
+            if (!HorarioLaboralEmpleado::esDiaLaboral($included, $date)) {
+                continue;
+            }
+
+            Asistencia::create([
+                'empleado_id' => $included->id,
+                'fecha' => $date->toDateString(),
+                'tipo_asistencia' => 'Falta',
+                'minutos_tarde' => 0,
+                'horas_trabajadas' => 0,
+                'horas_extra' => 0,
+            ]);
+        }
+
+        $preflight = app(PayrollPreflightService::class);
+
+        $this->assertFalse($preflight->inspect($start, $end)['ready']);
+        $this->assertTrue($preflight->inspect($start, $end, [$included->id])['ready']);
     }
 
     public function test_stale_operations_are_cancelled_hidden_and_scoped_to_the_current_user(): void

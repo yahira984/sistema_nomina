@@ -11,9 +11,12 @@ use App\Models\Empleado;
 use App\Models\Nomina;
 use App\Models\PayrollPeriod;
 use App\Models\UserPreference;
+use App\Models\ReceiptGeneration;
 use App\Services\FirebaseSyncService;
 use App\Services\FirebaseJobDispatcher;
 use App\Services\PayrollPeriodService;
+use App\Services\PayrollPreflightService;
+use App\Services\ReceiptHistoryService;
 use App\Services\SystemOperationService;
 use App\Support\HorarioLaboralEmpleado;
 use App\Support\HorasExtraEmpleado;
@@ -106,6 +109,7 @@ class NominaController extends Controller
                 'to' => $empleadosPaginator->lastItem(),
             ],
             'resumenPeriodo' => $this->resumenPeriodo($inicioSemana, $finSemana),
+            'preflight' => app(PayrollPreflightService::class)->inspect($inicioSemana, $finSemana),
             'bancosDisponibles' => Empleado::query()
                 ->where('estatus', true)
                 ->selectRaw("COALESCE(NULLIF(UPPER(TRIM(banco)), ''), 'EFECTIVO / SIN BANCO') as banco_nombre")
@@ -114,6 +118,11 @@ class NominaController extends Controller
                 ->pluck('banco_nombre'),
             'historial' => $historialPayload['data'],
             'historialMeta' => $historialPayload['meta'],
+            'historialGeneraciones' => Schema::hasTable('receipt_generations')
+                ? ReceiptGeneration::query()->latest()->limit(40)->get([
+                    'id', 'type', 'period_start', 'period_end', 'file_name', 'receipt_count', 'created_at',
+                ])
+                : [],
             'filtros' => $historialPayload['filtros'],
             'semanaActual' => $semanaActual,
             'semanasDisponibles' => $semanasDisponibles,
@@ -163,6 +172,12 @@ class NominaController extends Controller
 
         $pdf = Pdf::loadView('pdf.recibo_nomina', $this->datosVistaRecibo($nomina, $empleado, $desglose));
 
+        app(ReceiptHistoryService::class)->record(
+            'payroll_individual', $inicioSemana, $finSemana,
+            'Recibo_Semana_' . $numeroSemana . '_' . $empleado->nombre_completo . '.pdf',
+            1, $empleado->id, $nomina->exists ? $nomina->id : null
+        );
+
         return $pdf->stream('Recibo_Semana_' . $numeroSemana . '_' . $empleado->nombre_completo . '.pdf');
     }
 
@@ -189,6 +204,8 @@ class NominaController extends Controller
     {
         [$inicioSemana, $finSemana, $numeroSemana] = $this->resolverSemanaNomina($request);
         $empleadoIds = $this->empleadoIdsDesdeRequest($request);
+        $preflight = app(PayrollPreflightService::class)->inspect($inicioSemana, $finSemana, $empleadoIds);
+        abort_if(!$preflight['ready'], 422, "La validación previa encontró {$preflight['critical_count']} problema(s) crítico(s). Corrígelos antes de generar recibos.");
 
         $empleados = Empleado::where('estatus', true)
             ->when(count($empleadoIds) > 0, fn ($query) => $query->whereIn('id', $empleadoIds))
@@ -228,6 +245,14 @@ class NominaController extends Controller
         ]);
 
         $sufijo = count($empleadoIds) > 0 ? 'seleccionados' : 'todos';
+
+        if (!$request->filled('background_operation_id')) {
+            app(ReceiptHistoryService::class)->record(
+                'payroll_mass', $inicioSemana, $finSemana,
+                'Recibos_Semana_' . $numeroSemana . '_' . $sufijo . '.pdf',
+                $recibos->count(), metadata: ['employee_ids' => $empleadoIds]
+            );
+        }
 
         return $pdf->stream('Recibos_Semana_' . $numeroSemana . '_' . $sufijo . '.pdf');
     }
@@ -550,6 +575,7 @@ class NominaController extends Controller
                 'descuento_isr',
                 'descuento_infonavit',
                 'fecha_ingreso',
+                'fecha_reingreso',
                 'fecha_baja',
                 'estatus',
             ])
@@ -598,6 +624,8 @@ class NominaController extends Controller
 
     private function empleadoNominaPayload(Empleado $empleado): array
     {
+        $workRules = \App\Services\WorkRuleResolver::for($empleado);
+
         return [
             'id' => $empleado->id,
             'numero_empleado' => $empleado->numero_empleado,
@@ -615,8 +643,18 @@ class NominaController extends Controller
             'descuento_isr' => (float) ($empleado->descuento_isr ?? 0),
             'descuento_infonavit' => (float) ($empleado->descuento_infonavit ?? 0),
             'fecha_ingreso' => $empleado->fecha_ingreso,
+            'fecha_reingreso' => $empleado->fecha_reingreso,
+            'fecha_inicio_periodo_actual' => $empleado->fecha_inicio_periodo_actual,
             'fecha_baja' => $empleado->fecha_baja,
             'estatus' => (bool) $empleado->estatus,
+            'reglas_laborales' => [
+                'turno_24x24' => (bool) $workRules['turno_24x24'],
+                'sin_horas_extra' => (bool) $workRules['sin_horas_extra'],
+                'sin_retardos' => (bool) $workRules['sin_retardos'],
+                'pago_por_hora_topado' => (bool) $workRules['pago_por_hora_topado'],
+                'tope_horas_semanales' => (float) $workRules['tope_horas_semanales'],
+                'nombres' => $workRules['rule_names'],
+            ],
         ];
     }
 

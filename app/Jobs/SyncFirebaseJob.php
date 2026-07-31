@@ -6,6 +6,7 @@ use App\Models\Asistencia;
 use App\Models\Empleado;
 use App\Models\IntegrationFailure;
 use App\Models\Nomina;
+use App\Models\SystemOperation;
 use App\Services\FirebaseSyncService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -24,7 +25,8 @@ class SyncFirebaseJob implements ShouldQueue
 
     public function __construct(
         public string $operation,
-        public array $payload
+        public array $payload,
+        public ?string $systemOperationId = null
     ) {
         $this->onQueue('integrations');
     }
@@ -36,6 +38,9 @@ class SyncFirebaseJob implements ShouldQueue
 
     public function handle(): void
     {
+        $systemOperation = $this->systemOperationId ? SystemOperation::find($this->systemOperationId) : null;
+        $systemOperation?->markRunning('Sincronizando con Firebase...');
+
         $ok = match ($this->operation) {
             'employee' => $this->syncEmployee(false),
             'employee_full' => $this->syncEmployee(true),
@@ -62,10 +67,22 @@ class SyncFirebaseJob implements ShouldQueue
                 'resolved_at' => now(),
                 'last_attempt_at' => now(),
             ]);
+
+        $systemOperation?->markCompleted('Firebase actualizado correctamente.', [
+            'firebase_operation' => $this->operation,
+            'reference_id' => $this->payload['reference_id'] ?? null,
+        ]);
     }
 
     public function failed(?Throwable $exception): void
     {
+        if ($this->systemOperationId) {
+            SystemOperation::find($this->systemOperationId)?->markFailed(
+                $exception ?: 'Firebase no respondió después de varios intentos.',
+                'No fue posible sincronizar con Firebase.'
+            );
+        }
+
         IntegrationFailure::updateOrCreate(
             [
                 'integration' => 'firebase',

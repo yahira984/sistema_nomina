@@ -6,6 +6,9 @@ use App\Services\FirebaseSyncService;
 use App\Services\DatabaseBackupService;
 use App\Services\SystemHealthService;
 use App\Jobs\QueueHeartbeatJob;
+use App\Jobs\CreateVerifiedBackupJob;
+use App\Models\SystemOperation;
+use App\Services\AnnualArchiveService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -107,6 +110,23 @@ Artisan::command('system:backup', function (DatabaseBackupService $backups) {
     $this->info("Respaldo creado: {$backup->path}");
 })->purpose('Genera un respaldo SQL automático con checksum.');
 
+Artisan::command('system:backup-queue {--restore-test}', function () {
+    $operation = SystemOperation::firstOrCreate(
+        ['type' => 'verified_backup', 'idempotency_key' => 'scheduled-backup-' . now()->format('Y-m-d')],
+        ['status' => 'queued', 'progress' => 0, 'message' => 'Respaldo programado en espera.']
+    );
+    if ($operation->wasRecentlyCreated) {
+        CreateVerifiedBackupJob::dispatch($operation->id, (bool) $this->option('restore-test'));
+    }
+    $this->info("Respaldo en cola: {$operation->id}");
+})->purpose('Programa un respaldo verificado sin bloquear el servidor web.');
+
+Artisan::command('system:archive-year {year?}', function (AnnualArchiveService $archives) {
+    $year = (int) ($this->argument('year') ?: now()->subYear()->year);
+    $archive = $archives->create($year);
+    $this->info("Archivo anual {$archive->year} verificado: {$archive->checksum}");
+})->purpose('Genera un resumen anual verificable sin eliminar el historial detallado.');
+
 Artisan::command('system:backup-verify', function (DatabaseBackupService $backups) {
     $backup = $backups->verifyLatest();
 
@@ -143,7 +163,7 @@ Artisan::command('system:health', function (SystemHealthService $health) {
     $this->line("Inconsistencias detectadas: {$snapshot['inconsistencies']['total']}");
 })->purpose('Muestra el estado de base de datos, colas, Firebase, almacenamiento y respaldos.');
 
-Schedule::command('system:backup')->dailyAt('23:30')->withoutOverlapping();
+Schedule::command('system:backup-queue')->dailyAt('23:30')->withoutOverlapping();
 Schedule::command('system:backup-verify')->weeklyOn(1, '02:00')->withoutOverlapping();
 Schedule::command('system:backup-restore-test')->monthlyOn(1, '02:30')->withoutOverlapping();
 Schedule::job(new QueueHeartbeatJob())
@@ -152,3 +172,4 @@ Schedule::job(new QueueHeartbeatJob())
     ->withoutOverlapping();
 Schedule::command('queue:prune-failed --hours=336')->dailyAt('03:00');
 Schedule::command('model:prune')->dailyAt('03:30');
+Schedule::command('system:archive-year')->yearlyOn(1, 2, '04:00')->withoutOverlapping();

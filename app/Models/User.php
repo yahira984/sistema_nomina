@@ -100,8 +100,20 @@ class User extends Authenticatable
             $permissions = SecurityPermissions::defaultsForRole($this->role ?: SecurityPermissions::VIEWER);
         }
 
-        return collect($permissions)
+        $permissions = collect($permissions);
+        $legacyExpansions = [
+            'empleados.manage' => ['empleados.deactivate', 'empleados.restore', 'empleados.photo', 'empleados.app_access'],
+            'sistema.backups' => ['sistema.backups.create', 'sistema.backups.verify', 'sistema.backups.restore'],
+        ];
+        foreach ($legacyExpansions as $legacy => $expanded) {
+            if ($permissions->contains($legacy)) {
+                $permissions = $permissions->merge($expanded);
+            }
+        }
+
+        return $permissions
             ->intersect(SecurityPermissions::allKeys())
+            ->unique()
             ->values()
             ->all();
     }

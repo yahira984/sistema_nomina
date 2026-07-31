@@ -234,6 +234,7 @@ const clonarFilasRevision = (filas = [], previewId = '') => {
 
 const previewIdActivo = ref(props.previewImportacion?.preview_id || '');
 const filasRevision = ref(clonarFilasRevision(props.previewImportacion?.filas || [], previewIdActivo.value));
+const calidadPreviewActiva = ref(props.previewImportacion?.calidad || null);
 
 const limpiarEdicionesPreview = (previewId = previewIdActivo.value) => {
     if (typeof window === 'undefined' || !previewId) return;
@@ -274,6 +275,7 @@ watch(
         const cambioPreview = nuevoPreviewId !== previewIdActivo.value;
 
         previewIdActivo.value = nuevoPreviewId;
+        calidadPreviewActiva.value = preview?.calidad || null;
         filasRevision.value = clonarFilasRevision(preview?.filas || [], previewIdActivo.value);
         fechaRevisionReferencia.value = preview?.resumen?.fecha_inicio
             || preview?.filas?.[0]?.fecha
@@ -295,6 +297,7 @@ const aplicarPreviewOperacion = (preview) => {
     if (!preview) return;
     const nuevoPreviewId = preview.preview_id || '';
     previewIdActivo.value = nuevoPreviewId;
+    calidadPreviewActiva.value = preview.calidad || null;
     filasRevision.value = clonarFilasRevision(preview.filas || [], nuevoPreviewId);
     fechaRevisionReferencia.value = preview.resumen?.fecha_inicio
         || preview.filas?.[0]?.fecha
@@ -614,14 +617,21 @@ const coincideFilaRevision = (fila, termino) => {
         || String(fila.tipo_asistencia || '').toLowerCase().includes(termino);
 };
 
+const esFilaEspecialRevision = (fila) => {
+    const empleado = empleadosPorId.value.get(Number(fila.empleado_id));
+
+    return Boolean(
+        empleado?.horario_24x24
+        || empleado?.sin_horas_extra
+        || empleado?.sin_retardos
+    );
+};
+
 const coincideFiltroRevision = (fila) => {
     if (filtroRevision.value === 'incompletas') return fila.estado === 'incompleta';
     if (filtroRevision.value === 'faltas') return fila.tipo_asistencia === 'Falta';
     if (filtroRevision.value === 'domingos') return crearFechaLocal(fila.fecha).getDay() === 0;
-    if (filtroRevision.value === 'especiales') {
-        const empleado = empleadosPorId.value.get(Number(fila.empleado_id));
-        return Boolean(empleado?.horario_24x24 || empleado?.sin_horas_extra || empleado?.sin_retardos);
-    }
+    if (filtroRevision.value === 'especiales') return esFilaEspecialRevision(fila);
 
     return true;
 };
@@ -860,6 +870,30 @@ const resumenRevision = computed(() => {
         noEncontradas: filas.filter((fila) => fila.estado === 'no_encontrado').length,
         actualiza: filas.filter((fila) => fila.estado === 'actualiza').length,
     };
+});
+
+const filtrosRevisionMenu = computed(() => [
+    { value: 'todas', label: 'Todas', icon: 'ti-list', count: resumenRevision.value.total },
+    { value: 'incompletas', label: 'Incompletas', icon: 'ti-clock-exclamation', count: resumenRevision.value.incompletas },
+    { value: 'faltas', label: 'Faltas', icon: 'ti-user-x', count: filasRevision.value.filter((fila) => fila.tipo_asistencia === 'Falta').length },
+    { value: 'domingos', label: 'Domingos', icon: 'ti-calendar-event', count: filasRevision.value.filter((fila) => crearFechaLocal(fila.fecha).getDay() === 0).length },
+    { value: 'especiales', label: 'Especiales', icon: 'ti-shield-check', count: filasRevision.value.filter(esFilaEspecialRevision).length },
+]);
+
+const ayudaFiltroRevision = computed(() => ({
+    todas: 'Muestra todos los registros encontrados dentro del rango seleccionado.',
+    incompletas: 'Muestra marcaciones a las que les falta la entrada o la salida para que puedas corregirlas.',
+    faltas: 'Muestra los días laborales sin asistencia y los registros marcados como falta.',
+    domingos: 'Muestra solamente registros de domingo. Para el personal normal se consideran trabajo extraordinario, no faltas.',
+    especiales: 'Muestra empleados con una regla laboral distinta: turno 24x24, sin retardos o sin horas extra. Este filtro solo facilita la revisión; no cambia sus cálculos.',
+}[filtroRevision.value]));
+
+const calidadRevision = computed(() => calidadPreviewActiva.value || {
+    score: 100,
+    status: 'good',
+    duplicate_marks: 0,
+    invalid_times: 0,
+    requires_attention: 0,
 });
 
 const formatoFecha = (fecha) => {
@@ -1880,6 +1914,20 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                 </div>
                             </div>
 
+                            <div :class="['flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between', calidadRevision.status === 'good' ? 'border-emerald-200 bg-emerald-50' : calidadRevision.status === 'warning' ? 'border-amber-200 bg-amber-50' : 'border-rose-200 bg-rose-50']">
+                                <div class="flex items-center gap-3">
+                                    <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-xl shadow-sm"><i class="ti ti-file-analytics"></i></span>
+                                    <div>
+                                        <p class="font-black text-slate-950">Calidad del archivo: {{ calidadRevision.score }}%</p>
+                                        <p class="text-sm font-semibold text-slate-600">{{ calidadRevision.requires_attention }} registro(s) requieren atención antes de aprobar.</p>
+                                    </div>
+                                </div>
+                                <div class="flex flex-wrap gap-2 text-xs font-bold">
+                                    <span class="rounded-md bg-white px-2.5 py-1.5 text-slate-700">Marcajes repetidos: {{ calidadRevision.duplicate_marks }}</span>
+                                    <span class="rounded-md bg-white px-2.5 py-1.5 text-slate-700">Horarios inválidos: {{ calidadRevision.invalid_times }}</span>
+                                </div>
+                            </div>
+
                             <div class="grid gap-4 2xl:grid-cols-[minmax(0,auto)_minmax(0,720px)] 2xl:items-end 2xl:justify-between">
                                 <div class="flex min-w-0 flex-wrap items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
                                     <span>Rango:</span>
@@ -1906,17 +1954,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                             <i class="ti ti-chevron-right" aria-hidden="true"></i>
                                         </button>
                                     </div>
-                                    <div class="grid gap-3 sm:grid-cols-2">
-                                        <label class="min-w-0">
-                                            <span class="field-label mb-1">Mostrar</span>
-                                            <select v-model="filtroRevision" class="field-input-soft">
-                                                <option value="todas">Todas las filas</option>
-                                                <option value="incompletas">Empleados con incompletas</option>
-                                                <option value="faltas">Empleados con faltas</option>
-                                                <option value="domingos">Registros de domingo</option>
-                                                <option value="especiales">Horarios especiales</option>
-                                            </select>
-                                        </label>
+                                    <div class="max-w-2xl">
                                         <label class="min-w-0">
                                             <span class="field-label mb-1">Buscar en revisión</span>
                                             <input v-model="busquedaRevision" type="text" class="field-input-soft" placeholder="Número, nombre, fecha o estado..." />
@@ -1925,17 +1963,17 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                 </div>
                             </div>
 
-                            <div class="segmented-control w-full overflow-x-auto" aria-label="Filtros rápidos de revisión">
-                                <button v-for="filtro in [
-                                    { value: 'todas', label: 'Todas', icon: 'ti-list' },
-                                    { value: 'incompletas', label: 'Incompletas', icon: 'ti-clock-exclamation' },
-                                    { value: 'faltas', label: 'Faltas', icon: 'ti-user-x' },
-                                    { value: 'domingos', label: 'Domingos', icon: 'ti-calendar-event' },
-                                    { value: 'especiales', label: 'Especiales', icon: 'ti-shield-check' },
-                                ]" :key="filtro.value" type="button" :class="{ active: filtroRevision === filtro.value }" @click="filtroRevision = filtro.value">
+                            <div class="grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 sm:grid-cols-3 xl:grid-cols-5" aria-label="Filtros rápidos de revisión">
+                                <button v-for="filtro in filtrosRevisionMenu" :key="filtro.value" type="button" class="flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-xs font-black transition" :class="filtroRevision === filtro.value ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'" @click="filtroRevision = filtro.value">
                                     <i :class="['ti', filtro.icon]" aria-hidden="true"></i>
-                                    {{ filtro.label }}
+                                    <span>{{ filtro.label }}</span>
+                                    <span class="inline-flex min-w-6 items-center justify-center rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-black text-slate-700">{{ filtro.count }}</span>
                                 </button>
+                            </div>
+
+                            <div class="flex items-start gap-3 rounded-lg border border-cyan-100 bg-cyan-50/70 px-4 py-3 text-sm text-cyan-950">
+                                <i class="ti ti-info-circle mt-0.5 text-lg text-cyan-700" aria-hidden="true"></i>
+                                <p class="min-w-0 leading-5"><strong>{{ filtrosRevisionMenu.find((item) => item.value === filtroRevision)?.label }}:</strong> {{ ayudaFiltroRevision }}</p>
                             </div>
 
                             <div class="rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm font-bold text-blue-900">

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Carbon\Carbon;
 use App\Support\DiasLaborados;
 use App\Support\HorarioLaboralEmpleado;
@@ -24,6 +25,7 @@ class Empleado extends Model
         'fechas_faltas',
         'dias_laborados',
         'dias_laborados_anio_baja',
+        'fecha_inicio_periodo_actual',
     ];
 
     public function asistencias()
@@ -36,10 +38,27 @@ class Empleado extends Model
         return $this->hasMany(Nomina::class);
     }
 
+    public function reingresos(): HasMany
+    {
+        return $this->hasMany(EmpleadoReingreso::class)->orderByDesc('fecha_reingreso');
+    }
+
+    public function inicioPeriodoActual(): ?Carbon
+    {
+        $fecha = $this->fecha_reingreso ?: $this->fecha_ingreso;
+
+        return $fecha ? Carbon::parse($fecha)->startOfDay() : null;
+    }
+
+    public function getFechaInicioPeriodoActualAttribute(): ?string
+    {
+        return $this->inicioPeriodoActual()?->format('Y-m-d');
+    }
+
     public function getAntiguedadAniosAttribute()
     {
-        if (!$this->fecha_ingreso) return 0;
-        $inicio = Carbon::parse($this->fecha_ingreso)->startOfDay();
+        $inicio = $this->inicioPeriodoActual();
+        if (!$inicio) return 0;
         $fin = $this->fecha_baja ? Carbon::parse($this->fecha_baja)->startOfDay() : Carbon::now()->startOfDay();
 
         if ($fin->lt($inicio)) {
@@ -61,12 +80,19 @@ class Empleado extends Model
 
     public function getDiasVacacionesTomadosAttribute()
     {
-        $diasCapturados = (float) $this->asistencias()
-            ->where('tipo_asistencia', 'Vacaciones')
+        $inicio = $this->inicioPeriodoActual();
+        $asistencias = $this->asistencias()->where('tipo_asistencia', 'Vacaciones');
+        $nominas = $this->nominas()->where('pagado', true);
+
+        if ($inicio) {
+            $asistencias->whereDate('fecha', '>=', $inicio->format('Y-m-d'));
+            $nominas->whereDate('fecha_fin', '>=', $inicio->format('Y-m-d'));
+        }
+
+        $diasCapturados = (float) $asistencias
             ->count();
 
-        $diasPagadosEnNomina = (float) $this->nominas()
-            ->where('pagado', true)
+        $diasPagadosEnNomina = (float) $nominas
             ->sum('dias_vacaciones_pagadas');
 
         return round(max($diasCapturados, $diasPagadosEnNomina), 2);
@@ -80,8 +106,14 @@ class Empleado extends Model
 
     public function getDiasFaltasTotalesAttribute()
     {
-        return $this->asistencias()
-            ->where('tipo_asistencia', 'Falta')
+        $query = $this->asistencias()->where('tipo_asistencia', 'Falta');
+        $inicio = $this->inicioPeriodoActual();
+
+        if ($inicio) {
+            $query->whereDate('fecha', '>=', $inicio->format('Y-m-d'));
+        }
+
+        return $query
             ->get(['fecha'])
             ->filter(fn ($asistencia) => HorarioLaboralEmpleado::esDiaLaboral($this, $asistencia->fecha))
             ->count(); 
@@ -89,8 +121,14 @@ class Empleado extends Model
 
     public function getFechasFaltasAttribute()
     {
-        return $this->asistencias()
-            ->where('tipo_asistencia', 'Falta')
+        $query = $this->asistencias()->where('tipo_asistencia', 'Falta');
+        $inicio = $this->inicioPeriodoActual();
+
+        if ($inicio) {
+            $query->whereDate('fecha', '>=', $inicio->format('Y-m-d'));
+        }
+
+        return $query
             ->orderBy('fecha', 'desc')
             ->get(['fecha'])
             ->filter(fn ($asistencia) => HorarioLaboralEmpleado::esDiaLaboral($this, $asistencia->fecha))
@@ -100,19 +138,23 @@ class Empleado extends Model
 
     public function getDiasLaboradosAttribute($value)
     {
-        if (!$this->fecha_ingreso || !$this->fecha_baja) {
+        $inicio = $this->inicioPeriodoActual();
+
+        if (!$inicio || !$this->fecha_baja) {
             return (int) ($value ?? 0);
         }
 
-        return DiasLaborados::contarSinDomingos($this->fecha_ingreso, $this->fecha_baja);
+        return DiasLaborados::contarSinDomingos($inicio, $this->fecha_baja);
     }
 
     public function getDiasLaboradosAnioBajaAttribute($value)
     {
-        if (!$this->fecha_ingreso || !$this->fecha_baja) {
+        $inicio = $this->inicioPeriodoActual();
+
+        if (!$inicio || !$this->fecha_baja) {
             return (int) ($value ?? 0);
         }
 
-        return DiasLaborados::contarAnioDeBaja($this->fecha_ingreso, $this->fecha_baja);
+        return DiasLaborados::contarAnioDeBaja($inicio, $this->fecha_baja);
     }
 }

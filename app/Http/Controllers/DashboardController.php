@@ -580,7 +580,11 @@ class DashboardController extends Controller
                 $fin = $finMes->copy();
             }
             $labels[] = 'S' . $contador;
-            $altas[] = Empleado::whereBetween('fecha_ingreso', [$inicio->format('Y-m-d'), $fin->format('Y-m-d')])->count();
+            $altas[] = Empleado::where(function ($query) use ($inicio, $fin) {
+                $rango = [$inicio->format('Y-m-d'), $fin->format('Y-m-d')];
+                $query->whereBetween('fecha_ingreso', $rango)
+                    ->orWhereBetween('fecha_reingreso', $rango);
+            })->count();
             $bajas[] = Empleado::whereBetween('fecha_baja', [$inicio->format('Y-m-d'), $fin->format('Y-m-d')])->count();
             $inicio = $fin->copy()->addDay();
             $contador++;

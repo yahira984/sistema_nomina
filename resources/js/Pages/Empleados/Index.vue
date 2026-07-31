@@ -21,7 +21,18 @@ const filtroEstado = ref(props.filtros.status || 'activos');
 const criterioOrdenDirectorio = ref(props.filtros.sort || 'num_asc');
 const vistaDirectorio = ref(localStorage.getItem('empleados:vista') || 'tabla');
 const empleadoFotoAmpliada = ref(null);
+const empleadoFotoEdicion = ref(null);
+const empleadoRestauracion = ref(null);
+const fotoPreview = ref('');
 const fotosDisponibles = ref(new Set());
+const fotoForm = useForm({ foto: null });
+const restaurarForm = useForm({ fecha_reingreso: '' });
+
+const fechaLocalHoy = () => {
+    const hoy = new Date();
+    const offset = hoy.getTimezoneOffset() * 60000;
+    return new Date(hoy.getTime() - offset).toISOString().substring(0, 10);
+};
 
 const marcarFotoDisponible = (empleado, event) => {
     mostrarFotoEmpleado(event);
@@ -39,12 +50,52 @@ const cerrarFotoEmpleado = () => {
     empleadoFotoAmpliada.value = null;
 };
 
+const abrirEditorFoto = (empleado) => {
+    empleadoFotoEdicion.value = empleado;
+    fotoForm.reset();
+    fotoForm.clearErrors();
+    fotoPreview.value = '';
+};
+
+const cerrarEditorFoto = () => {
+    if (fotoPreview.value) URL.revokeObjectURL(fotoPreview.value);
+    fotoPreview.value = '';
+    fotoForm.reset();
+    fotoForm.clearErrors();
+    empleadoFotoEdicion.value = null;
+};
+
+const seleccionarFoto = (event) => {
+    const archivo = event.target.files?.[0] || null;
+    if (fotoPreview.value) URL.revokeObjectURL(fotoPreview.value);
+    fotoForm.foto = archivo;
+    fotoPreview.value = archivo ? URL.createObjectURL(archivo) : '';
+};
+
+const guardarFoto = () => {
+    if (!empleadoFotoEdicion.value || !fotoForm.foto) return;
+
+    const empleado = empleadoFotoEdicion.value;
+    fotoForm.post(route('empleados.foto.actualizar', empleado.id), {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: () => {
+            fotosDisponibles.value = new Set([...fotosDisponibles.value, Number(empleado.id)]);
+            cerrarEditorFoto();
+            recargarEmpleados();
+        },
+    });
+};
+
 const manejarTeclaFoto = (event) => {
     if (event.key === 'Escape') cerrarFotoEmpleado();
 };
 
 onMounted(() => window.addEventListener('keydown', manejarTeclaFoto));
-onBeforeUnmount(() => window.removeEventListener('keydown', manejarTeclaFoto));
+onBeforeUnmount(() => {
+    window.removeEventListener('keydown', manejarTeclaFoto);
+    if (fotoPreview.value) URL.revokeObjectURL(fotoPreview.value);
+});
 
 const normalizarNumeroEmpleado = (numero) => {
     const texto = String(numero || '').trim();
@@ -206,15 +257,28 @@ const eliminarEmpleado = (id, nombre) => {
         },
     });
 };
-const restaurarEmpleado = (id, nombre) => {
-    if (!confirm(`¿Restaurar a ${nombre}?`)) return;
+const abrirRestauracion = (empleado) => {
+    empleadoRestauracion.value = empleado;
+    restaurarForm.fecha_reingreso = fechaLocalHoy();
+    restaurarForm.clearErrors();
+};
 
-    router.put(route('empleados.restaurar', id), {}, {
+const cerrarRestauracion = () => {
+    empleadoRestauracion.value = null;
+    restaurarForm.reset();
+    restaurarForm.clearErrors();
+};
+
+const restaurarEmpleado = () => {
+    if (!empleadoRestauracion.value) return;
+
+    restaurarForm.put(route('empleados.restaurar', empleadoRestauracion.value.id), {
         preserveScroll: true,
         preserveState: false,
         onSuccess: (pageResponse) => {
             const mensaje = pageResponse.props.flash?.success;
             if (mensaje) window.alert(mensaje);
+            cerrarRestauracion();
             recargarEmpleados();
         },
     });
@@ -423,17 +487,17 @@ const restaurarEmpleado = (id, nombre) => {
 
             <!-- Directorio (Tabla Bento) -->
             <section class="rounded-3xl border border-slate-200/60 bg-white shadow-sm overflow-hidden">
-                <div class="border-b border-slate-100 bg-slate-50/50 p-6 flex flex-col lg:flex-row justify-between gap-4">
-                    <div>
+                <div class="flex flex-col gap-5 border-b border-slate-100 bg-slate-50/50 p-6 xl:flex-row xl:items-center xl:justify-between">
+                    <div class="shrink-0">
                         <h3 class="font-['Sora'] text-lg font-bold text-slate-900">{{ tituloDirectorio }}</h3>
                         <p class="text-xs font-medium text-slate-500">
                             {{ empleadosMeta.total ?? empleadosFiltrados.length }} colaborador(es) · {{ empleadosConDeuda }} con deuda
                         </p>
                     </div>
                     
-                    <div class="flex flex-col sm:flex-row gap-3">
+                    <div class="grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:w-auto xl:grid-cols-[auto_minmax(280px,360px)_220px_auto]">
                         <!-- Filtros (Pills) -->
-                        <div class="flex rounded-xl bg-slate-100/80 p-1">
+                        <div class="flex min-w-0 rounded-lg bg-slate-100/80 p-1 sm:col-span-2 xl:col-span-1">
                             <button @click="filtroEstado = 'activos'" :class="filtroEstado === 'activos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 sm:flex-none rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all">
                                 Activos ({{ empleadosActivos }})
                             </button>
@@ -446,17 +510,19 @@ const restaurarEmpleado = (id, nombre) => {
                         </div>
                         
                         <!-- Buscador -->
-                        <div class="relative w-full sm:w-64">
-                            <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                            <input v-model="searchQuery" type="text" class="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-4 text-sm font-semibold text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="Buscar empleado..." />
+                        <div class="relative min-w-0">
+                            <span class="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-blue-600" aria-hidden="true">
+                                <i class="ti ti-search text-xl"></i>
+                            </span>
+                            <input v-model="searchQuery" type="search" class="h-12 w-full rounded-lg border border-slate-200 bg-white pl-12 pr-4 text-sm font-semibold text-slate-800 shadow-sm transition-all placeholder:font-medium placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10" placeholder="Buscar por nombre o nÃºmero..." aria-label="Buscar empleado por nombre o nÃºmero" />
                         </div>
-                        <select v-model="criterioOrdenDirectorio" class="field-input min-w-44" aria-label="Ordenar directorio">
+                        <select v-model="criterioOrdenDirectorio" class="field-input h-12 w-full min-w-0" aria-label="Ordenar directorio">
                             <option value="num_asc">Número ascendente</option>
                             <option value="num_desc">Número descendente</option>
                             <option value="name_asc">Nombre A - Z</option>
                             <option value="name_desc">Nombre Z - A</option>
                         </select>
-                        <div class="segmented-control shrink-0" aria-label="Vista del directorio">
+                        <div class="segmented-control h-12 shrink-0 justify-self-start sm:justify-self-end" aria-label="Vista del directorio">
                             <button type="button" :class="{ active: vistaDirectorio === 'tabla' }" title="Vista de tabla" @click="cambiarVista('tabla')">
                                 <i class="ti ti-list" aria-hidden="true"></i><span class="sr-only">Tabla</span>
                             </button>
@@ -518,6 +584,9 @@ const restaurarEmpleado = (id, nombre) => {
                                 <td class="px-6 py-4">
                                     <div class="font-bold text-slate-700">{{ empleado.puesto || 'No asignado' }}</div>
                                     <div v-if="empleadoActivo(empleado)" class="text-xs font-semibold text-emerald-600">{{ empleado.antiguedad_anios }} año(s) activos</div>
+                                    <div v-if="empleadoActivo(empleado) && empleado.fecha_reingreso" class="mt-0.5 text-[10px] font-bold text-blue-600">
+                                        Reingreso: {{ empleado.fecha_reingreso }}
+                                    </div>
                                     <div v-else class="text-xs font-semibold text-rose-500">
                                         Baja: {{ empleado.fecha_baja || 'S/F' }}
                                         <span class="block text-[10px] font-bold text-rose-400">
@@ -547,7 +616,7 @@ const restaurarEmpleado = (id, nombre) => {
                                 </td>
                                 <!-- Columna de Vacaciones Corregida y Hermosa -->
                                 <td class="px-6 py-4">
-                                    <div v-if="empleado.fecha_ingreso" class="w-36 flex flex-col gap-1.5 rounded-xl border border-slate-100 bg-slate-50/50 p-2.5">
+                                    <div v-if="empleado.fecha_inicio_periodo_actual" class="w-36 flex flex-col gap-1.5 rounded-xl border border-slate-100 bg-slate-50/50 p-2.5">
                                         <div class="flex items-center justify-between text-[10px] uppercase tracking-wide font-bold text-slate-500">
                                             <span><i class="ti ti-palm"></i> Totales</span>
                                             <span class="text-slate-700">{{ empleado.dias_vacaciones_totales }} d</span>
@@ -568,13 +637,16 @@ const restaurarEmpleado = (id, nombre) => {
                                         <Link :href="route('empleados.show', empleado.id)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-blue-600 border border-slate-200 transition-all" title="Ver perfil">
                                             <i class="ti ti-eye"></i>
                                         </Link>
+                                        <button v-if="canManage" type="button" @click="abrirEditorFoto(empleado)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-cyan-50 hover:text-cyan-700 border border-slate-200 transition-all" title="Cambiar fotografía">
+                                            <i class="ti ti-camera"></i>
+                                        </button>
                                         <button v-if="canManage" @click="editarEmpleado(empleado)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600 border border-slate-200 transition-all" title="Editar">
                                             <i class="ti ti-pencil"></i>
                                         </button>
                                         <button v-if="canManage && empleadoActivo(empleado)" @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 transition-all" title="Dar baja">
                                             <i class="ti ti-trash"></i>
                                         </button>
-                                        <button v-else-if="canManage" @click="restaurarEmpleado(empleado.id, empleado.nombre_completo)" class="flex h-8 items-center justify-center rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-700 transition-all">
+                                        <button v-else-if="canManage" @click="abrirRestauracion(empleado)" class="flex h-8 items-center justify-center rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-700 transition-all">
                                             Restaurar
                                         </button>
                                     </div>
@@ -626,7 +698,7 @@ const restaurarEmpleado = (id, nombre) => {
                                 </div>
                                 <div class="mt-3 flex flex-wrap gap-1.5">
                                     <span v-if="!numeroDirectorio(empleado)" class="status-warning">Sin número</span>
-                                    <span v-if="!clavesFotoEmpleado(empleado).length" class="status-warning">Sin fotografía</span>
+                                    <span v-if="!fotoDisponible(empleado)" class="status-warning">Sin fotografía</span>
                                     <span v-if="tieneDeuda(empleado)" class="status-warning">Debe ${{ moneda(empleado.saldo_prestamo) }}</span>
                                     <span v-if="esEstudiante(empleado)" class="status-info">Estudiante</span>
                                 </div>
@@ -636,9 +708,10 @@ const restaurarEmpleado = (id, nombre) => {
                             <span class="text-xs font-bold text-slate-500">${{ sueldoSemanalEmpleado(empleado) }}/sem</span>
                             <div class="flex gap-1">
                                 <Link :href="route('empleados.show', empleado.id)" class="icon-button" title="Ver perfil"><i class="ti ti-eye"></i></Link>
+                                <button v-if="canManage" type="button" class="icon-button text-cyan-700" title="Cambiar fotografía" @click="abrirEditorFoto(empleado)"><i class="ti ti-camera"></i></button>
                                 <button v-if="canManage" type="button" class="icon-button" title="Editar empleado" @click="editarEmpleado(empleado)"><i class="ti ti-pencil"></i></button>
                                 <button v-if="canManage && empleadoActivo(empleado)" type="button" class="icon-button text-rose-600" title="Dar de baja" @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)"><i class="ti ti-user-off"></i></button>
-                                <button v-else-if="canManage" type="button" class="icon-button text-emerald-700" title="Restaurar" @click="restaurarEmpleado(empleado.id, empleado.nombre_completo)"><i class="ti ti-user-check"></i></button>
+                                <button v-else-if="canManage" type="button" class="icon-button text-emerald-700" title="Restaurar" @click="abrirRestauracion(empleado)"><i class="ti ti-user-check"></i></button>
                             </div>
                         </div>
                     </article>
@@ -683,6 +756,104 @@ const restaurarEmpleado = (id, nombre) => {
                         <p class="mt-1 text-sm font-semibold text-slate-300">No. empleado {{ numeroDirectorio(empleadoFotoAmpliada) || 'S/N' }}</p>
                     </div>
                 </div>
+            </div>
+        </Teleport>
+
+        <Teleport to="body">
+            <div
+                v-if="empleadoFotoEdicion"
+                class="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Cambiar fotografía"
+                @click.self="cerrarEditorFoto"
+            >
+                <form class="w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-2xl" @submit.prevent="guardarFoto">
+                    <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                        <div>
+                            <p class="text-base font-black text-slate-950">Cambiar fotografía</p>
+                            <p class="mt-0.5 text-sm font-semibold text-slate-500">{{ empleadoFotoEdicion.nombre_completo }}</p>
+                        </div>
+                        <button type="button" class="icon-button" title="Cerrar" aria-label="Cerrar" @click="cerrarEditorFoto">
+                            <i class="ti ti-x"></i>
+                        </button>
+                    </div>
+
+                    <div class="p-5">
+                        <div class="relative mx-auto flex aspect-square w-full max-w-72 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-100 text-2xl font-black text-slate-400">
+                            <span>{{ numeroDirectorio(empleadoFotoEdicion) || 'S/N' }}</span>
+                            <img
+                                :src="fotoPreview || fotoEmpleadoSrc(empleadoFotoEdicion)"
+                                :alt="`Vista previa de ${empleadoFotoEdicion.nombre_completo}`"
+                                class="absolute inset-0 h-full w-full object-contain"
+                                @load="mostrarFotoEmpleado"
+                                @error="probarSiguienteFotoEmpleado(empleadoFotoEdicion, $event)"
+                            />
+                        </div>
+
+                        <label class="btn-secondary mt-5 w-full cursor-pointer justify-center" for="foto-empleado-nueva">
+                            <i class="ti ti-photo-up"></i>
+                            Seleccionar imagen
+                        </label>
+                        <input id="foto-empleado-nueva" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" @change="seleccionarFoto" />
+                        <p v-if="fotoForm.foto" class="mt-2 truncate text-center text-xs font-bold text-slate-600">{{ fotoForm.foto.name }}</p>
+                        <p v-if="fotoForm.errors.foto" class="mt-2 text-center text-sm font-bold text-rose-600">{{ fotoForm.errors.foto }}</p>
+                    </div>
+
+                    <div class="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
+                        <button type="button" class="btn-secondary" @click="cerrarEditorFoto">Cancelar</button>
+                        <button type="submit" class="btn-primary" :disabled="!fotoForm.foto || fotoForm.processing">
+                            <i class="ti ti-device-floppy"></i>
+                            {{ fotoForm.processing ? 'Guardando...' : 'Guardar fotografía' }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </Teleport>
+
+        <Teleport to="body">
+            <div
+                v-if="empleadoRestauracion"
+                class="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Registrar reingreso"
+                @click.self="cerrarRestauracion"
+            >
+                <form class="w-full max-w-md overflow-hidden rounded-lg bg-white shadow-2xl" @submit.prevent="restaurarEmpleado">
+                    <div class="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+                        <div class="flex min-w-0 items-start gap-3">
+                            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                                <i class="ti ti-user-check text-xl"></i>
+                            </span>
+                            <div class="min-w-0">
+                                <p class="text-base font-black text-slate-950">Registrar reingreso</p>
+                                <p class="mt-0.5 break-words text-sm font-semibold text-slate-500">{{ empleadoRestauracion.nombre_completo }}</p>
+                            </div>
+                        </div>
+                        <button type="button" class="icon-button" title="Cerrar" aria-label="Cerrar" @click="cerrarRestauracion"><i class="ti ti-x"></i></button>
+                    </div>
+
+                    <div class="space-y-4 p-5">
+                        <div>
+                            <label class="field-label" for="fecha-reingreso">Fecha efectiva de reingreso</label>
+                            <input id="fecha-reingreso" v-model="restaurarForm.fecha_reingreso" type="date" :max="fechaLocalHoy()" class="field-input" required />
+                            <p v-if="restaurarForm.errors.fecha_reingreso" class="mt-2 text-sm font-bold text-rose-600">{{ restaurarForm.errors.fecha_reingreso }}</p>
+                        </div>
+
+                        <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
+                            La antigüedad y las vacaciones del nuevo periodo comenzarán en esta fecha. La fecha de ingreso original y los periodos anteriores se conservarán en el historial.
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
+                        <button type="button" class="btn-secondary" @click="cerrarRestauracion">Cancelar</button>
+                        <button type="submit" class="btn-primary" :disabled="restaurarForm.processing">
+                            <i class="ti ti-user-check"></i>
+                            {{ restaurarForm.processing ? 'Restaurando...' : 'Confirmar reingreso' }}
+                        </button>
+                    </div>
+                </form>
             </div>
         </Teleport>
     </AuthenticatedLayout>
