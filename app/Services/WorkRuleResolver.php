@@ -10,6 +10,8 @@ use Illuminate\Support\Str;
 class WorkRuleResolver
 {
     private static array $cache = [];
+    private static ?\Illuminate\Support\Collection $activeRules = null;
+    private static ?bool $rulesTableExists = null;
 
     public static function for(Empleado $empleado): array
     {
@@ -38,46 +40,26 @@ class WorkRuleResolver
             'rule_names' => [],
         ];
 
-        if (!Schema::hasTable('work_rules')) {
+        if (!(self::$rulesTableExists ??= Schema::hasTable('work_rules'))) {
             return self::$cache[$cacheKey] = $defaults;
         }
 
         $numero = self::employeeNumber($empleado);
         $puesto = self::normalize($empleado->puesto);
 
-        $rules = WorkRule::query()
-            ->where('active', true)
-            ->where(function ($query) use ($empleado, $numero, $puesto) {
-                $query->where('scope_type', 'global')
-                    ->orWhere(fn ($query) => $query
-                        ->where('scope_type', 'employee')
-                        ->where('empleado_id', $empleado->id));
-
-                if ($numero !== null) {
-                    $query->orWhere(fn ($query) => $query
-                        ->where('scope_type', 'employee_number')
-                        ->where('scope_value', $numero));
-                }
-
-                if ($puesto !== '') {
-                    $query->orWhere(fn ($query) => $query
-                        ->where('scope_type', 'position')
-                        ->whereRaw('UPPER(scope_value) = ?', [$puesto]))
-                        ->orWhere('scope_type', 'position_contains');
-                }
+        $rules = self::activeRules()
+            ->filter(fn (WorkRule $rule) => match ($rule->scope_type) {
+                'global' => true,
+                'employee' => (int) $rule->empleado_id === (int) $empleado->id,
+                'employee_number' => $numero !== null && self::employeeNumberValue($rule->scope_value) === $numero,
+                'position' => $puesto !== '' && self::normalize($rule->scope_value) === $puesto,
+                'position_contains' => $puesto !== ''
+                    && self::normalize($rule->scope_value) !== ''
+                    && Str::contains($puesto, self::normalize($rule->scope_value)),
+                default => false,
             })
-            ->orderByDesc('priority')
-            ->orderByDesc('id')
-            ->get()
-            ->filter(function (WorkRule $rule) use ($puesto) {
-                if ($rule->scope_type !== 'position_contains') {
-                    return true;
-                }
-
-                $needle = self::normalize($rule->scope_value);
-
-                return $needle !== '' && Str::contains($puesto, $needle);
-            });
+            ->sortByDesc(fn (WorkRule $rule) => sprintf('%010d-%010d', $rule->priority, $rule->id))
+            ->values();
 
         $resolved = $defaults;
         $fields = [
@@ -116,6 +98,8 @@ class WorkRuleResolver
     public static function forget(): void
     {
         self::$cache = [];
+        self::$activeRules = null;
+        self::$rulesTableExists = null;
     }
 
     public static function employeeNumber(Empleado $empleado): ?string
@@ -134,5 +118,22 @@ class WorkRuleResolver
     private static function normalize($value): string
     {
         return Str::upper(Str::ascii(trim((string) $value)));
+    }
+
+    private static function activeRules(): \Illuminate\Support\Collection
+    {
+        return self::$activeRules ??= WorkRule::query()
+            ->where('active', true)
+            ->get();
+    }
+
+    private static function employeeNumberValue($value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        return ltrim($value, '0') ?: '0';
     }
 }

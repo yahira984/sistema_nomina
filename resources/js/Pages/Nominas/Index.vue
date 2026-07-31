@@ -8,11 +8,13 @@ const props = defineProps({
     empleados: Array,
     empleadosMeta: { type: Object, default: () => ({}) },
     resumenPeriodo: { type: Object, default: () => ({}) },
+    preflight: { type: Object, default: () => ({ ready: true, issues: [] }) },
     bancosDisponibles: { type: Array, default: () => [] },
     periodo: { type: Object, default: () => ({ status: 'open' }) },
     operaciones: { type: Array, default: () => [] },
     filtrosNomina: { type: Object, default: () => ({}) },
     historial: Array,
+    historialGeneraciones: { type: Array, default: () => [] },
     historialMeta: {
         type: Object,
         default: () => ({}),
@@ -29,6 +31,7 @@ const page = usePage();
 const canManage = computed(() => page.props.auth?.can?.['nominas.manage'] ?? false);
 const canPay = computed(() => page.props.auth?.can?.['nominas.pay'] ?? false);
 const canExport = computed(() => page.props.auth?.can?.['nominas.export'] ?? false);
+const canReconcile = computed(() => page.props.auth?.can?.['nominas.reconcile'] ?? false);
 
 const searchQuery = ref(props.filtrosNomina.search || '');
 const historialSearch = ref(props.filtros?.historial_busqueda || '');
@@ -42,6 +45,9 @@ const guardandoImss = ref(null);
 const pagandoMasivo = ref(null);
 const selectedEmpleadoIds = ref([]);
 const comparacionEmpleado = ref(null);
+const showPreflight = ref(false);
+const reconciliationFile = ref(null);
+const reconciliationInput = ref(null);
 
 const selectedCorte = ref(props.fechaCorteActual);
 
@@ -215,7 +221,7 @@ const cargarNominas = (pageNumber = 1) => {
     }, {
         only: [
             'empleados', 'empleadosMeta', 'resumenPeriodo', 'bancosDisponibles',
-            'filtrosNomina', 'periodo', 'operaciones',
+            'filtrosNomina', 'periodo', 'operaciones', 'preflight',
         ],
         preserveState: true,
         preserveScroll: true,
@@ -312,10 +318,6 @@ const monedaFirmada = (valor) => {
 
 const horas = (valor) => numero(valor).toFixed(1);
 
-const empleadosSinHorasExtra = new Set(['8', '9', '22']);
-const empleadosSinRetardos = new Set(['14', '76', '78']);
-const empleadosPagoPorHoraTopado = new Set(['76', '78']);
-
 const numeroEmpleadoNomina = (empleado) => {
     const texto = String(empleado?.numero_empleado || empleado?.numero_empleado_baja || '').trim();
     const sinCeros = texto.replace(/^0+/, '');
@@ -323,26 +325,29 @@ const numeroEmpleadoNomina = (empleado) => {
 };
 
 const reglasEspecialesEmpleado = (empleado) => {
-    const numeroEmpleado = numeroEmpleadoNomina(empleado);
+    const configuracion = empleado?.reglas_laborales || {};
     const reglas = [];
 
-    if (empleadosSinHorasExtra.has(numeroEmpleado)) {
+    if (configuracion.turno_24x24) {
+        reglas.push({ texto: 'Turno 24x24', clase: 'border-teal-200 bg-teal-50 text-teal-800' });
+    }
+    if (configuracion.sin_horas_extra) {
         reglas.push({
             texto: 'Sin H.E.',
             clase: 'border-sky-200 bg-sky-50 text-sky-700',
         });
     }
 
-    if (empleadosSinRetardos.has(numeroEmpleado)) {
+    if (configuracion.sin_retardos) {
         reglas.push({
             texto: 'Sin retardos',
             clase: 'border-amber-200 bg-amber-50 text-amber-800',
         });
     }
 
-    if (empleadosPagoPorHoraTopado.has(numeroEmpleado)) {
+    if (configuracion.pago_por_hora_topado) {
         reglas.push({
-            texto: 'Tope 48 h',
+            texto: `Tope ${numero(configuracion.tope_horas_semanales)} h`,
             clase: 'border-violet-200 bg-violet-50 text-violet-700',
         });
     }
@@ -359,13 +364,14 @@ const claseFilaNomina = (empleado) => {
 };
 
 const claseNumeroNomina = (empleado) => {
-    if (empleadosPagoPorHoraTopado.has(numeroEmpleadoNomina(empleado))) {
+    const reglas = empleado?.reglas_laborales || {};
+    if (reglas.pago_por_hora_topado) {
         return 'border-violet-200 bg-violet-50 text-violet-700';
     }
-    if (empleadosSinHorasExtra.has(numeroEmpleadoNomina(empleado))) {
+    if (reglas.sin_horas_extra) {
         return 'border-sky-200 bg-sky-50 text-sky-700';
     }
-    if (empleadosSinRetardos.has(numeroEmpleadoNomina(empleado))) {
+    if (reglas.sin_retardos) {
         return 'border-amber-200 bg-amber-50 text-amber-800';
     }
     return 'border-teal-200 bg-teal-50 text-teal-700';
@@ -853,6 +859,25 @@ const cambiarPagosMasivos = (accion) => {
         },
     });
 };
+
+const seleccionarConciliacion = (event) => {
+    reconciliationFile.value = event.target.files?.[0] || null;
+};
+
+const enviarConciliacion = () => {
+    if (!reconciliationFile.value) return;
+    router.post(route('nominas.conciliaciones.store'), {
+        fecha_corte: selectedCorte.value,
+        archivo: reconciliationFile.value,
+    }, {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: () => {
+            reconciliationFile.value = null;
+            if (reconciliationInput.value) reconciliationInput.value.value = '';
+        },
+    });
+};
 </script>
 
 <template>
@@ -903,6 +928,32 @@ const cambiarPagosMasivos = (accion) => {
                         <div class="metric-tile"><span class="metric-label">Nóminas generadas</span><strong>{{ resumenPeriodo.generated ?? 0 }}</strong></div>
                         <div class="metric-tile"><span class="metric-label">Pagos pendientes</span><strong>{{ resumenPeriodo.pending_payment ?? 0 }}</strong></div>
                         <div class="metric-tile col-span-2 lg:col-span-1"><span class="metric-label">Total liquidado</span><strong>${{ moneda(resumenPeriodo.paid_total) }}</strong></div>
+                    </div>
+
+                    <div :class="['rounded-lg border p-4', preflight.ready ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50']">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="flex min-w-0 items-start gap-3">
+                                <span :class="['flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', preflight.ready ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700']">
+                                    <i :class="preflight.ready ? 'ti ti-shield-check text-xl' : 'ti ti-alert-triangle text-xl'"></i>
+                                </span>
+                                <div class="min-w-0">
+                                    <p class="font-black text-slate-950">{{ preflight.ready ? 'Periodo listo para generar' : 'Revisión necesaria antes de generar' }}</p>
+                                    <p class="mt-0.5 text-sm font-semibold text-slate-600">
+                                        {{ preflight.critical_count || 0 }} crítico(s), {{ preflight.warning_count || 0 }} advertencia(s), {{ preflight.checked_employees || 0 }} empleado(s) revisados.
+                                    </p>
+                                </div>
+                            </div>
+                            <button v-if="preflight.total_count" type="button" class="btn-secondary shrink-0" @click="showPreflight = !showPreflight">
+                                <i class="ti ti-list-check"></i>{{ showPreflight ? 'Ocultar detalles' : 'Ver detalles' }}
+                            </button>
+                        </div>
+                        <div v-if="showPreflight" class="mt-4 max-h-72 space-y-2 overflow-y-auto border-t border-slate-200/70 pt-3">
+                            <div v-for="(issue, index) in preflight.issues" :key="`${issue.code}-${index}`" class="grid gap-1 rounded-lg bg-white px-3 py-2 text-sm sm:grid-cols-[minmax(12rem,1fr)_2fr]">
+                                <strong :class="issue.severity === 'critical' ? 'text-rose-700' : 'text-amber-700'">{{ issue.employee }}</strong>
+                                <span class="font-semibold text-slate-600">{{ issue.message }}</span>
+                            </div>
+                            <p v-if="preflight.truncated" class="text-xs font-bold text-slate-500">Se muestran los primeros 150 hallazgos.</p>
+                        </div>
                     </div>
                     <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(20rem,1.2fr)_minmax(12rem,1fr)_minmax(13rem,1fr)]">
                         
@@ -955,6 +1006,13 @@ const cambiarPagosMasivos = (accion) => {
                         </div>
 
                         <div class="flex flex-wrap items-center gap-2 sm:justify-end sm:gap-3">
+                            <div v-if="canReconcile" class="flex min-h-11 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-1.5">
+                                <input ref="reconciliationInput" type="file" accept=".csv,.txt,.xlsx,.xls" class="hidden" @change="seleccionarConciliacion" />
+                                <button type="button" class="inline-flex items-center gap-2 px-2 text-xs font-black uppercase text-blue-800" title="Comparar depósitos contra la nómina del periodo" @click="reconciliationInput?.click()">
+                                    <i class="ti ti-building-bank text-lg"></i>{{ reconciliationFile?.name || 'Conciliar pagos' }}
+                                </button>
+                                <button v-if="reconciliationFile" type="button" class="icon-button bg-blue-700 text-white" title="Procesar conciliación" @click="enviarConciliacion"><i class="ti ti-upload"></i></button>
+                            </div>
                             <a v-if="canExport" :href="route('nominas.reporte', { semana: numeroSemanaSeleccionada, fecha_corte: selectedCorte })" target="_blank" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-file-spreadsheet text-lg"></i> Excel Global
                             </a>
@@ -1441,6 +1499,29 @@ const cambiarPagosMasivos = (accion) => {
                             Siguiente
                         </button>
                     </div>
+                </div>
+            </section>
+
+            <section v-if="historialGeneraciones.length" class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div class="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+                    <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-700"><i class="ti ti-file-certificate text-lg"></i></span>
+                    <div>
+                        <h3 class="font-black text-slate-950">Bitácora de archivos generados</h3>
+                        <p class="text-xs font-semibold text-slate-500">Cada impresión individual o masiva queda registrada.</p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-500"><tr><th class="px-5 py-3">Fecha</th><th class="px-5 py-3">Periodo</th><th class="px-5 py-3">Archivo</th><th class="px-5 py-3 text-right">Recibos</th></tr></thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <tr v-for="generation in historialGeneraciones" :key="generation.id">
+                                <td class="whitespace-nowrap px-5 py-3 font-semibold text-slate-600">{{ new Date(generation.created_at).toLocaleString('es-MX') }}</td>
+                                <td class="whitespace-nowrap px-5 py-3 font-bold text-slate-800">{{ generation.period_start }} al {{ generation.period_end }}</td>
+                                <td class="max-w-sm truncate px-5 py-3 font-semibold text-blue-700">{{ generation.file_name || generation.type }}</td>
+                                <td class="px-5 py-3 text-right font-black text-slate-900">{{ generation.receipt_count }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </section>
         </div>

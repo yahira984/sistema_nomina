@@ -93,7 +93,7 @@ return [
 
     'workload_connections' => [
         'imports' => env('IMPORT_QUEUE_CONNECTION', 'auto'),
-        'exports' => env('EXPORT_QUEUE_CONNECTION', 'database'),
+        'exports' => env('EXPORT_QUEUE_CONNECTION', 'auto'),
     ],
 
     /*

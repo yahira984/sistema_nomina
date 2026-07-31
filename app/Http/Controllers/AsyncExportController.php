@@ -34,7 +34,9 @@ class AsyncExportController extends Controller
         );
 
         if ($operation->wasRecentlyCreated) {
-            GenerateMassPdfJob::dispatch($operation->id);
+            GenerateMassPdfJob::dispatch($operation->id)
+                ->onConnection($operations->queueConnection('exports'))
+                ->afterCommit();
         }
 
         return back()

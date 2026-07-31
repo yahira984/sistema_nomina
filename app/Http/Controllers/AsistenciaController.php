@@ -88,7 +88,7 @@ class AsistenciaController extends Controller
                 ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), id) AS UNSIGNED) ASC")
                 ->get([
                     'id', 'numero_empleado', 'numero_empleado_baja', 'nombre_completo',
-                    'puesto', 'es_estudiante', 'estatus', 'fecha_ingreso',
+                    'puesto', 'es_estudiante', 'estatus', 'fecha_ingreso', 'fecha_reingreso',
                 ])
                 ->map(fn (Empleado $empleado) => [
                     'id' => $empleado->id,
@@ -99,6 +99,8 @@ class AsistenciaController extends Controller
                     'es_estudiante' => (bool) $empleado->es_estudiante,
                     'estatus' => (bool) $empleado->estatus,
                     'fecha_ingreso' => $empleado->fecha_ingreso,
+                    'fecha_reingreso' => $empleado->fecha_reingreso,
+                    'fecha_inicio_periodo_actual' => $empleado->fecha_inicio_periodo_actual,
                     'horario_24x24' => HorarioLaboralEmpleado::esVigilancia24x24($empleado),
                     'sin_horas_extra' => ReglasNominaEmpleado::sinHorasExtra($empleado),
                     'sin_retardos' => ReglasNominaEmpleado::sinRetardos($empleado),
@@ -133,24 +135,30 @@ class AsistenciaController extends Controller
     private function empleadosPantallaAsistencias($empleados, array $empleadoIds)
     {
         $vacacionesCapturadas = Asistencia::query()
-            ->whereIn('empleado_id', $empleadoIds)
-            ->where('tipo_asistencia', 'Vacaciones')
-            ->selectRaw('empleado_id, COUNT(*) as total')
-            ->groupBy('empleado_id')
+            ->join('empleados', 'empleados.id', '=', 'asistencias.empleado_id')
+            ->whereIn('asistencias.empleado_id', $empleadoIds)
+            ->where('asistencias.tipo_asistencia', 'Vacaciones')
+            ->whereRaw('asistencias.fecha >= COALESCE(empleados.fecha_reingreso, empleados.fecha_ingreso)')
+            ->selectRaw('asistencias.empleado_id as empleado_id, COUNT(*) as total')
+            ->groupBy('asistencias.empleado_id')
             ->pluck('total', 'empleado_id');
 
         $vacacionesPagadas = Nomina::query()
-            ->whereIn('empleado_id', $empleadoIds)
-            ->where('pagado', true)
-            ->selectRaw('empleado_id, COALESCE(SUM(dias_vacaciones_pagadas), 0) as total')
-            ->groupBy('empleado_id')
+            ->join('empleados', 'empleados.id', '=', 'nominas.empleado_id')
+            ->whereIn('nominas.empleado_id', $empleadoIds)
+            ->where('nominas.pagado', true)
+            ->whereRaw('nominas.fecha_fin >= COALESCE(empleados.fecha_reingreso, empleados.fecha_ingreso)')
+            ->selectRaw('nominas.empleado_id as empleado_id, COALESCE(SUM(nominas.dias_vacaciones_pagadas), 0) as total')
+            ->groupBy('nominas.empleado_id')
             ->pluck('total', 'empleado_id');
 
         $fechasFaltas = Asistencia::query()
-            ->whereIn('empleado_id', $empleadoIds)
-            ->where('tipo_asistencia', 'Falta')
-            ->orderBy('fecha', 'desc')
-            ->get(['empleado_id', 'fecha'])
+            ->join('empleados', 'empleados.id', '=', 'asistencias.empleado_id')
+            ->whereIn('asistencias.empleado_id', $empleadoIds)
+            ->where('asistencias.tipo_asistencia', 'Falta')
+            ->whereRaw('asistencias.fecha >= COALESCE(empleados.fecha_reingreso, empleados.fecha_ingreso)')
+            ->orderBy('asistencias.fecha', 'desc')
+            ->get(['asistencias.empleado_id', 'asistencias.fecha'])
             ->groupBy('empleado_id')
             ->map(fn ($items) => $items
                 ->map(fn (Asistencia $asistencia) => Carbon::parse($asistencia->fecha)->format('Y-m-d'))
@@ -178,6 +186,8 @@ class AsistenciaController extends Controller
                 'sin_retardos' => ReglasNominaEmpleado::sinRetardos($empleado),
                 'estatus' => $empleado->estatus,
                 'fecha_ingreso' => $empleado->fecha_ingreso,
+                'fecha_reingreso' => $empleado->fecha_reingreso,
+                'fecha_inicio_periodo_actual' => $empleado->fecha_inicio_periodo_actual,
                 'fecha_baja' => $empleado->fecha_baja,
                 'ajuste_vacaciones' => (float) ($empleado->ajuste_vacaciones ?? 0),
                 'es_estudiante' => (bool) ($empleado->es_estudiante ?? false),
@@ -208,11 +218,12 @@ class AsistenciaController extends Controller
 
     private function antiguedadAniosEmpleado(Empleado $empleado): int
     {
-        if (!$empleado->fecha_ingreso) {
+        $inicio = $empleado->inicioPeriodoActual();
+
+        if (!$inicio) {
             return 0;
         }
 
-        $inicio = Carbon::parse($empleado->fecha_ingreso)->startOfDay();
         $fin = $empleado->fecha_baja ? Carbon::parse($empleado->fecha_baja)->startOfDay() : now()->startOfDay();
 
         if ($fin->lt($inicio)) {
@@ -748,6 +759,7 @@ class AsistenciaController extends Controller
         return [
             'preview_id' => (string) Str::uuid(),
             'filas' => $filas,
+            'calidad' => app(\App\Services\AttendanceImportQualityService::class)->summarize($filas),
             'resumen' => [
                 'detectadas_csv' => $detectadasCsv,
                 'sin_registro' => $sinRegistro,

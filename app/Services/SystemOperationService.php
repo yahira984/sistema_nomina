@@ -7,6 +7,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -92,6 +93,7 @@ class SystemOperationService
     {
         if (in_array($operation->status, ['queued', 'running'], true)) {
             $operation->markCancelled('Operación cancelada por el usuario.');
+            $this->cleanupQueuedJob($operation);
             $this->cleanupSourceFile($operation);
             return;
         }
@@ -146,6 +148,7 @@ class SystemOperationService
 
         foreach ($queued as $operation) {
             $operation->markCancelled('La tarea no inició porque no había un procesador disponible. Vuelve a intentarlo.');
+            $this->cleanupQueuedJob($operation);
             $this->cleanupSourceFile($operation);
         }
 
@@ -156,6 +159,7 @@ class SystemOperationService
 
         foreach ($running as $operation) {
             $operation->markCancelled('La tarea dejó de responder y fue cerrada automáticamente. Vuelve a intentarlo.');
+            $this->cleanupQueuedJob($operation);
             $this->cleanupSourceFile($operation);
         }
     }
@@ -181,5 +185,16 @@ class SystemOperationService
         if ($path !== '' && str_starts_with($path, 'imports/reloj/')) {
             Storage::disk('local')->delete($path);
         }
+    }
+
+    private function cleanupQueuedJob(SystemOperation $operation): void
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasTable('jobs')) {
+            return;
+        }
+
+        DB::table('jobs')
+            ->where('payload', 'like', '%' . $operation->id . '%')
+            ->delete();
     }
 }

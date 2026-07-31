@@ -6,6 +6,8 @@ use App\Jobs\SyncFirebaseJob;
 use App\Models\Asistencia;
 use App\Models\Empleado;
 use App\Models\Nomina;
+use App\Services\SystemOperationService;
+use Illuminate\Support\Facades\Schema;
 
 class FirebaseJobDispatcher
 {
@@ -79,7 +81,15 @@ class FirebaseJobDispatcher
 
     private static function dispatch(string $operation, array $payload): void
     {
-        SyncFirebaseJob::dispatch($operation, $payload)
+        $systemOperation = Schema::hasTable('system_operations')
+            ? app(SystemOperationService::class)->create('firebase_sync', auth()->user(), [
+                'firebase_operation' => $operation,
+                'reference_type' => $payload['reference_type'] ?? null,
+                'reference_id' => $payload['reference_id'] ?? null,
+            ])
+            : null;
+
+        SyncFirebaseJob::dispatch($operation, $payload, $systemOperation?->id)
             ->onConnection(config('services.firebase.queue_connection', 'deferred'))
             ->afterCommit();
     }

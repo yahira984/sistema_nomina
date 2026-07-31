@@ -55,6 +55,7 @@ const estudiantesFiltrados = computed(() => {
 
 const seleccionadosCount = computed(() => seleccionados.value.length);
 const idsVisibles = computed(() => estudiantesFiltrados.value.map((estudiante) => estudiante.id));
+const visiblesCount = computed(() => estudiantesFiltrados.value.length);
 const todosVisiblesSeleccionados = computed(() => {
     return idsVisibles.value.length > 0 && idsVisibles.value.every((id) => seleccionados.value.includes(id));
 });
@@ -64,6 +65,12 @@ const fechaSeleccionadaLabel = computed(() => {
 
     return semana?.etiqueta || props.rangoSemanaActual || 'Semana seleccionada';
 });
+
+const semanaSeleccionada = computed(() => props.semanas.find((item) => item.fecha_corte === fechaCorte.value));
+
+const limpiarBusqueda = () => {
+    busqueda.value = '';
+};
 
 const formatoFecha = (fecha) => {
     if (!fecha) return 'Sin fecha';
@@ -124,94 +131,86 @@ const urlPdf = (todos = false) => {
         </template>
 
         <div class="page-shell">
-            <div class="content-wrap space-y-6">
-                <section class="app-panel">
-                    <div class="panel-header">
+            <div class="content-wrap space-y-5">
+                <section class="app-panel overflow-hidden">
+                    <div class="panel-header gap-4">
                         <div class="flex items-start gap-3">
-                            <div class="soft-icon-blue">
-                                <i class="ti ti-school text-xl" aria-hidden="true"></i>
-                            </div>
+                            <div class="soft-icon-blue"><i class="ti ti-school text-xl" aria-hidden="true"></i></div>
                             <div>
-                                <h3 class="panel-title">Formato semanal de servicio</h3>
-                                <p class="panel-subtitle">Genera el registro con 2 alumnos por hoja cuando selecciones varios.</p>
+                                <h3 class="panel-title">Formatos semanales</h3>
+                                <p class="panel-subtitle">Selecciona la semana y los alumnos que aparecerán en el PDF.</p>
                             </div>
                         </div>
-
-                        <div class="flex flex-wrap gap-2 text-xs font-bold">
-                            <span class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-blue-700">
-                                {{ estudiantes.length }} alumno(s)
-                            </span>
-                            <span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-teal-700">
-                                {{ seleccionadosCount }} seleccionado(s)
-                            </span>
+                        <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                            <span class="status-pill status-info justify-center">2 alumnos por hoja</span>
+                            <a v-if="seleccionadosCount > 0" :href="urlPdf(false)" target="_blank" class="btn-accent justify-center text-xs">
+                                <i class="ti ti-file-type-pdf" aria-hidden="true"></i>PDF seleccionados ({{ seleccionadosCount }})
+                            </a>
+                            <button v-else type="button" class="btn-accent justify-center text-xs opacity-50" disabled>
+                                <i class="ti ti-file-type-pdf" aria-hidden="true"></i>Selecciona alumnos
+                            </button>
+                            <a v-if="estudiantes.length > 0" :href="urlPdf(true)" target="_blank" class="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800">
+                                <i class="ti ti-files" aria-hidden="true"></i>PDF de todos ({{ estudiantes.length }})
+                            </a>
                         </div>
                     </div>
 
-                    <div class="grid gap-4 p-5 sm:p-6 xl:grid-cols-[1fr_18rem] xl:items-end">
-                        <label class="block">
-                            <span class="field-label">Semana</span>
-                            <select v-model="fechaCorte" class="field-input-soft">
-                                <option v-for="semana in semanas" :key="semana.fecha_corte" :value="semana.fecha_corte">
-                                    {{ semana.etiqueta }}
-                                </option>
-                            </select>
-                        </label>
-
-                        <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
-                            <span class="block uppercase text-slate-400">Corte</span>
-                            {{ fechaSeleccionadaLabel }}
+                    <div class="grid divide-y divide-slate-200 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)] lg:divide-x lg:divide-y-0">
+                        <div class="p-5 sm:p-6">
+                            <div class="mb-3 flex items-center gap-2 text-sm font-black text-slate-900">
+                                <span class="flex h-7 w-7 items-center justify-center rounded-md bg-blue-100 text-blue-700">1</span>
+                                Semana del formato
+                            </div>
+                            <label class="block">
+                                <span class="field-label">Periodo disponible</span>
+                                <select v-model="fechaCorte" class="field-input-soft">
+                                    <option v-for="semana in semanas" :key="semana.fecha_corte" :value="semana.fecha_corte">{{ semana.etiqueta }}</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="flex items-center gap-4 bg-slate-50 p-5 sm:p-6">
+                            <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-white text-xl text-blue-700 shadow-sm">
+                                <i class="ti ti-calendar-week" aria-hidden="true"></i>
+                            </span>
+                            <div class="min-w-0">
+                                <p class="field-label">Periodo que se imprimirá</p>
+                                <p class="mt-1 font-black text-slate-950">{{ fechaSeleccionadaLabel }}</p>
+                                <p v-if="semanaSeleccionada" class="mt-1 text-xs font-semibold text-slate-500">Corte: {{ formatoFecha(fechaCorte) }}</p>
+                            </div>
                         </div>
                     </div>
                 </section>
 
-                <section class="app-panel">
-                    <div class="border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
-                        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                            <div class="w-full lg:max-w-md">
-                                <span class="field-label">Buscar alumno</span>
-                                <div class="relative">
-                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                                        <i class="ti ti-search" aria-hidden="true"></i>
-                                    </div>
-                                    <input v-model="busqueda" type="text" class="field-input-soft pl-9" placeholder="Nombre o numero..." />
-                                </div>
+                <section class="app-panel overflow-hidden">
+                    <div class="border-b border-slate-200 bg-white p-5 sm:p-6">
+                        <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="flex items-center gap-2 text-sm font-black text-slate-900">
+                                <span class="flex h-7 w-7 items-center justify-center rounded-md bg-teal-100 text-teal-700">2</span>
+                                Selecciona los alumnos
                             </div>
+                            <p class="text-xs font-bold text-slate-500">{{ visiblesCount }} visibles · {{ seleccionadosCount }} seleccionados de {{ estudiantes.length }}</p>
+                        </div>
 
-                            <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                        <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                            <label class="relative block w-full xl:max-w-xl">
+                                <span class="sr-only">Buscar alumno</span>
+                                <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-slate-400" aria-hidden="true"></i>
+                                <input v-model="busqueda" type="search" class="field-input-soft h-11 pl-10 pr-10" placeholder="Buscar por nombre o número de empleado" />
+                                <button v-if="busqueda" type="button" class="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100" title="Limpiar búsqueda" aria-label="Limpiar búsqueda" @click="limpiarBusqueda">
+                                    <i class="ti ti-x" aria-hidden="true"></i>
+                                </button>
+                            </label>
+
+                            <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                                 <button type="button" class="btn-secondary justify-center text-xs" @click="alternarVisible">
-                                    <i class="ti ti-checklist" aria-hidden="true"></i>
-                                    {{ todosVisiblesSeleccionados ? 'Quitar visibles' : 'Seleccionar visibles' }}
+                                    <i class="ti ti-checklist" aria-hidden="true"></i>{{ todosVisiblesSeleccionados ? 'Quitar visibles' : 'Seleccionar visibles' }}
                                 </button>
                                 <button type="button" class="btn-secondary justify-center text-xs" @click="seleccionarTodos">
-                                    <i class="ti ti-list-check" aria-hidden="true"></i>
-                                    Todos
+                                    <i class="ti ti-list-check" aria-hidden="true"></i>Seleccionar todos
                                 </button>
-                                <button type="button" class="btn-secondary justify-center text-xs" @click="limpiarSeleccion">
-                                    <i class="ti ti-filter-x" aria-hidden="true"></i>
-                                    Limpiar
+                                <button type="button" class="btn-secondary col-span-2 justify-center text-xs" :disabled="seleccionadosCount === 0" :class="{ 'opacity-50': seleccionadosCount === 0 }" @click="limpiarSeleccion">
+                                    <i class="ti ti-x" aria-hidden="true"></i>Limpiar selección
                                 </button>
-                                <a
-                                    v-if="seleccionadosCount > 0"
-                                    :href="urlPdf(false)"
-                                    target="_blank"
-                                    class="btn-accent justify-center text-xs"
-                                >
-                                    <i class="ti ti-printer" aria-hidden="true"></i>
-                                    PDF seleccionados
-                                </a>
-                                <button v-else type="button" class="btn-accent justify-center text-xs opacity-50" disabled>
-                                    <i class="ti ti-printer" aria-hidden="true"></i>
-                                    PDF seleccionados
-                                </button>
-                                <a
-                                    v-if="estudiantes.length > 0"
-                                    :href="urlPdf(true)"
-                                    target="_blank"
-                                    class="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800"
-                                >
-                                    <i class="ti ti-printer" aria-hidden="true"></i>
-                                    PDF todos
-                                </a>
                             </div>
                         </div>
                     </div>
@@ -220,8 +219,8 @@ const urlPdf = (todos = false) => {
                         <label
                             v-for="estudiante in estudiantesFiltrados"
                             :key="estudiante.id"
-                            class="flex cursor-pointer items-start gap-3 rounded-lg border bg-white p-4 shadow-sm transition hover:border-teal-300 hover:bg-teal-50/40"
-                            :class="seleccionados.includes(estudiante.id) ? 'border-teal-300 bg-teal-50/60' : 'border-slate-200'"
+                            class="group flex min-h-28 cursor-pointer items-start gap-3 rounded-lg border p-4 transition"
+                            :class="seleccionados.includes(estudiante.id) ? 'border-teal-300 bg-teal-50 ring-1 ring-teal-200' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'"
                         >
                             <input
                                 v-model="seleccionados"
@@ -229,24 +228,24 @@ const urlPdf = (todos = false) => {
                                 :value="estudiante.id"
                                 class="mt-1 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                             />
-                            <span class="min-w-0">
-                                <span class="block text-sm font-black uppercase text-slate-950">
-                                    #{{ numeroEmpleado(estudiante) || 'S/N' }} · {{ estudiante.nombre_completo }}
-                                </span>
+                            <span class="min-w-0 flex-1">
+                                <span class="mb-2 inline-flex rounded-md bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-700">Núm. {{ numeroEmpleado(estudiante) || 'S/N' }}</span>
+                                <span class="block break-words text-sm font-black uppercase leading-5 text-slate-950">{{ estudiante.nombre_completo }}</span>
                                 <span class="mt-1 block text-xs font-semibold text-slate-500">
                                     Ingreso: {{ formatoFecha(estudiante.fecha_ingreso) }}
                                 </span>
-                                <span class="mt-1 inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
-                                    Alumno
-                                </span>
                             </span>
+                            <i v-if="seleccionados.includes(estudiante.id)" class="ti ti-circle-check-filled text-xl text-teal-600" aria-hidden="true"></i>
                         </label>
 
                         <div v-if="estudiantesFiltrados.length === 0" class="empty-state sm:col-span-2 xl:col-span-3">
-                            No se encontraron alumnos con ese filtro.
+                            <i class="ti ti-user-search mb-2 text-3xl text-slate-300" aria-hidden="true"></i>
+                            <p class="font-bold text-slate-700">No encontramos alumnos</p>
+                            <button v-if="busqueda" type="button" class="btn-secondary mt-3 text-xs" @click="limpiarBusqueda">Limpiar búsqueda</button>
                         </div>
                     </div>
                 </section>
+
             </div>
         </div>
     </AuthenticatedLayout>
