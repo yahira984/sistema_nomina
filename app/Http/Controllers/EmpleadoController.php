@@ -254,6 +254,7 @@ class EmpleadoController extends Controller
             'es_estudiante' => 'nullable|boolean',
         ]);
 
+        $numeroEmpleadoAnterior = $empleado->numero_empleado ?: $empleado->numero_empleado_baja;
         $datos = $request->except(['fecha_reingreso', 'fecha_baja', 'estatus']);
         $datos['rfc'] = $request->filled('rfc') ? strtoupper($request->input('rfc')) : null;
         $datos['curp'] = $request->filled('curp') ? strtoupper($request->input('curp')) : null;
@@ -284,6 +285,7 @@ class EmpleadoController extends Controller
         }
 
         $empleado->update($datos);
+        $this->renombrarFotoAlNumeroActual($empleado, $numeroEmpleadoAnterior);
         FirebaseJobDispatcher::employee($empleado);
 
         return redirect()->back()->with('success', 'Datos del empleado actualizados correctamente.');
@@ -449,7 +451,8 @@ class EmpleadoController extends Controller
         }
 
         $extension = strtolower((string) ($foto->extension() ?: $foto->getClientOriginalExtension()));
-        $nombreDestino = "id-{$empleado->id}.{$extension}";
+        $claveDestino = $this->claveFotoActual($empleado);
+        $nombreDestino = "{$claveDestino}.{$extension}";
         $destino = $directorioDestino . DIRECTORY_SEPARATOR . $nombreDestino;
         $temporal = $directorioDestino . DIRECTORY_SEPARATOR . '.upload-' . Str::uuid() . ".{$extension}";
         $respaldo = null;
@@ -483,6 +486,62 @@ class EmpleadoController extends Controller
         if ($respaldo && is_file($respaldo)) {
             @unlink($respaldo);
         }
+    }
+
+    private function renombrarFotoAlNumeroActual(Empleado $empleado, $numeroAnterior): void
+    {
+        $claveNueva = $this->claveFotoActual($empleado);
+        $claveAnterior = $this->limpiarClaveFoto($numeroAnterior);
+
+        if ($claveNueva === '' || $claveNueva === $claveAnterior) {
+            return;
+        }
+
+        $directorioActivo = public_path('img/empleados');
+        $directorio = $empleado->estatus
+            ? $directorioActivo
+            : $directorioActivo . DIRECTORY_SEPARATOR . 'bajas';
+        $clavesOrigen = collect([
+            $claveAnterior,
+            ltrim($claveAnterior, '0') ?: $claveAnterior,
+            "id-{$empleado->id}",
+            "empleado-{$empleado->id}",
+        ])->filter()->unique();
+
+        foreach ($clavesOrigen as $claveOrigen) {
+            foreach ($this->extensionesFotoEmpleado() as $extension) {
+                $origen = $directorio . DIRECTORY_SEPARATOR . "{$claveOrigen}.{$extension}";
+
+                if (!is_file($origen)) {
+                    continue;
+                }
+
+                $destino = $directorio . DIRECTORY_SEPARATOR . "{$claveNueva}.{$extension}";
+
+                if ($origen !== $destino && !@rename($origen, $destino)) {
+                    throw new RuntimeException('El número se actualizó, pero no fue posible renombrar su fotografía.');
+                }
+
+                foreach ($this->rutasFotoEmpleado($empleado) as $rutaAnterior) {
+                    if ($rutaAnterior !== $destino && is_file($rutaAnterior)) {
+                        @unlink($rutaAnterior);
+                    }
+                }
+
+                return;
+            }
+        }
+    }
+
+    private function claveFotoActual(Empleado $empleado): string
+    {
+        $numero = $this->limpiarClaveFoto(
+            $empleado->estatus
+                ? $empleado->numero_empleado
+                : ($empleado->numero_empleado_baja ?: $empleado->numero_empleado)
+        );
+
+        return $numero !== '' ? $numero : "id-{$empleado->id}";
     }
 
     private function rutasFotoEmpleado(Empleado $empleado): array
