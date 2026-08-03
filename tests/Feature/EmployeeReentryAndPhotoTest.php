@@ -121,10 +121,45 @@ class EmployeeReentryAndPhotoTest extends TestCase
                 ])
                 ->assertSessionHasNoErrors();
 
-            $this->assertFileExists($directory . "/id-{$employee->id}.png");
+            $this->assertFileExists($directory . '/82.png');
             $this->assertFileDoesNotExist($directory . "/id-{$employee->id}.jpg");
             $this->assertFileDoesNotExist($directory . '/82.jpeg');
-            $this->assertSame($png, File::get($directory . "/id-{$employee->id}.png"));
+            $this->assertSame($png, File::get($directory . '/82.png'));
+        } finally {
+            app()->usePublicPath($originalPublicPath);
+            File::deleteDirectory($temporaryPublicPath);
+        }
+    }
+
+    public function test_changing_employee_number_renames_photo_and_removes_previous_name(): void
+    {
+        Queue::fake();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $employee = $this->employee(['numero_empleado' => '83']);
+        $originalPublicPath = public_path();
+        $temporaryPublicPath = storage_path('framework/testing/photos-' . Str::uuid());
+        app()->usePublicPath($temporaryPublicPath);
+
+        try {
+            $directory = public_path('img/empleados');
+            File::ensureDirectoryExists($directory);
+            File::put($directory . '/83.jpg', 'employee-photo');
+
+            $this->actingAs($admin)
+                ->put(route('empleados.update', $employee), array_merge($employee->only([
+                    'nombre_completo', 'puesto', 'fecha_ingreso', 'forma_pago', 'banco', 'numero_cuenta',
+                    'nss', 'rfc', 'curp', 'estado_civil', 'genero', 'fecha_nacimiento', 'telefono', 'correo',
+                    'direccion', 'contacto_emergencia_nombre', 'contacto_emergencia_telefono',
+                ]), [
+                    'numero_empleado' => '84',
+                    'es_estudiante' => false,
+                    'sueldo_semanal' => 2000,
+                ]))
+                ->assertSessionHasNoErrors();
+
+            $this->assertFileDoesNotExist($directory . '/83.jpg');
+            $this->assertFileExists($directory . '/84.jpg');
+            $this->assertSame('employee-photo', File::get($directory . '/84.jpg'));
         } finally {
             app()->usePublicPath($originalPublicPath);
             File::deleteDirectory($temporaryPublicPath);
