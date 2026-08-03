@@ -99,6 +99,64 @@ class EmployeeReentryAndPhotoTest extends TestCase
         $this->assertDatabaseCount('empleado_reingresos', 0);
     }
 
+    public function test_termination_uses_requested_effective_date_and_current_employment_period(): void
+    {
+        Carbon::setTestNow('2026-08-03 10:00:00');
+        Queue::fake();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $employee = $this->employee([
+            'fecha_ingreso' => '2020-01-10',
+            'fecha_reingreso' => '2026-07-15',
+            'numero_empleado' => '85',
+        ]);
+
+        $this->actingAs($admin)
+            ->delete(route('empleados.destroy', $employee), [
+                'fecha_baja' => '2026-07-31',
+                'motivo_baja' => 'Fin de contrato',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $employee->refresh();
+        $this->assertFalse((bool) $employee->estatus);
+        $this->assertSame('2026-07-31', $employee->fecha_baja);
+        $this->assertSame('Fin de contrato', $employee->motivo_baja);
+        $this->assertSame(
+            DiasLaborados::contarSinDomingos('2026-07-15', '2026-07-31'),
+            (int) $employee->dias_laborados
+        );
+    }
+
+    public function test_editing_current_reentry_updates_employee_history_and_seniority_start(): void
+    {
+        Carbon::setTestNow('2027-08-03 10:00:00');
+        Queue::fake();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $employee = $this->employee([
+            'fecha_ingreso' => '2020-01-10',
+            'fecha_reingreso' => '2026-07-15',
+            'numero_empleado' => '86',
+        ]);
+        $reentry = $employee->reingresos()->create([
+            'fecha_reingreso' => '2026-07-15',
+            'fecha_baja_anterior' => '2026-06-30',
+            'registrado_por' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->patch(route('empleados.fecha-reingreso.actualizar', $employee), [
+                'fecha_reingreso' => '2027-07-20',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $employee->refresh();
+        $this->assertSame('2027-07-20', $employee->fecha_reingreso);
+        $this->assertSame('2027-07-20', $employee->fecha_inicio_periodo_actual);
+        $this->assertSame('2027-07-20', $reentry->fresh()->fecha_reingreso->format('Y-m-d'));
+        $this->assertSame(0, $employee->antiguedad_anios);
+        $this->assertSame(0, $employee->dias_vacaciones_totales);
+    }
+
     public function test_replacing_photo_removes_previous_employee_files(): void
     {
         Queue::fake();

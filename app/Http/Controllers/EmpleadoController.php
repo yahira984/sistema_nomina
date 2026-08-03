@@ -98,8 +98,11 @@ class EmpleadoController extends Controller
 
         return Inertia::render('Empleados/Show', [
             'empleado' => $empleado,
-            'accesoApp' => FirebaseSyncService::obtenerAccesoApp($empleado),
-            'timeline' => AuditLog::query()
+            'accesoApp' => Inertia::defer(
+                fn () => FirebaseSyncService::obtenerAccesoApp($empleado),
+                'perfil-remoto'
+            ),
+            'timeline' => Inertia::defer(fn () => AuditLog::query()
                 ->where('auditable_type', Empleado::class)
                 ->where('auditable_id', (string) $empleado->id)
                 ->with('user:id,name')
@@ -114,7 +117,7 @@ class EmpleadoController extends Controller
                     'new_values' => $log->new_values,
                     'created_at' => $log->created_at?->toISOString(),
                     'user' => $log->user?->name,
-                ]),
+                ]), 'perfil-remoto'),
         ]);
     }
 
@@ -291,10 +294,29 @@ class EmpleadoController extends Controller
         return redirect()->back()->with('success', 'Datos del empleado actualizados correctamente.');
     }
 
-    public function destroy(Empleado $empleado)
+    public function destroy(Request $request, Empleado $empleado)
     {
-        $fechaBaja = Carbon::now()->startOfDay();
+        $validated = $request->validate([
+            'fecha_baja' => ['required', 'date', 'before_or_equal:today'],
+            'motivo_baja' => ['nullable', 'string', 'max:500'],
+        ], [
+            'fecha_baja.required' => 'Indica la fecha efectiva de baja.',
+            'fecha_baja.before_or_equal' => 'La fecha de baja no puede ser futura.',
+        ]);
+
+        if (!$empleado->estatus) {
+            return back()->withErrors(['fecha_baja' => 'Este empleado ya se encuentra dado de baja.']);
+        }
+
+        $fechaBaja = Carbon::parse($validated['fecha_baja'])->startOfDay();
         $fechaIngreso = $empleado->inicioPeriodoActual();
+
+        if ($fechaIngreso && $fechaBaja->lt($fechaIngreso)) {
+            return back()->withErrors([
+                'fecha_baja' => 'La fecha de baja no puede ser anterior al inicio del periodo laboral actual.',
+            ]);
+        }
+
         $diasLaborados = $fechaIngreso ? DiasLaborados::contarSinDomingos($fechaIngreso, $fechaBaja) : 0;
         $diasLaboradosAnioBaja = $fechaIngreso ? DiasLaborados::contarAnioDeBaja($fechaIngreso, $fechaBaja) : 0;
         $this->moverFotoEmpleadoABajas($empleado);
@@ -305,7 +327,7 @@ class EmpleadoController extends Controller
             'numero_empleado' => null,
             'fecha_baja' => $fechaBaja->format('Y-m-d'),
             'dias_laborados' => $diasLaborados,
-            'motivo_baja' => request('motivo_baja'),
+            'motivo_baja' => $validated['motivo_baja'] ?? null,
         ];
 
         if (Schema::hasColumn('empleados', 'dias_laborados_anio_baja')) {
@@ -318,6 +340,46 @@ class EmpleadoController extends Controller
         FirebaseJobDispatcher::employee($empleado);
 
         return redirect()->back()->with('success', 'Empleado enviado a papelera y numero liberado.');
+    }
+
+    public function actualizarFechaReingreso(Request $request, Empleado $empleado)
+    {
+        $validated = $request->validate([
+            'fecha_reingreso' => ['required', 'date', 'before_or_equal:today'],
+        ], [
+            'fecha_reingreso.required' => 'Indica la fecha efectiva de reingreso.',
+            'fecha_reingreso.before_or_equal' => 'La fecha de reingreso no puede ser futura.',
+        ]);
+
+        if (!$empleado->estatus || !$empleado->fecha_reingreso) {
+            return back()->withErrors([
+                'fecha_reingreso' => 'Este empleado no tiene un reingreso activo que pueda editarse.',
+            ]);
+        }
+
+        $registro = $empleado->reingresos()
+            ->whereDate('fecha_reingreso', $empleado->fecha_reingreso)
+            ->latest('id')
+            ->first();
+        $fechaReingreso = Carbon::parse($validated['fecha_reingreso'])->startOfDay();
+        $fechaBajaAnterior = $registro?->fecha_baja_anterior
+            ? Carbon::parse($registro->fecha_baja_anterior)->startOfDay()
+            : null;
+
+        if ($fechaBajaAnterior && $fechaReingreso->lte($fechaBajaAnterior)) {
+            return back()->withErrors([
+                'fecha_reingreso' => 'El reingreso debe ser posterior a la baja anterior.',
+            ]);
+        }
+
+        DB::transaction(function () use ($empleado, $registro, $fechaReingreso) {
+            $registro?->update(['fecha_reingreso' => $fechaReingreso->format('Y-m-d')]);
+            $empleado->update(['fecha_reingreso' => $fechaReingreso->format('Y-m-d')]);
+        });
+
+        FirebaseJobDispatcher::employee($empleado->fresh());
+
+        return back()->with('success', 'Fecha de reingreso actualizada correctamente.');
     }
 
     public function restaurar(Request $request, Empleado $empleado)

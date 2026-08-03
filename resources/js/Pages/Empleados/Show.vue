@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { clavesFotoEmpleado, fotoEmpleadoSrc, mostrarFotoEmpleado, probarSiguienteFotoEmpleado } from '@/Utils/employeePhotos';
 
 const props = defineProps({
@@ -65,6 +65,26 @@ const guardarFechaBaja = () => {
     });
 };
 
+const modalEditarReingreso = ref(false);
+const reingresoForm = useForm({
+    fecha_reingreso: props.empleado.fecha_reingreso || '',
+});
+const abrirModalEditarReingreso = () => {
+    reingresoForm.fecha_reingreso = props.empleado.fecha_reingreso || '';
+    reingresoForm.clearErrors();
+    modalEditarReingreso.value = true;
+};
+const cerrarModalEditarReingreso = () => {
+    modalEditarReingreso.value = false;
+    reingresoForm.clearErrors();
+};
+const guardarFechaReingreso = () => {
+    reingresoForm.patch(route('empleados.fecha-reingreso.actualizar', props.empleado.id), {
+        preserveScroll: true,
+        onSuccess: () => cerrarModalEditarReingreso(),
+    });
+};
+
 // Saca las iniciales del nombre (Ej: Kevin Yahir Avila -> KY)
 const iniciales = computed(() => {
     if (!props.empleado.nombre_completo) return 'EM';
@@ -103,6 +123,12 @@ const accesoForm = useForm({
     usuario: accesoUsuario.value || String(numeroEmpleado.value || ''),
     password: '',
 });
+
+watch(() => props.accesoApp, (acceso) => {
+    if (!accesoForm.password) {
+        accesoForm.usuario = acceso?.login_usuario || String(numeroEmpleado.value || '');
+    }
+}, { deep: true });
 
 const guardarAccesoApp = () => {
     accesoForm.post(route('empleados.acceso-app.guardar', props.empleado.id), {
@@ -231,6 +257,15 @@ const desactivarAccesoApp = () => {
                                 >
                                     <i class="ti ti-pencil" aria-hidden="true"></i>
                                     Editar baja
+                                </button>
+                            </div>
+                        </div>
+
+                        <div v-if="empleadoActivo && empleado.fecha_reingreso" class="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <span>Periodo actual desde el {{ empleado.fecha_reingreso }}</span>
+                                <button type="button" class="inline-flex w-fit items-center gap-1 rounded-md border border-blue-200 bg-white px-2.5 py-1 text-xs font-bold text-blue-700 shadow-sm transition hover:bg-blue-100" title="Editar fecha de reingreso" @click="abrirModalEditarReingreso">
+                                    <i class="ti ti-pencil" aria-hidden="true"></i>Editar reingreso
                                 </button>
                             </div>
                         </div>
@@ -684,6 +719,32 @@ const desactivarAccesoApp = () => {
                             <i class="ti ti-device-floppy" aria-hidden="true"></i>
                             {{ bajaForm.processing ? 'Guardando...' : 'Guardar cambios' }}
                         </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div v-if="modalEditarReingreso" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" @click.self="cerrarModalEditarReingreso">
+            <div class="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl">
+                <div class="mb-4 flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                    <div>
+                        <h3 class="text-lg font-black text-slate-900">Editar fecha de reingreso</h3>
+                        <p class="mt-1 text-sm text-slate-500">Esta fecha inicia la antigüedad y vacaciones del periodo laboral actual.</p>
+                    </div>
+                    <button type="button" class="icon-button" title="Cerrar" aria-label="Cerrar" @click="cerrarModalEditarReingreso"><i class="ti ti-x"></i></button>
+                </div>
+                <form class="space-y-4" @submit.prevent="guardarFechaReingreso">
+                    <div>
+                        <label class="field-label" for="fecha-reingreso-perfil">Fecha de reingreso</label>
+                        <input id="fecha-reingreso-perfil" v-model="reingresoForm.fecha_reingreso" type="date" :max="new Date().toISOString().substring(0, 10)" class="field-input" required />
+                        <p v-if="reingresoForm.errors.fecha_reingreso" class="mt-1 text-xs font-semibold text-rose-600">{{ reingresoForm.errors.fecha_reingreso }}</p>
+                    </div>
+                    <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
+                        El ingreso original y los periodos anteriores permanecerán en el historial. Los cálculos actuales se actualizarán con esta fecha.
+                    </div>
+                    <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                        <button type="button" class="btn-secondary" @click="cerrarModalEditarReingreso">Cancelar</button>
+                        <button type="submit" class="btn-primary" :disabled="reingresoForm.processing"><i class="ti ti-device-floppy"></i>{{ reingresoForm.processing ? 'Guardando...' : 'Guardar cambios' }}</button>
                     </div>
                 </form>
             </div>
