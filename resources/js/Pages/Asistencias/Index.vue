@@ -2,7 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import AppPagination from '@/Components/AppPagination.vue';
 import { Head, useForm, router, Link, usePage } from '@inertiajs/vue3';
-import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 
 const props = defineProps({
     empleados: {
@@ -362,6 +362,7 @@ watch(
 onBeforeUnmount(() => {
     operationTimers.forEach((timer) => window.clearTimeout(timer));
     operationTimers.clear();
+    window.removeEventListener('keydown', atajosRevision);
 });
 
 const crearFechaLocal = (fecha) => {
@@ -887,6 +888,26 @@ const ayudaFiltroRevision = computed(() => ({
     domingos: 'Muestra solamente registros de domingo. Para el personal normal se consideran trabajo extraordinario, no faltas.',
     especiales: 'Muestra empleados con una regla laboral distinta: turno 24x24, sin retardos o sin horas extra. Este filtro solo facilita la revisión; no cambia sus cálculos.',
 }[filtroRevision.value]));
+
+const navegarIncompleta = (direccion = 1) => {
+    filtroRevision.value = 'incompletas';
+    nextTick(() => {
+        const campos = [...document.querySelectorAll('[data-incomplete-field]')].filter((elemento) => !elemento.disabled);
+        if (!campos.length) return;
+        const actual = campos.indexOf(document.activeElement);
+        const siguiente = actual < 0 ? 0 : (actual + direccion + campos.length) % campos.length;
+        campos[siguiente].focus();
+        campos[siguiente].scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    });
+};
+
+const atajosRevision = (event) => {
+    if (tabActiva.value !== 'revision' || !event.altKey) return;
+    if (event.key === 'ArrowDown') { event.preventDefault(); navegarIncompleta(1); }
+    if (event.key === 'ArrowUp') { event.preventDefault(); navegarIncompleta(-1); }
+};
+
+onMounted(() => window.addEventListener('keydown', atajosRevision));
 
 const calidadRevision = computed(() => calidadPreviewActiva.value || {
     score: 100,
@@ -1971,6 +1992,20 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                 </button>
                             </div>
 
+                            <div class="sticky top-16 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+                                <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-bold" aria-label="Leyenda de estados">
+                                    <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-full bg-emerald-500"></i> Asistencia</span>
+                                    <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-full bg-rose-500"></i> Falta</span>
+                                    <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-full bg-amber-500"></i> Incompleta</span>
+                                    <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-full bg-blue-500"></i> Especial</span>
+                                    <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-full bg-violet-500"></i> Incapacidad / vacaciones</span>
+                                </div>
+                                <div class="flex gap-1">
+                                    <button type="button" class="icon-button" title="Incompleta anterior (Alt + flecha arriba)" aria-label="Ir a la incompleta anterior" @click="navegarIncompleta(-1)"><i class="ti ti-arrow-up"></i></button>
+                                    <button type="button" class="icon-button" title="Siguiente incompleta (Alt + flecha abajo)" aria-label="Ir a la siguiente incompleta" @click="navegarIncompleta(1)"><i class="ti ti-arrow-down"></i></button>
+                                </div>
+                            </div>
+
                             <div class="flex items-start gap-3 rounded-lg border border-cyan-100 bg-cyan-50/70 px-4 py-3 text-sm text-cyan-950">
                                 <i class="ti ti-info-circle mt-0.5 text-lg text-cyan-700" aria-hidden="true"></i>
                                 <p class="min-w-0 leading-5"><strong>{{ filtrosRevisionMenu.find((item) => item.value === filtroRevision)?.label }}:</strong> {{ ayudaFiltroRevision }}</p>
@@ -2047,6 +2082,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                                     <div class="grid grid-cols-2 gap-2">
                                                         <input
                                                             v-model="dia.fila.hora_entrada"
+                                                            :data-incomplete-field="dia.fila.estado === 'incompleta' && !dia.fila.hora_entrada ? 'entrada' : null"
                                                             type="time"
                                                             :disabled="dia.fila.tipo_asistencia !== 'Normal'"
                                                             @change="calcularHorasFilaRevision(dia.fila)"
@@ -2055,6 +2091,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                                         />
                                                         <input
                                                             v-model="dia.fila.hora_salida"
+                                                            :data-incomplete-field="dia.fila.estado === 'incompleta' && !dia.fila.hora_salida ? 'salida' : null"
                                                             type="time"
                                                             :disabled="dia.fila.tipo_asistencia !== 'Normal'"
                                                             @change="calcularHorasFilaRevision(dia.fila)"

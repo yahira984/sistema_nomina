@@ -21,6 +21,23 @@
     * {
         letter-spacing: 0;
     }
+
+    :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+        outline: 3px solid rgba(13, 148, 136, 0.38);
+        outline-offset: 2px;
+    }
+
+    :where(button, a, input, select, textarea, [role='button']) {
+        transition-duration: 180ms !important;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            scroll-behavior: auto !important;
+            animation-duration: 1ms !important;
+            transition-duration: 1ms !important;
+        }
+    }
 }
 
 @layer components {
@@ -292,6 +309,112 @@
         @apply min-h-[calc(100vh-4rem)] overflow-x-hidden p-3 sm:p-5 lg:p-6;
     }
 
+    .app-breadcrumbs {
+        @apply mb-2 flex min-w-0 items-center gap-1.5 overflow-hidden text-xs text-slate-500 dark:text-slate-400;
+    }
+
+    .breadcrumb-link {
+        @apply inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-1 font-semibold hover:bg-white hover:text-blue-700 dark:hover:bg-slate-900 dark:hover:text-blue-300;
+    }
+
+    .quick-access {
+        @apply mb-4 flex items-center gap-1.5 overflow-x-auto rounded-lg border border-slate-200 bg-white px-2 py-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-900;
+    }
+
+    .quick-access-label {
+        @apply hidden shrink-0 border-r border-slate-200 px-2 text-[10px] font-black uppercase text-slate-400 sm:inline dark:border-slate-700;
+    }
+
+    .quick-access-link {
+        @apply inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white;
+    }
+
+    .quick-access-link.active {
+        @apply bg-blue-50 text-blue-800 dark:bg-blue-950/50 dark:text-blue-200;
+    }
+
+    .global-search-results {
+        @apply absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900;
+    }
+
+    .search-result-heading {
+        @apply px-3 pb-1 pt-2 text-[10px] font-black uppercase text-slate-400;
+    }
+
+    .search-result-row {
+        @apply flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 focus:bg-blue-50 dark:hover:bg-slate-800 dark:focus:bg-blue-950/40;
+    }
+
+    .search-result-row span {
+        @apply flex min-w-0 flex-1 flex-col text-sm text-slate-800 dark:text-slate-100;
+    }
+
+    .search-result-row small {
+        @apply text-xs font-medium text-slate-400;
+    }
+
+    .search-result-row kbd {
+        @apply rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-400 dark:border-slate-700 dark:bg-slate-800;
+    }
+
+    .app-modal-backdrop {
+        @apply fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm;
+        animation: fade-in 180ms ease-out;
+    }
+
+    .onboarding-card {
+        @apply relative w-full max-w-lg rounded-xl border border-white/20 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:p-8;
+        animation: modal-in 180ms ease-out;
+    }
+
+    .onboarding-icon {
+        @apply mb-5 flex h-14 w-14 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950/50 dark:text-teal-300;
+    }
+
+    .tour-dot {
+        @apply h-2 w-2 rounded-full bg-slate-200 transition-all dark:bg-slate-700;
+    }
+
+    .tour-dot.active {
+        @apply w-6 bg-teal-600;
+    }
+
+    .saved-highlight {
+        animation: saved-highlight 1.15s ease-out;
+    }
+
+    .sticky-action-bar {
+        @apply sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-white/95 p-3 shadow-xl backdrop-blur dark:border-blue-900 dark:bg-slate-900/95;
+    }
+
+    .toolbar-label {
+        @apply flex items-center gap-1.5 text-[10px] font-black uppercase text-slate-400;
+    }
+
+    .payroll-adjustments {
+        @apply overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900;
+    }
+
+    .payroll-adjustments > summary {
+        @apply flex cursor-pointer list-none flex-col gap-0.5 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-black uppercase text-slate-700 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-100 sm:flex-row sm:items-center sm:justify-between;
+    }
+
+    .payroll-adjustments > summary span {
+        @apply flex items-center gap-2;
+    }
+
+    .payroll-adjustments > summary small {
+        @apply text-[10px] font-semibold normal-case text-slate-400;
+    }
+
+    .error-resolution {
+        @apply mt-2 flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200;
+    }
+
+    @keyframes fade-in { from { opacity: 0; } }
+    @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.985); } }
+    @keyframes saved-highlight { 0% { box-shadow: 0 0 0 3px rgba(16, 185, 129, .35); background-color: rgba(236, 253, 245, .9); } 100% { box-shadow: none; } }
+
     .nav-link {
         @apply flex min-h-10 items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white;
     }
@@ -357,6 +480,35 @@
 
     html.density-compact .app-main {
         @apply p-3;
+    }
+
+    html.density-compact .metric-card,
+    html.density-compact .metric-tile {
+        @apply p-3;
+    }
+
+    html.density-compact .panel-header {
+        @apply px-4 py-3;
+    }
+
+    html.dark .app-panel,
+    html.dark .metric-card,
+    html.dark .metric-tile,
+    html.dark .action-card {
+        @apply border-slate-700 bg-slate-900 text-slate-100;
+    }
+
+    html.dark .field-input,
+    html.dark .field-input-soft {
+        @apply border-slate-700 bg-slate-900 text-slate-100 placeholder:text-slate-500;
+    }
+
+    @media (max-width: 767px) {
+        .app-topbar { @apply h-14 px-2; }
+        .app-main { @apply min-h-[calc(100vh-3.5rem)] p-2; }
+        .quick-access { @apply -mx-1 rounded-none border-x-0; }
+        .panel-header { @apply px-4 py-4; }
+        .app-toast { @apply bottom-3 left-3 right-3 max-w-none; }
     }
 
     html.density-compact .panel-header,

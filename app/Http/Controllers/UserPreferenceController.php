@@ -12,7 +12,11 @@ class UserPreferenceController extends Controller
         $validated = $request->validate([
             'theme' => ['nullable', 'in:light,dark,system'],
             'density' => ['nullable', 'in:comfortable,compact'],
+            'default_view' => ['nullable', 'in:list,grid'],
             'sidebar_collapsed' => ['nullable', 'boolean'],
+            'quick_access' => ['nullable', 'array', 'max:5'],
+            'quick_access.*' => ['string', 'max:80'],
+            'onboarding_completed' => ['nullable', 'boolean'],
             'saved_filters' => ['nullable', 'array'],
             'filter_key' => ['nullable', 'string', 'max:80', 'regex:/^[a-z0-9_.-]+$/'],
             'filter_value' => ['nullable', 'array'],

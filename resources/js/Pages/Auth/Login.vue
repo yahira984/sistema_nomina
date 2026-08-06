@@ -1,11 +1,11 @@
 <script setup>
-import Checkbox from '@/Components/Checkbox.vue';
 import GuestLayout from '@/Layouts/GuestLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { onMounted, ref } from 'vue';
 
 defineProps({
     canResetPassword: {
@@ -19,7 +19,15 @@ defineProps({
 const form = useForm({
     email: '',
     password: '',
-    remember: false,
+});
+
+const sessionExpired = ref(false);
+
+onMounted(() => {
+    const queryExpired = new URLSearchParams(window.location.search).get('expired') === '1';
+    const storedExpired = window.sessionStorage.getItem('session-expired-notice') === '1';
+    sessionExpired.value = queryExpired || storedExpired;
+    window.sessionStorage.removeItem('session-expired-notice');
 });
 
 const submit = () => {
@@ -41,6 +49,14 @@ const submit = () => {
 
         <div v-if="status" class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
             {{ status }}
+        </div>
+
+        <div v-if="sessionExpired" class="mb-4 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
+            <i class="ti ti-clock-exclamation mt-0.5 text-xl text-amber-700" aria-hidden="true"></i>
+            <div>
+                <p class="font-extrabold">Tu sesión terminó por inactividad</p>
+                <p class="mt-1 leading-5">Por seguridad, el sistema se desconecta después de una hora sin uso. Inicia sesión nuevamente para continuar.</p>
+            </div>
         </div>
 
         <form @submit.prevent="submit" class="space-y-5">
@@ -73,13 +89,6 @@ const submit = () => {
                 />
 
                 <InputError class="mt-2" :message="form.errors.password" />
-            </div>
-
-            <div class="block">
-                <label class="flex items-center">
-                    <Checkbox name="remember" v-model:checked="form.remember" />
-                    <span class="ms-2 text-sm font-medium text-slate-600">Recordarme</span>
-                </label>
             </div>
 
             <div class="flex items-center justify-between gap-4">

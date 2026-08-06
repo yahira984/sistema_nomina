@@ -35,6 +35,10 @@ Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified', 'approved', 'permission:dashboard.view'])
     ->name('dashboard');
 
+Route::get('/session/keep-alive', fn () => response()->noContent())
+    ->middleware(['auth', 'approved'])
+    ->name('session.keep-alive');
+
 Route::middleware(['auth', 'approved', 'audit'])->group(function () {
     // Rutas del perfil
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

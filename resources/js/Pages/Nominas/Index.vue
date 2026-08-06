@@ -49,6 +49,13 @@ const showPreflight = ref(false);
 const reconciliationFile = ref(null);
 const reconciliationInput = ref(null);
 
+const abrirHallazgo = (issue) => {
+    const numero = String(issue.employee || '').match(/#([^\s-]+)/)?.[1] || '';
+    if (numero) searchQuery.value = numero;
+    showPreflight.value = false;
+    requestAnimationFrame(() => document.querySelector('[data-payroll-results]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+};
+
 const selectedCorte = ref(props.fechaCorteActual);
 
 // --- VARIABLES DE FILTRADO Y ORDENAMIENTO ---
@@ -948,13 +955,16 @@ const enviarConciliacion = () => {
                             </button>
                         </div>
                         <div v-if="showPreflight" class="mt-4 max-h-72 space-y-2 overflow-y-auto border-t border-slate-200/70 pt-3">
-                            <div v-for="(issue, index) in preflight.issues" :key="`${issue.code}-${index}`" class="grid gap-1 rounded-lg bg-white px-3 py-2 text-sm sm:grid-cols-[minmax(12rem,1fr)_2fr]">
+                            <button v-for="(issue, index) in preflight.issues" :key="`${issue.code}-${index}`" type="button" class="grid w-full gap-1 rounded-lg bg-white px-3 py-2 text-left text-sm transition hover:ring-2 hover:ring-blue-200 sm:grid-cols-[minmax(12rem,1fr)_2fr_auto]" title="Localizar este empleado" @click="abrirHallazgo(issue)">
                                 <strong :class="issue.severity === 'critical' ? 'text-rose-700' : 'text-amber-700'">{{ issue.employee }}</strong>
                                 <span class="font-semibold text-slate-600">{{ issue.message }}</span>
-                            </div>
+                                <i class="ti ti-arrow-down-right text-blue-600" aria-hidden="true"></i>
+                            </button>
                             <p v-if="preflight.truncated" class="text-xs font-bold text-slate-500">Se muestran los primeros 150 hallazgos.</p>
                         </div>
                     </div>
+                    <div class="space-y-2">
+                        <p class="toolbar-label"><i class="ti ti-filter"></i> Filtros del periodo</p>
                     <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(20rem,1.2fr)_minmax(12rem,1fr)_minmax(13rem,1fr)]">
                         
                         <div class="relative min-w-0">
@@ -997,7 +1007,7 @@ const enviarConciliacion = () => {
                             </select>
                             <i class="ti ti-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
                         </div>
-                    </div>
+                    </div></div>
 
                     <div class="grid gap-4 border-t border-slate-100 pt-6 xl:grid-cols-[minmax(16rem,20rem)_1fr] xl:items-start">
                         <div class="relative w-full">
@@ -1005,6 +1015,8 @@ const enviarConciliacion = () => {
                             <input v-model="searchQuery" type="text" class="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="Buscar empleado o ID..." />
                         </div>
 
+                        <div class="space-y-2">
+                            <p class="toolbar-label sm:text-right"><i class="ti ti-file-export"></i> Exportaciones y pagos</p>
                         <div class="flex flex-wrap items-center gap-2 sm:justify-end sm:gap-3">
                             <div v-if="canReconcile" class="flex min-h-11 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-1.5">
                                 <input ref="reconciliationInput" type="file" accept=".csv,.txt,.xlsx,.xls" class="hidden" @change="seleccionarConciliacion" />
@@ -1041,7 +1053,7 @@ const enviarConciliacion = () => {
                             <button v-if="canExport" type="button" @click="exportarPdfEnSegundoPlano('payroll_pdf')" class="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-900 text-white border border-slate-800 hover:bg-slate-800 px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all">
                                 <i class="ti ti-printer text-lg"></i> PDF Todos
                             </button>
-                        </div>
+                        </div></div>
                     </div>
 
                     <div v-if="seleccionadosCount > 0" class="sticky bottom-4 z-30 rounded-lg border border-blue-200 bg-white p-4 shadow-xl">
@@ -1086,7 +1098,7 @@ const enviarConciliacion = () => {
                     </div>
                 </div>
 
-                <div class="bg-slate-50/50 p-6 sm:p-8 border-t border-slate-100">
+                <div data-payroll-results class="bg-slate-50/50 p-4 sm:p-6 border-t border-slate-100">
                     <div v-if="Object.keys(empleadosAgrupados).length === 0" class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white p-12 text-slate-400">
                         <i class="ti ti-file-x text-5xl mb-3 text-slate-300"></i>
                         <p class="font-bold">No se encontraron empleados para ese filtro.</p>
@@ -1125,9 +1137,9 @@ const enviarConciliacion = () => {
 
                             <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
                                 <article v-for="empleado in empleadosBanco" :key="`compacto-${empleado.id}`" 
-                                    :class="['rounded-3xl border bg-white shadow-sm transition-all duration-300 hover:shadow-xl hover:border-blue-200 overflow-hidden flex flex-col', tieneReglaEspecial(empleado) ? 'border-amber-200' : 'border-slate-200/60']">
+                                    :class="['rounded-xl border bg-white shadow-sm transition-all duration-200 hover:shadow-lg hover:border-blue-200 overflow-hidden flex flex-col', tieneReglaEspecial(empleado) ? 'border-amber-200' : 'border-slate-200/60']">
                                     
-                                    <div class="border-b border-slate-100 bg-slate-50/50 p-5 flex flex-wrap gap-4 items-start justify-between">
+                                    <div class="border-b border-slate-100 bg-slate-50/50 p-4 flex flex-wrap gap-3 items-start justify-between">
                                         <div class="flex min-w-0 items-start gap-4">
                                             <div class="pt-1">
                                                 <input type="checkbox" :checked="empleadoSeleccionado(empleado.id)" @change="toggleEmpleado(empleado.id, $event.target.checked)" class="h-5 w-5 rounded-md border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer shadow-sm" :title="`Seleccionar ${empleado.nombre_completo}`" />
@@ -1184,7 +1196,7 @@ const enviarConciliacion = () => {
                                         </div>
                                     </div>
 
-                                    <div class="p-5 flex-1 flex flex-col">
+                                    <div class="p-4 flex-1 flex flex-col">
                                         <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
                                             <div v-if="empleado.numero_cuenta" class="flex flex-col items-start">
                                                 <span class="text-[9px] font-black uppercase tracking-wider text-slate-400">{{ empleado.banco }}</span>
@@ -1239,10 +1251,10 @@ const enviarConciliacion = () => {
                                             </div>
                                             
                                             <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
-                                                <div class="rounded-xl border border-emerald-100 bg-white p-2.5 shadow-sm text-center">
+                                                <div class="col-span-2 rounded-lg border-2 border-emerald-300 bg-emerald-50 p-3 shadow-sm text-center lg:col-span-1">
                                                     <span class="block text-[9px] font-black uppercase tracking-wider text-emerald-500 mb-0.5">Pago Neto</span>
                                                     <span v-if="asistenciaPendiente(empleado)" class="text-sm font-black text-amber-700">Pendiente</span>
-                                                    <span v-else class="text-sm font-black text-emerald-700">${{ moneda(resumenNomina(empleado).pago_neto) }}</span>
+                                                    <span v-else class="text-xl font-black text-emerald-800">${{ moneda(resumenNomina(empleado).pago_neto) }}</span>
                                                 </div>
                                                 <div class="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm text-center">
                                                     <span class="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Deuda Actual</span>
@@ -1258,7 +1270,9 @@ const enviarConciliacion = () => {
                                                 </div>
                                             </div>
 
-                                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                            <details class="payroll-adjustments" open>
+                                                <summary><span><i class="ti ti-adjustments-dollar"></i> Deducciones y ajustes</span><small>Préstamo, IMSS, faltas y forma de pago</small></summary>
+                                            <div class="grid grid-cols-1 gap-4 p-3 lg:grid-cols-2">
                                                 <section class="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
                                                     <div class="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-blue-800">
                                                         <i class="ti ti-cash-banknote text-base"></i> Préstamo
@@ -1383,7 +1397,7 @@ const enviarConciliacion = () => {
                                                         <i class="ti ti-alert-circle"></i> Adeuda {{ horas(horasAdeudoMiercolesAnterior(empleado)) }}h del miércoles anterior.
                                                     </div>
                                                 </section>
-                                            </div>
+                                            </div></details>
 
                                             <button v-if="canManage" type="button" @click="guardarAjustes(empleado)" :disabled="asistenciaPendiente(empleado)" class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-slate-900/20 transition-all hover:bg-slate-800 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none disabled:hover:translate-y-0">
                                                 <i class="ti ti-device-floppy text-base"></i>

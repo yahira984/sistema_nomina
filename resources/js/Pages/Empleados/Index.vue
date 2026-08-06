@@ -19,7 +19,8 @@ const empleadoId = ref(null);
 const searchQuery = ref(props.filtros.search || '');
 const filtroEstado = ref(props.filtros.status || 'activos');
 const criterioOrdenDirectorio = ref(props.filtros.sort || 'num_asc');
-const vistaDirectorio = ref(localStorage.getItem('empleados:vista') || 'tabla');
+const vistaPreferida = page.props.auth?.user?.preferences?.default_view === 'grid' ? 'cuadricula' : 'tabla';
+const vistaDirectorio = ref(localStorage.getItem('empleados:vista') || vistaPreferida);
 const empleadoFotoAmpliada = ref(null);
 const empleadoFotoEdicion = ref(null);
 const empleadoRestauracion = ref(null);
@@ -189,6 +190,9 @@ const empleadosConDeuda = computed(() => Number(props.resumen.con_deuda ?? 0));
 const cambiarVista = (vista) => {
     vistaDirectorio.value = vista;
     localStorage.setItem('empleados:vista', vista);
+    window.axios?.patch(route('preferencias.update'), {
+        default_view: vista === 'cuadricula' ? 'grid' : 'list',
+    }).catch(() => {});
 };
 
 let filtroTimer = null;
@@ -315,7 +319,7 @@ const restaurarEmpleado = () => {
             </div>
         </template>
 
-        <div class="space-y-8">
+        <div class="space-y-4">
             <!-- Formulario Bento Box -->
             <section v-if="canManage" :class="['relative overflow-hidden rounded-3xl bg-white border shadow-sm transition-all duration-300', editando ? 'border-amber-300 shadow-amber-500/10 shadow-xl' : 'border-slate-200/60']">
                 <div :class="['absolute top-0 left-0 w-1.5 h-full', editando ? 'bg-amber-400' : 'bg-blue-600']"></div>
@@ -500,8 +504,8 @@ const restaurarEmpleado = () => {
             </section>
 
             <!-- Directorio (Tabla Bento) -->
-            <section class="rounded-3xl border border-slate-200/60 bg-white shadow-sm overflow-hidden">
-                <div class="flex flex-col gap-5 border-b border-slate-100 bg-slate-50/50 p-6 xl:flex-row xl:items-center xl:justify-between">
+            <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <div class="flex flex-col gap-3 border-b border-slate-100 bg-white p-4 xl:flex-row xl:items-center xl:justify-between dark:border-slate-800 dark:bg-slate-900">
                     <div class="shrink-0">
                         <h3 class="font-['Sora'] text-lg font-bold text-slate-900">{{ tituloDirectorio }}</h3>
                         <p class="text-xs font-medium text-slate-500">
@@ -509,7 +513,7 @@ const restaurarEmpleado = () => {
                         </p>
                     </div>
                     
-                    <div class="w-full min-w-0 space-y-3 xl:max-w-4xl">
+                    <div class="w-full min-w-0 space-y-2 xl:max-w-4xl">
                         <!-- Filtros (Pills) -->
                         <div class="grid w-full grid-cols-3 gap-1 rounded-lg bg-slate-100/80 p-1">
                             <button @click="filtroEstado = 'activos'" :class="filtroEstado === 'activos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="min-w-0 rounded-lg px-2 py-2 text-[11px] font-bold uppercase tracking-wider transition-all sm:px-4">
@@ -531,13 +535,13 @@ const restaurarEmpleado = () => {
                             </span>
                             <input v-model="searchQuery" type="search" class="h-12 w-full rounded-lg border border-slate-200 bg-white pl-12 pr-4 text-sm font-semibold text-slate-800 shadow-sm transition-all placeholder:font-medium placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10" placeholder="Buscar por nombre o nÃºmero..." aria-label="Buscar empleado por nombre o nÃºmero" />
                         </div>
-                        <select v-model="criterioOrdenDirectorio" class="field-input h-12 w-full min-w-0" aria-label="Ordenar directorio">
+                        <select v-model="criterioOrdenDirectorio" class="field-input h-10 w-full min-w-0 py-2" aria-label="Ordenar directorio">
                             <option value="num_asc">Número ascendente</option>
                             <option value="num_desc">Número descendente</option>
                             <option value="name_asc">Nombre A - Z</option>
                             <option value="name_desc">Nombre Z - A</option>
                         </select>
-                        <div class="segmented-control h-12 shrink-0 justify-self-start sm:justify-self-end" aria-label="Vista del directorio">
+                        <div class="segmented-control h-10 shrink-0 justify-self-start sm:justify-self-end" aria-label="Vista del directorio">
                             <button type="button" :class="{ active: vistaDirectorio === 'tabla' }" title="Vista de tabla" @click="cambiarVista('tabla')">
                                 <i class="ti ti-list" aria-hidden="true"></i><span class="sr-only">Tabla</span>
                             </button>
