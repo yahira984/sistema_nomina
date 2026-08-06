@@ -35,6 +35,10 @@ Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified', 'approved', 'permission:dashboard.view'])
     ->name('dashboard');
 
+Route::get('/session/keep-alive', fn () => response()->noContent())
+    ->middleware(['auth', 'approved'])
+    ->name('session.keep-alive');
+
 Route::middleware(['auth', 'approved', 'audit'])->group(function () {
     // Rutas del perfil
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -92,6 +96,7 @@ Route::middleware(['auth', 'approved', 'audit'])->group(function () {
     Route::put('/empleados/{empleado}', [EmpleadoController::class, 'update'])->middleware('permission:empleados.manage')->name('empleados.update');
     Route::delete('/empleados/{empleado}', [EmpleadoController::class, 'destroy'])->middleware('permission:empleados.deactivate')->name('empleados.destroy');
     Route::put('/empleados/{empleado}/restaurar', [EmpleadoController::class, 'restaurar'])->middleware('permission:empleados.restore')->name('empleados.restaurar');
+    Route::patch('/empleados/{empleado}/fecha-reingreso', [EmpleadoController::class, 'actualizarFechaReingreso'])->middleware('permission:empleados.restore')->name('empleados.fecha-reingreso.actualizar');
     Route::post('/empleados/{empleado}/foto', [EmpleadoController::class, 'actualizarFoto'])->middleware('permission:empleados.photo')->name('empleados.foto.actualizar');
     Route::post('/empleados/{empleado}/acceso-app', [EmpleadoController::class, 'guardarAccesoApp'])->middleware('permission:empleados.app_access')->name('empleados.acceso-app.guardar');
     Route::delete('/empleados/{empleado}/acceso-app', [EmpleadoController::class, 'desactivarAccesoApp'])->middleware('permission:empleados.app_access')->name('empleados.acceso-app.desactivar');

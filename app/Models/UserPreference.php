@@ -12,6 +12,8 @@ class UserPreference extends Model
     protected $casts = [
         'sidebar_collapsed' => 'boolean',
         'saved_filters' => 'array',
+        'quick_access' => 'array',
+        'onboarding_completed' => 'boolean',
     ];
 
     public function user(): BelongsTo

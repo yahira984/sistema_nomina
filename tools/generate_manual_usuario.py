@@ -37,7 +37,7 @@ CAPTURES = [
         "id": "CAP-01",
         "screen": "Inicio de sesión",
         "state": "Pantalla completa, sin escribir una contraseña real.",
-        "focus": "Logo, correo, contraseña, recordar sesión, recuperar contraseña y acceso a registro.",
+        "focus": "Logo, correo, contraseña, recuperar contraseña y acceso a registro.",
     },
     {
         "id": "CAP-02",
@@ -284,6 +284,12 @@ CAPTURES = [
         "screen": "Configuración del perfil",
         "state": "Cuenta de prueba o datos protegidos.",
         "focus": "Datos de perfil, cambio de contraseña y eliminación de cuenta cuando esté permitida.",
+    },
+    {
+        "id": "CAP-43",
+        "screen": "Inicio de sesión - sesión vencida",
+        "state": "Dejar una cuenta de prueba una hora sin actividad o abrir /login?expired=1.",
+        "focus": "Aviso Tu sesión terminó por inactividad, explicación de una hora y formulario para volver a entrar.",
     },
     {
         "id": "APP-01",
@@ -663,7 +669,7 @@ def configure_document(doc: Document) -> None:
         footer = current_section.footer
         footer_paragraph = footer.paragraphs[0]
         footer_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        footer_run = footer_paragraph.add_run("Uso interno  |  Julio 2026  |  Página ")
+        footer_run = footer_paragraph.add_run("Uso interno  |  Agosto 2026  |  Página ")
         footer_run.font.size = Pt(8)
         footer_run.font.color.rgb = RGBColor.from_string(GRAY)
         add_field(footer_paragraph.add_run(), "PAGE")
@@ -712,9 +718,9 @@ def add_cover(doc: Document) -> None:
     metadata.alignment = WD_ALIGN_PARAGRAPH.CENTER
     metadata.paragraph_format.space_before = Pt(80)
     metadata.paragraph_format.line_spacing = 1.4
-    metadata.add_run("Versión documental: 1.0\n").bold = True
-    metadata.add_run("Referencia funcional: julio de 2026\n")
-    metadata.add_run("Documento editable con guía de 46 capturas\n")
+    metadata.add_run("Versión documental: 1.1\n").bold = True
+    metadata.add_run("Referencia funcional: agosto de 2026\n")
+    metadata.add_run("Documento editable con guía de 47 capturas\n")
     metadata.add_run("Clasificación: Uso interno")
 
     doc.add_page_break()
@@ -728,8 +734,8 @@ def add_front_matter(doc: Document) -> None:
         [
             ["Documento", "Manual de Usuario del Sistema de Nóminas, Asistencias y Personal"],
             ["Organización", "PROMATEC LUGARTH"],
-            ["Versión", "1.0"],
-            ["Fecha", "Julio de 2026"],
+            ["Versión", "1.1"],
+            ["Fecha", "Agosto de 2026"],
             ["Propietario sugerido", "Administración / Recursos Humanos"],
             ["Revisión sugerida", "Cada año y después de cambios funcionales importantes"],
         ],
@@ -808,7 +814,6 @@ def add_access_and_roles(doc: Document) -> None:
         [
             "Abra la dirección del sistema proporcionada por el administrador.",
             "Capture el correo y la contraseña de su cuenta.",
-            "Active Recordarme únicamente en un equipo personal o controlado.",
             "Seleccione Iniciar sesión.",
             "Si la cuenta está aprobada y activa, el sistema abrirá el Panel; de lo contrario mostrará el estado correspondiente.",
         ],
@@ -856,6 +861,30 @@ def add_access_and_roles(doc: Document) -> None:
         "Cuenta de recuperación",
         "El sistema protege una cuenta administrativa de recuperación: no puede deshabilitarse, eliminarse ni perder el rol Administrador.",
         "info",
+    )
+
+    doc.add_heading("1.4 Cierre automático por inactividad", level=2)
+    doc.add_paragraph(
+        "Por seguridad, la sesión termina después de 60 minutos sin actividad. Mientras la persona usa el sistema, "
+        "la sesión se mantiene activa de forma silenciosa. Al cumplirse la hora sin uso, el sistema vuelve al inicio "
+        "de sesión y explica el motivo; no se presenta como un error del menú o del módulo."
+    )
+    add_steps(
+        doc,
+        "Qué debe hacer el usuario",
+        [
+            "Lea el aviso Tu sesión terminó por inactividad.",
+            "Capture nuevamente su correo y contraseña.",
+            "Seleccione Entrar y vuelva al módulo que estaba consultando.",
+            "Revise que la última operación se haya guardado antes de repetirla, especialmente pagos, importaciones o ajustes.",
+        ],
+    )
+    add_capture(doc, "CAP-43")
+    add_note(
+        doc,
+        "Importante",
+        "La desconexión automática se calcula por inactividad. Cerrar la pestaña, perder la red o apagar el servidor son situaciones distintas.",
+        "warn",
     )
 
     doc.add_heading("2. Roles y permisos", level=1)
@@ -1478,6 +1507,7 @@ def add_system_admin(doc: Document) -> None:
             "Cambio de contraseña requiere la contraseña actual y confirmación de la nueva.",
             "Eliminar cuenta es definitivo y puede estar protegido para cuentas especiales.",
             "Salir finaliza la sesión; úselo siempre al terminar en un equipo compartido.",
+            "Después de 60 minutos sin actividad, el sistema cierra la sesión, muestra un aviso y solicita iniciar sesión nuevamente.",
         ],
     )
     add_capture(doc, "CAP-42")
@@ -1592,11 +1622,14 @@ def add_operations_troubleshooting(doc: Document) -> None:
         ],
     )
 
+    doc.add_page_break()
     doc.add_heading("15. Solución de problemas", level=1)
     troubleshooting = [
         ["Pantalla en blanco al abrir por IP", "Ejecute la compilación de producción, confirme que los archivos de public/build se copiaron, revise APP_URL/Vite, reinicie el servidor y permita el puerto en el firewall. No dependa del servidor de desarrollo en la computadora principal."],
         ["Un módulo no aparece", "Revise el rol y permisos efectivos en Seguridad > Usuarios; cierre sesión y vuelva a entrar después del cambio."],
         ["Cuenta pendiente o deshabilitada", "Un Administrador debe aprobar/reactivar la cuenta y guardar."],
+        ["Sesión terminada por inactividad", "El sistema se desconecta después de una hora sin uso. Inicie sesión nuevamente y confirme que la última acción se guardó antes de repetirla."],
+        ["Error después de dejar el sistema abierto", "Si aparece el aviso de sesión vencida, vuelva a iniciar sesión. Si indica Sin conexión, revise red, servidor y puerto; no son el mismo problema."],
         ["CSV detecta en blanco", "Confirme rango, número de empleado, formato de fecha y clasificación Sin empleado/Sin registro. Revise la semana correcta."],
         ["Entrada o salida faltante", "Use filtro Incompletas, valide la hora con el responsable y complete solo con evidencia."],
         ["Edición desaparece al cambiar de página", "Permanezca en la misma revisión y navegador. No descarte ni cargue otro CSV; vuelva a la página y confirme antes de aprobar."],
@@ -1617,9 +1650,6 @@ def add_operations_troubleshooting(doc: Document) -> None:
         "Al pedir soporte incluya fecha/hora, usuario, módulo, empleado, semana, acción realizada, mensaje exacto y captura sin datos sensibles.",
         "info",
     )
-    doc.add_page_break()
-
-
 def add_capture_checklist(doc: Document) -> None:
     doc.add_heading("16. Lista maestra de capturas", level=1)
     doc.add_paragraph(
@@ -1690,7 +1720,7 @@ def add_glossary(doc: Document) -> None:
 
     doc.add_heading("17.1 Lista de entrega del manual", level=2)
     checklist = [
-        "Se sustituyeron los 42 marcadores web y los 4 marcadores móviles.",
+        "Se sustituyeron los 43 marcadores web y los 4 marcadores móviles.",
         "No aparecen contraseñas ni datos personales/bancarios sin protección.",
         "Las capturas corresponden a la versión instalada en la computadora de la contadora.",
         "Se revisaron nombres de botones, periodos y roles.",

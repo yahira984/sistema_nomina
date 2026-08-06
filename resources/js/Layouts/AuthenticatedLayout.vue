@@ -2,6 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Link, router, usePage } from '@inertiajs/vue3'
 import OperationCenter from '@/Components/OperationCenter.vue'
+import AppBreadcrumbs from '@/Components/AppBreadcrumbs.vue'
+import { redirectToExpiredLogin } from '@/Utils/sessionGuard'
 
 const page = usePage()
 const user = computed(() => page.props.auth?.user)
@@ -14,11 +16,18 @@ const isSidebarOpenMobile = ref(false)
 const isSidebarCollapsedDesktop = ref(Boolean(preferences.value.sidebar_collapsed))
 const openGroups = ref(new Set(['Principal', 'Operación', 'Sistema', 'Seguridad']))
 const globalSearch = ref('')
+const searchFocused = ref(false)
 const showNotifications = ref(false)
 const showPreferences = ref(false)
 const online = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
 const toastVisible = ref(false)
 let toastTimer = null
+let sessionTimer = null
+let heartbeatTimer = null
+let lastActivityAt = Date.now()
+const sessionLifetimeMs = 60 * 60 * 1000
+const heartbeatEveryMs = 5 * 60 * 1000
+const activityEvents = ['pointerdown', 'keydown', 'touchstart', 'scroll']
 
 const navItems = [
     {
@@ -82,6 +91,17 @@ const selectedPeriod = computed(() => {
 
 const isActive = routeName => route().current(routeName) || route().current(`${routeName}.*`)
 const groupIsOpen = label => openGroups.value.has(label)
+const flatNavItems = computed(() => visibleNavItems.value.flatMap(group => group.links.map(link => ({ ...link, group: group.label }))))
+const activeNavItem = computed(() => flatNavItems.value.find(item => isActive(item.route)))
+const breadcrumbs = computed(() => activeNavItem.value ? [{ label: activeNavItem.value.group }, { label: activeNavItem.value.name }] : [])
+const normalizedSearch = computed(() => globalSearch.value.trim().toLocaleLowerCase('es-MX'))
+const moduleMatches = computed(() => normalizedSearch.value
+    ? flatNavItems.value.filter(item => `${item.name} ${item.group}`.toLocaleLowerCase('es-MX').includes(normalizedSearch.value)).slice(0, 5)
+    : [])
+const quickAccess = computed(() => {
+    const selected = Array.isArray(preferences.value.quick_access) ? preferences.value.quick_access : ['asistencias.index', 'nominas.index', 'empleados.index']
+    return selected.map(routeName => flatNavItems.value.find(item => item.route === routeName)).filter(Boolean).slice(0, 5)
+})
 
 const toggleGroup = label => {
     const next = new Set(openGroups.value)
@@ -135,6 +155,13 @@ const searchEmployees = () => {
     globalSearch.value = ''
 }
 
+const openModule = item => {
+    globalSearch.value = ''
+    searchFocused.value = false
+    router.visit(route(item.route))
+}
+
+
 const showToast = () => {
     clearTimeout(toastTimer)
     toastVisible.value = Boolean(flash.value.success || flash.value.error)
@@ -143,18 +170,48 @@ const showToast = () => {
 
 const updateOnline = () => { online.value = navigator.onLine }
 
+const scheduleSessionExpiration = () => {
+    window.clearTimeout(sessionTimer)
+    sessionTimer = window.setTimeout(redirectToExpiredLogin, sessionLifetimeMs)
+}
+
+const registerActivity = () => {
+    lastActivityAt = Date.now()
+    scheduleSessionExpiration()
+}
+
+const keepSessionAlive = async () => {
+    if (Date.now() - lastActivityAt > heartbeatEveryMs + 30000) return
+
+    try {
+        await window.axios.get(route('session.keep-alive'), {
+            headers: { 'X-Session-Heartbeat': '1' },
+        })
+    } catch (error) {
+        // El interceptor global gestiona sesiones vencidas; los fallos de red no cierran la sesión.
+    }
+}
+
 watch(preferences, () => nextTick(applyPreferences), { deep: true })
 watch(flash, showToast, { deep: true, immediate: true })
 
 onMounted(() => {
     applyPreferences()
+    const active = visibleNavItems.value.find(group => group.links.some(item => isActive(item.route)))
+    openGroups.value = new Set(active ? [active.label] : ['Principal'])
     window.addEventListener('online', updateOnline)
     window.addEventListener('offline', updateOnline)
+    activityEvents.forEach(event => window.addEventListener(event, registerActivity, { passive: true }))
+    scheduleSessionExpiration()
+    heartbeatTimer = window.setInterval(keepSessionAlive, heartbeatEveryMs)
 })
 
 onBeforeUnmount(() => {
     window.removeEventListener('online', updateOnline)
     window.removeEventListener('offline', updateOnline)
+    activityEvents.forEach(event => window.removeEventListener(event, registerActivity))
+    window.clearTimeout(sessionTimer)
+    window.clearInterval(heartbeatTimer)
     clearTimeout(toastTimer)
 })
 </script>
@@ -240,7 +297,7 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <form class="mx-3 hidden max-w-md flex-1 lg:block" role="search" @submit.prevent="searchEmployees">
+                <form class="relative mx-3 hidden max-w-md flex-1 lg:block" role="search" @submit.prevent="searchEmployees">
                     <label class="relative block">
                         <span class="sr-only">Buscar empleado</span>
                         <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true"></i>
@@ -248,9 +305,25 @@ onBeforeUnmount(() => {
                             v-model="globalSearch"
                             type="search"
                             class="field-input h-10 py-2 pl-9"
+                            aria-label="Buscar módulos o empleados"
+                            @focus="searchFocused = true"
+                            @blur="setTimeout(() => searchFocused = false, 180)"
+                            @keydown.esc="globalSearch = ''; searchFocused = false"
                             placeholder="Buscar por nombre, número o puesto"
                         />
                     </label>
+                    <div v-if="searchFocused && normalizedSearch" class="global-search-results">
+                        <p class="search-result-heading">Módulos</p>
+                        <button v-for="item in moduleMatches" :key="item.route" type="button" class="search-result-row" @mousedown.prevent="openModule(item)">
+                            <i :class="['ti text-lg text-blue-700 dark:text-blue-300', item.icon]"></i>
+                            <span><strong>{{ item.name }}</strong><small>{{ item.group }}</small></span>
+                            <kbd>Enter</kbd>
+                        </button>
+                        <button type="submit" class="search-result-row border-t border-slate-100 dark:border-slate-800">
+                            <i class="ti ti-user-search text-lg text-teal-700"></i>
+                            <span><strong>Buscar “{{ globalSearch }}”</strong><small>En empleados</small></span>
+                        </button>
+                    </div>
                 </form>
 
                 <div class="flex items-center gap-1.5">
@@ -327,6 +400,13 @@ onBeforeUnmount(() => {
 
             <main class="app-main">
                 <div class="mx-auto w-full max-w-[1600px]">
+                    <AppBreadcrumbs :items="breadcrumbs" />
+                    <nav v-if="quickAccess.length" class="quick-access" aria-label="Accesos rápidos">
+                        <span class="quick-access-label">Accesos</span>
+                        <Link v-for="item in quickAccess" :key="item.route" :href="route(item.route)" :class="['quick-access-link', isActive(item.route) && 'active']">
+                            <i :class="['ti', item.icon]"></i><span>{{ item.name }}</span>
+                        </Link>
+                    </nav>
                     <section v-if="$slots.header" class="mb-5 border-b border-slate-200 pb-5 dark:border-slate-700">
                         <slot name="header" />
                     </section>

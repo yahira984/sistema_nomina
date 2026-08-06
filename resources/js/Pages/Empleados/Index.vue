@@ -19,14 +19,17 @@ const empleadoId = ref(null);
 const searchQuery = ref(props.filtros.search || '');
 const filtroEstado = ref(props.filtros.status || 'activos');
 const criterioOrdenDirectorio = ref(props.filtros.sort || 'num_asc');
-const vistaDirectorio = ref(localStorage.getItem('empleados:vista') || 'tabla');
+const vistaPreferida = page.props.auth?.user?.preferences?.default_view === 'grid' ? 'cuadricula' : 'tabla';
+const vistaDirectorio = ref(localStorage.getItem('empleados:vista') || vistaPreferida);
 const empleadoFotoAmpliada = ref(null);
 const empleadoFotoEdicion = ref(null);
 const empleadoRestauracion = ref(null);
+const empleadoBaja = ref(null);
 const fotoPreview = ref('');
 const fotosDisponibles = ref(new Set());
 const fotoForm = useForm({ foto: null });
 const restaurarForm = useForm({ fecha_reingreso: '' });
+const bajaEmpleadoForm = useForm({ fecha_baja: '', motivo_baja: '' });
 
 const fechaLocalHoy = () => {
     const hoy = new Date();
@@ -187,6 +190,9 @@ const empleadosConDeuda = computed(() => Number(props.resumen.con_deuda ?? 0));
 const cambiarVista = (vista) => {
     vistaDirectorio.value = vista;
     localStorage.setItem('empleados:vista', vista);
+    window.axios?.patch(route('preferencias.update'), {
+        default_view: vista === 'cuadricula' ? 'grid' : 'list',
+    }).catch(() => {});
 };
 
 let filtroTimer = null;
@@ -245,14 +251,26 @@ const recargarEmpleados = () => router.reload({
     preserveScroll: true,
     preserveState: true,
 });
-const eliminarEmpleado = (id, nombre) => {
-    if (!confirm(`¿Dar de baja a ${nombre}?`)) return;
+const abrirBajaEmpleado = (empleado) => {
+    empleadoBaja.value = empleado;
+    bajaEmpleadoForm.fecha_baja = fechaLocalHoy();
+    bajaEmpleadoForm.motivo_baja = '';
+    bajaEmpleadoForm.clearErrors();
+};
+const cerrarBajaEmpleado = () => {
+    empleadoBaja.value = null;
+    bajaEmpleadoForm.reset();
+    bajaEmpleadoForm.clearErrors();
+};
+const eliminarEmpleado = () => {
+    if (!empleadoBaja.value) return;
 
-    router.delete(route('empleados.destroy', id), {
+    bajaEmpleadoForm.delete(route('empleados.destroy', empleadoBaja.value.id), {
         preserveScroll: true,
         preserveState: false,
         onSuccess: () => {
             filtroEstado.value = 'papelera';
+            cerrarBajaEmpleado();
             recargarEmpleados();
         },
     });
@@ -301,7 +319,7 @@ const restaurarEmpleado = () => {
             </div>
         </template>
 
-        <div class="space-y-8">
+        <div class="space-y-4">
             <!-- Formulario Bento Box -->
             <section v-if="canManage" :class="['relative overflow-hidden rounded-3xl bg-white border shadow-sm transition-all duration-300', editando ? 'border-amber-300 shadow-amber-500/10 shadow-xl' : 'border-slate-200/60']">
                 <div :class="['absolute top-0 left-0 w-1.5 h-full', editando ? 'bg-amber-400' : 'bg-blue-600']"></div>
@@ -486,8 +504,8 @@ const restaurarEmpleado = () => {
             </section>
 
             <!-- Directorio (Tabla Bento) -->
-            <section class="rounded-3xl border border-slate-200/60 bg-white shadow-sm overflow-hidden">
-                <div class="flex flex-col gap-5 border-b border-slate-100 bg-slate-50/50 p-6 xl:flex-row xl:items-center xl:justify-between">
+            <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <div class="flex flex-col gap-3 border-b border-slate-100 bg-white p-4 xl:flex-row xl:items-center xl:justify-between dark:border-slate-800 dark:bg-slate-900">
                     <div class="shrink-0">
                         <h3 class="font-['Sora'] text-lg font-bold text-slate-900">{{ tituloDirectorio }}</h3>
                         <p class="text-xs font-medium text-slate-500">
@@ -495,20 +513,21 @@ const restaurarEmpleado = () => {
                         </p>
                     </div>
                     
-                    <div class="grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:w-auto xl:grid-cols-[auto_minmax(280px,360px)_220px_auto]">
+                    <div class="w-full min-w-0 space-y-2 xl:max-w-4xl">
                         <!-- Filtros (Pills) -->
-                        <div class="flex min-w-0 rounded-lg bg-slate-100/80 p-1 sm:col-span-2 xl:col-span-1">
-                            <button @click="filtroEstado = 'activos'" :class="filtroEstado === 'activos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 sm:flex-none rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all">
+                        <div class="grid w-full grid-cols-3 gap-1 rounded-lg bg-slate-100/80 p-1">
+                            <button @click="filtroEstado = 'activos'" :class="filtroEstado === 'activos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="min-w-0 rounded-lg px-2 py-2 text-[11px] font-bold uppercase tracking-wider transition-all sm:px-4">
                                 Activos ({{ empleadosActivos }})
                             </button>
-                            <button @click="filtroEstado = 'papelera'" :class="filtroEstado === 'papelera' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 sm:flex-none rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all">
+                            <button @click="filtroEstado = 'papelera'" :class="filtroEstado === 'papelera' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="min-w-0 rounded-lg px-2 py-2 text-[11px] font-bold uppercase tracking-wider transition-all sm:px-4">
                                 Bajas ({{ empleadosBaja }})
                             </button>
-                            <button @click="filtroEstado = 'prestamo'" :class="filtroEstado === 'prestamo' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="flex-1 sm:flex-none rounded-lg px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all">
+                            <button @click="filtroEstado = 'prestamo'" :class="filtroEstado === 'prestamo' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="min-w-0 rounded-lg px-2 py-2 text-[11px] font-bold uppercase tracking-wider transition-all sm:px-4">
                                 Préstamos ({{ empleadosConDeuda }})
                             </button>
                         </div>
-                        
+
+                        <div class="grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-[minmax(240px,1fr)_220px_auto]">
                         <!-- Buscador -->
                         <div class="relative min-w-0">
                             <span class="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-blue-600" aria-hidden="true">
@@ -516,19 +535,20 @@ const restaurarEmpleado = () => {
                             </span>
                             <input v-model="searchQuery" type="search" class="h-12 w-full rounded-lg border border-slate-200 bg-white pl-12 pr-4 text-sm font-semibold text-slate-800 shadow-sm transition-all placeholder:font-medium placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10" placeholder="Buscar por nombre o nÃºmero..." aria-label="Buscar empleado por nombre o nÃºmero" />
                         </div>
-                        <select v-model="criterioOrdenDirectorio" class="field-input h-12 w-full min-w-0" aria-label="Ordenar directorio">
+                        <select v-model="criterioOrdenDirectorio" class="field-input h-10 w-full min-w-0 py-2" aria-label="Ordenar directorio">
                             <option value="num_asc">Número ascendente</option>
                             <option value="num_desc">Número descendente</option>
                             <option value="name_asc">Nombre A - Z</option>
                             <option value="name_desc">Nombre Z - A</option>
                         </select>
-                        <div class="segmented-control h-12 shrink-0 justify-self-start sm:justify-self-end" aria-label="Vista del directorio">
+                        <div class="segmented-control h-10 shrink-0 justify-self-start sm:justify-self-end" aria-label="Vista del directorio">
                             <button type="button" :class="{ active: vistaDirectorio === 'tabla' }" title="Vista de tabla" @click="cambiarVista('tabla')">
                                 <i class="ti ti-list" aria-hidden="true"></i><span class="sr-only">Tabla</span>
                             </button>
                             <button type="button" :class="{ active: vistaDirectorio === 'cuadricula' }" title="Vista de cuadrícula" @click="cambiarVista('cuadricula')">
                                 <i class="ti ti-layout-grid" aria-hidden="true"></i><span class="sr-only">Cuadrícula</span>
                             </button>
+                        </div>
                         </div>
                     </div>
                 </div>
@@ -643,7 +663,7 @@ const restaurarEmpleado = () => {
                                         <button v-if="canManage" @click="editarEmpleado(empleado)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600 border border-slate-200 transition-all" title="Editar">
                                             <i class="ti ti-pencil"></i>
                                         </button>
-                                        <button v-if="canManage && empleadoActivo(empleado)" @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 transition-all" title="Dar baja">
+                                        <button v-if="canManage && empleadoActivo(empleado)" @click="abrirBajaEmpleado(empleado)" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 transition-all" title="Dar baja">
                                             <i class="ti ti-trash"></i>
                                         </button>
                                         <button v-else-if="canManage" @click="abrirRestauracion(empleado)" class="flex h-8 items-center justify-center rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-700 transition-all">
@@ -710,7 +730,7 @@ const restaurarEmpleado = () => {
                                 <Link :href="route('empleados.show', empleado.id)" class="icon-button" title="Ver perfil"><i class="ti ti-eye"></i></Link>
                                 <button v-if="canManage" type="button" class="icon-button text-cyan-700" title="Cambiar fotografía" @click="abrirEditorFoto(empleado)"><i class="ti ti-camera"></i></button>
                                 <button v-if="canManage" type="button" class="icon-button" title="Editar empleado" @click="editarEmpleado(empleado)"><i class="ti ti-pencil"></i></button>
-                                <button v-if="canManage && empleadoActivo(empleado)" type="button" class="icon-button text-rose-600" title="Dar de baja" @click="eliminarEmpleado(empleado.id, empleado.nombre_completo)"><i class="ti ti-user-off"></i></button>
+                                <button v-if="canManage && empleadoActivo(empleado)" type="button" class="icon-button text-rose-600" title="Dar de baja" @click="abrirBajaEmpleado(empleado)"><i class="ti ti-user-off"></i></button>
                                 <button v-else-if="canManage" type="button" class="icon-button text-emerald-700" title="Restaurar" @click="abrirRestauracion(empleado)"><i class="ti ti-user-check"></i></button>
                             </div>
                         </div>
@@ -756,6 +776,55 @@ const restaurarEmpleado = () => {
                         <p class="mt-1 text-sm font-semibold text-slate-300">No. empleado {{ numeroDirectorio(empleadoFotoAmpliada) || 'S/N' }}</p>
                     </div>
                 </div>
+            </div>
+        </Teleport>
+
+        <Teleport to="body">
+            <div
+                v-if="empleadoBaja"
+                class="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Registrar baja"
+                @click.self="cerrarBajaEmpleado"
+            >
+                <form class="w-full max-w-md overflow-hidden rounded-lg bg-white shadow-2xl" @submit.prevent="eliminarEmpleado">
+                    <div class="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+                        <div class="flex min-w-0 items-start gap-3">
+                            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-700">
+                                <i class="ti ti-user-off text-xl"></i>
+                            </span>
+                            <div class="min-w-0">
+                                <p class="text-base font-black text-slate-950">Registrar baja</p>
+                                <p class="mt-0.5 break-words text-sm font-semibold text-slate-500">{{ empleadoBaja.nombre_completo }}</p>
+                            </div>
+                        </div>
+                        <button type="button" class="icon-button" title="Cerrar" aria-label="Cerrar" @click="cerrarBajaEmpleado"><i class="ti ti-x"></i></button>
+                    </div>
+
+                    <div class="space-y-4 p-5">
+                        <div>
+                            <label class="field-label" for="fecha-baja-empleado">Fecha efectiva de baja</label>
+                            <input id="fecha-baja-empleado" v-model="bajaEmpleadoForm.fecha_baja" type="date" :min="empleadoBaja.fecha_inicio_periodo_actual || empleadoBaja.fecha_ingreso || undefined" :max="fechaLocalHoy()" class="field-input" required />
+                            <p v-if="bajaEmpleadoForm.errors.fecha_baja" class="mt-2 text-sm font-bold text-rose-600">{{ bajaEmpleadoForm.errors.fecha_baja }}</p>
+                        </div>
+                        <div>
+                            <label class="field-label" for="motivo-baja-empleado">Motivo <span class="font-medium normal-case text-slate-400">(opcional)</span></label>
+                            <textarea id="motivo-baja-empleado" v-model="bajaEmpleadoForm.motivo_baja" rows="3" maxlength="500" class="field-input resize-none" placeholder="Motivo de la baja"></textarea>
+                            <p v-if="bajaEmpleadoForm.errors.motivo_baja" class="mt-2 text-sm font-bold text-rose-600">{{ bajaEmpleadoForm.errors.motivo_baja }}</p>
+                        </div>
+                        <div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">
+                            Los días laborados se calcularán desde el inicio del periodo actual hasta esta fecha, sin contar domingos.
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
+                        <button type="button" class="btn-secondary" @click="cerrarBajaEmpleado">Cancelar</button>
+                        <button type="submit" class="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-60" :disabled="bajaEmpleadoForm.processing">
+                            <i class="ti ti-user-off"></i>{{ bajaEmpleadoForm.processing ? 'Procesando...' : 'Confirmar baja' }}
+                        </button>
+                    </div>
+                </form>
             </div>
         </Teleport>
 
