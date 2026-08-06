@@ -1250,11 +1250,11 @@ const enviarConciliacion = () => {
                                                 </div>
                                             </div>
                                             
-                                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
-                                                <div class="col-span-2 rounded-lg border-2 border-emerald-300 bg-emerald-50 p-3 shadow-sm text-center lg:col-span-1">
+                                            <div class="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))]">
+                                                <div class="col-span-2 min-w-0 rounded-lg border-2 border-emerald-300 bg-emerald-50 px-2 py-3 text-center shadow-sm lg:col-span-1">
                                                     <span class="block text-[9px] font-black uppercase tracking-wider text-emerald-500 mb-0.5">Pago Neto</span>
                                                     <span v-if="asistenciaPendiente(empleado)" class="text-sm font-black text-amber-700">Pendiente</span>
-                                                    <span v-else class="text-xl font-black text-emerald-800">${{ moneda(resumenNomina(empleado).pago_neto) }}</span>
+                                                    <span v-else class="block whitespace-nowrap text-lg font-black leading-tight text-emerald-800 tabular-nums">${{ moneda(resumenNomina(empleado).pago_neto) }}</span>
                                                 </div>
                                                 <div class="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm text-center">
                                                     <span class="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Deuda Actual</span>
