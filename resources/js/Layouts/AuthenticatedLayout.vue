@@ -3,7 +3,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Link, router, usePage } from '@inertiajs/vue3'
 import OperationCenter from '@/Components/OperationCenter.vue'
 import AppBreadcrumbs from '@/Components/AppBreadcrumbs.vue'
-import { redirectToExpiredLogin } from '@/Utils/sessionGuard'
 
 const page = usePage()
 const user = computed(() => page.props.auth?.user)
@@ -19,6 +18,7 @@ const globalSearch = ref('')
 const searchFocused = ref(false)
 const showNotifications = ref(false)
 const showPreferences = ref(false)
+const showUserMenu = ref(false)
 const online = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
 const toastVisible = ref(false)
 let toastTimer = null
@@ -28,6 +28,7 @@ let lastActivityAt = Date.now()
 const sessionLifetimeMs = 60 * 60 * 1000
 const heartbeatEveryMs = 5 * 60 * 1000
 const activityEvents = ['pointerdown', 'keydown', 'touchstart', 'scroll']
+const activityStorageKey = 'promatec-nominas-last-activity'
 
 const navItems = [
     {
@@ -170,14 +171,53 @@ const showToast = () => {
 
 const updateOnline = () => { online.value = navigator.onLine }
 
+const readSharedActivity = () => {
+    const stored = Number(window.localStorage.getItem(activityStorageKey) || 0)
+    return Number.isFinite(stored) ? stored : 0
+}
+
 const scheduleSessionExpiration = () => {
     window.clearTimeout(sessionTimer)
-    sessionTimer = window.setTimeout(redirectToExpiredLogin, sessionLifetimeMs)
+    const elapsed = Date.now() - Math.max(lastActivityAt, readSharedActivity())
+    const remaining = Math.max(1000, sessionLifetimeMs - elapsed)
+    sessionTimer = window.setTimeout(confirmSessionExpiration, remaining)
 }
 
 const registerActivity = () => {
     lastActivityAt = Date.now()
+    window.localStorage.setItem(activityStorageKey, String(lastActivityAt))
     scheduleSessionExpiration()
+}
+
+const syncActivity = event => {
+    if (event.key !== activityStorageKey) return
+    lastActivityAt = Math.max(lastActivityAt, Number(event.newValue || 0))
+    scheduleSessionExpiration()
+}
+
+const confirmSessionExpiration = async () => {
+    const sharedActivityAt = Math.max(lastActivityAt, readSharedActivity())
+    if (Date.now() - sharedActivityAt < sessionLifetimeMs) {
+        scheduleSessionExpiration()
+        return
+    }
+
+    try {
+        await window.axios.get(route('session.keep-alive'), {
+            headers: { 'X-Session-Check': '1' },
+        })
+        lastActivityAt = Date.now()
+        window.localStorage.setItem(activityStorageKey, String(lastActivityAt))
+        scheduleSessionExpiration()
+    } catch (error) {
+        // El interceptor global redirige solo cuando Laravel confirma que la sesión terminó.
+    }
+}
+
+const handleVisibility = () => {
+    if (document.visibilityState !== 'visible') return
+    registerActivity()
+    keepSessionAlive()
 }
 
 const keepSessionAlive = async () => {
@@ -201,14 +241,18 @@ onMounted(() => {
     openGroups.value = new Set(active ? [active.label] : ['Principal'])
     window.addEventListener('online', updateOnline)
     window.addEventListener('offline', updateOnline)
+    window.addEventListener('storage', syncActivity)
+    document.addEventListener('visibilitychange', handleVisibility)
     activityEvents.forEach(event => window.addEventListener(event, registerActivity, { passive: true }))
-    scheduleSessionExpiration()
+    registerActivity()
     heartbeatTimer = window.setInterval(keepSessionAlive, heartbeatEveryMs)
 })
 
 onBeforeUnmount(() => {
     window.removeEventListener('online', updateOnline)
     window.removeEventListener('offline', updateOnline)
+    window.removeEventListener('storage', syncActivity)
+    document.removeEventListener('visibilitychange', handleVisibility)
     activityEvents.forEach(event => window.removeEventListener(event, registerActivity))
     window.clearTimeout(sessionTimer)
     window.clearInterval(heartbeatTimer)
@@ -385,16 +429,38 @@ onBeforeUnmount(() => {
                         </div>
                     </div>
 
-                    <div class="ml-1 hidden text-right sm:block">
-                        <p class="max-w-40 truncate text-xs font-bold text-slate-900 dark:text-white">{{ user?.name }}</p>
-                        <p class="text-[10px] text-slate-500 dark:text-slate-400">{{ user?.role_label }}</p>
+                    <div class="relative ml-1">
+                        <button
+                            type="button"
+                            class="flex items-center gap-2 rounded-lg p-1 text-left transition-colors hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30 dark:hover:bg-slate-800"
+                            aria-label="Abrir menú de mi cuenta"
+                            :aria-expanded="showUserMenu"
+                            @click="showUserMenu = !showUserMenu"
+                        >
+                            <span class="hidden text-right sm:block">
+                                <span class="block max-w-40 truncate text-xs font-bold text-slate-900 dark:text-white">{{ user?.name }}</span>
+                                <span class="block text-[10px] text-slate-500 dark:text-slate-400">{{ user?.role_label }}</span>
+                            </span>
+                            <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-700 text-xs font-extrabold text-white">
+                                {{ user?.name?.charAt(0)?.toUpperCase() || 'U' }}
+                            </span>
+                            <i class="ti ti-chevron-down hidden text-sm text-slate-500 sm:block" aria-hidden="true"></i>
+                        </button>
+
+                        <div v-if="showUserMenu" class="topbar-menu w-64">
+                            <div class="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+                                <p class="truncate text-sm font-extrabold text-slate-950 dark:text-white">{{ user?.name }}</p>
+                                <p class="text-xs text-slate-500 dark:text-slate-400">{{ user?.email }}</p>
+                            </div>
+                            <Link :href="route('profile.edit')" class="topbar-menu-row gap-3" @click="showUserMenu = false">
+                                <span class="flex items-center gap-3"><i class="ti ti-user-cog text-lg text-blue-700" aria-hidden="true"></i>Mi perfil y contraseña</span>
+                                <i class="ti ti-chevron-right text-sm text-slate-400" aria-hidden="true"></i>
+                            </Link>
+                            <Link :href="route('logout')" method="post" as="button" class="topbar-menu-row w-full gap-3 text-rose-700 dark:text-rose-400">
+                                <span class="flex items-center gap-3"><i class="ti ti-logout text-lg" aria-hidden="true"></i>Cerrar sesión</span>
+                            </Link>
+                        </div>
                     </div>
-                    <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-700 text-xs font-extrabold text-white">
-                        {{ user?.name?.charAt(0)?.toUpperCase() || 'U' }}
-                    </div>
-                    <Link :href="route('logout')" method="post" as="button" class="topbar-icon" title="Cerrar sesión" aria-label="Cerrar sesión">
-                        <i class="ti ti-logout text-lg" aria-hidden="true"></i>
-                    </Link>
                 </div>
             </header>
 
