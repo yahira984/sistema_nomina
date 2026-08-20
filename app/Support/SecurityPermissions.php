@@ -38,6 +38,8 @@ class SecurityPermissions
             'empleados.restore' => ['label' => 'Restaurar y registrar reingresos', 'group' => 'Empleados'],
             'empleados.photo' => ['label' => 'Cambiar fotografias', 'group' => 'Empleados'],
             'empleados.app_access' => ['label' => 'Administrar acceso a la app', 'group' => 'Empleados'],
+            'empleados.documents.view' => ['label' => 'Consultar documentos privados', 'group' => 'Empleados'],
+            'empleados.documents.manage' => ['label' => 'Subir y eliminar documentos privados', 'group' => 'Empleados'],
             'asistencias.view' => [
                 'label' => 'Ver asistencias',
                 'group' => 'Asistencias',
@@ -138,6 +140,8 @@ class SecurityPermissions
                 'empleados.restore',
                 'empleados.photo',
                 'empleados.app_access',
+                'empleados.documents.view',
+                'empleados.documents.manage',
                 'asistencias.view',
                 'asistencias.manage',
                 'asistencias.import',

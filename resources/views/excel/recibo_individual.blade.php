@@ -18,6 +18,8 @@
     $diasFestivosTrabajados = $dias_festivos_trabajados ?? ($nomina->dias_festivos_trabajados ?? 0);
     $horasFestivasTrabajadas = $horas_festivas_trabajadas ?? ($nomina->horas_festivas_trabajadas ?? 0);
     $pagoFestivoTrabajado = $pago_festivo_trabajado ?? $pago_festivo ?? ($nomina->pago_festivo_trabajado ?? 0);
+    $diasDescansoTrabajados = $dias_descanso_trabajados ?? ($nomina->dias_descanso_trabajados ?? 0);
+    $pagoDescansoTrabajado = $pago_descanso_trabajado ?? ($nomina->pago_descanso_trabajado ?? 0);
     $diasIncapacidad = $dias_incapacidad ?? 0;
     $diasVacaciones = $dias_vacaciones_pagadas ?? $dias_vacaciones ?? ($nomina->dias_vacaciones_pagadas ?? 0);
     $diasFalta = $dias_falta ?? 0;
@@ -110,6 +112,9 @@
             @if($pagoFestivoTrabajado > 0)
                 DIA FESTIVO&nbsp;<span style="{{ $blue }}">{{ $esEstudiante ? $horasFestivasTrabajadas . 'h' : $diasFestivosTrabajados }}</span><br>
             @endif
+            @if($pagoDescansoTrabajado > 0)
+                DESCANSO TRAB.&nbsp;<span style="{{ $blue }}">{{ $diasDescansoTrabajados }}</span><br>
+            @endif
             @if($horasExtraMiercolesAnterior > 0)
                 MIE. ANT.&nbsp;<span style="{{ $blue }}">{{ $horasExtraMiercolesAnterior }}</span><br>
             @endif
@@ -135,6 +140,9 @@
             $ {{ number_format($pagoExtra, 2) }}<br>
             @if($pagoFestivoTrabajado > 0)
                 $ {{ number_format($pagoFestivoTrabajado, 2) }}<br>
+            @endif
+            @if($pagoDescansoTrabajado > 0)
+                $ {{ number_format($pagoDescansoTrabajado, 2) }}<br>
             @endif
             @if($horasExtraMiercolesAnterior > 0)
                 <span style="font-size: 9px;">Incluido</span><br>

@@ -20,6 +20,7 @@ use App\Services\ReceiptHistoryService;
 use App\Services\SystemOperationService;
 use App\Support\HorarioLaboralEmpleado;
 use App\Support\HorasExtraEmpleado;
+use App\Support\JornadaLaboralEmpleado;
 use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -27,6 +28,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -1039,7 +1041,12 @@ class NominaController extends Controller
         $minutosTarde = (int) $asistencias
             ->where('tipo_asistencia', 'Normal')
             ->filter(fn ($asistencia) => $this->esRetardoDescontable($asistencia, $fechasFestivas))
-            ->sum('minutos_tarde');
+            ->sum(fn (Asistencia $asistencia) => JornadaLaboralEmpleado::minutosIncidencia(
+                $empleado,
+                $asistencia->fecha,
+                $asistencia->hora_entrada,
+                $asistencia->hora_salida
+            ));
         $minutosTardeDescontables = $minutosTarde >= self::UMBRAL_RETARDO_SEMANAL_MINUTOS
             ? $minutosTarde
             : 0;
@@ -1060,6 +1067,20 @@ class NominaController extends Controller
             ? $sueldoPorHora
             : ($sueldoSemanal > 0 ? $sueldoSemanal / self::HORAS_BASE_SEMANA : 0);
         $pagoDiaPlanta = $sueldoSemanal > 0 ? $sueldoSemanal / self::DIAS_SUELDO_SEMANA : 0;
+        $diasDescansoTrabajados = HorarioLaboralEmpleado::esVigilancia24x24($empleado)
+            ? $asistencias
+                ->where('tipo_asistencia', 'Normal')
+                ->filter(fn (Asistencia $asistencia) => JornadaLaboralEmpleado::esDescansoTrabajado24x24(
+                    $empleado,
+                    $asistencia->fecha,
+                    $asistencia->hora_entrada,
+                    $asistencia->hora_salida
+                ))
+                ->map(fn (Asistencia $asistencia) => Carbon::parse($asistencia->fecha)->format('Y-m-d'))
+                ->unique()
+                ->count()
+            : 0;
+        $pagoDescansoTrabajado = $diasDescansoTrabajados * $pagoDiaPlanta;
         $diasSueldoBasePagados = min($diasLaborablesRequeridos, $diasNormalesPagables + $faltasPagadas);
         $pagoBasePlanta = $asistenciaCompletaPeriodo
             ? $sueldoSemanal
@@ -1116,7 +1137,8 @@ class NominaController extends Controller
         $descuentoIsr = (float) ($empleado->descuento_isr ?? 0);
         $descuentoInfonavit = (float) ($empleado->descuento_infonavit ?? 0);
 
-        $totalPercepciones = $pagoNormal + $pagoExtra + $pagoIncapacidad + $pagoVacaciones + $pagoFestivoTrabajado + $prestamoOtorgado;
+        $totalPercepciones = $pagoNormal + $pagoExtra + $pagoIncapacidad + $pagoVacaciones
+            + $pagoFestivoTrabajado + $pagoDescansoTrabajado + $prestamoOtorgado;
         $totalDeducciones = $descuentoFaltas
             + $descuentoRetardos
             + $prestamoDescuento
@@ -1142,6 +1164,8 @@ class NominaController extends Controller
             'horas_festivas_trabajadas' => round($horasFestivasTrabajadas, 2),
             'dias_festivos_no_trabajados' => round($diasFestivosNoTrabajados, 2),
             'pago_festivo_trabajado' => round($pagoFestivoTrabajado, 2),
+            'dias_descanso_trabajados' => $diasDescansoTrabajados,
+            'pago_descanso_trabajado' => round($pagoDescansoTrabajado, 2),
             'dias_sueldo_base_pagados' => round($diasSueldoBasePagados, 2),
             'horas_adeudo_generadas' => round($horasAdeudoGeneradas, 2),
             'horas_adeudo_miercoles_anterior' => round($horasAdeudoMiercolesAnterior, 2),
@@ -1213,6 +1237,8 @@ class NominaController extends Controller
             'horas_festivas_trabajadas' => 0,
             'dias_festivos_no_trabajados' => 0,
             'pago_festivo_trabajado' => 0,
+            'dias_descanso_trabajados' => 0,
+            'pago_descanso_trabajado' => 0,
             'horas_adeudo_generadas' => 0,
             'horas_adeudo_miercoles_anterior' => 0,
             'horas_adeudo_descontadas' => 0,
@@ -1460,7 +1486,8 @@ class NominaController extends Controller
 
         $fechaBase = $miercolesAnterior->format('Y-m-d');
         $salida = Carbon::parse($fechaBase . ' ' . $asistencia->hora_salida);
-        $limiteNormal = Carbon::parse($fechaBase . ' 17:30:00');
+        $horario = JornadaLaboralEmpleado::horario($empleado, $miercolesAnterior);
+        $limiteNormal = Carbon::parse($fechaBase . ' ' . $horario['salida']);
 
         if (!$salida->lessThan($limiteNormal)) {
             return 0;
@@ -1528,21 +1555,12 @@ class NominaController extends Controller
 
     private function esRetardoDescontable(Asistencia $asistencia, array $fechasFestivas = []): bool
     {
-        if (Carbon::parse($asistencia->fecha)->isWeekend()
-            || $this->esFechaFestiva($asistencia->fecha, $fechasFestivas)
+        if ($this->esFechaFestiva($asistencia->fecha, $fechasFestivas)
             || !$this->asistenciaTieneJornadaValida($asistencia)) {
             return false;
         }
 
-        $fechaBase = Carbon::parse($asistencia->fecha)->format('Y-m-d');
-        $entrada = Carbon::parse($fechaBase . ' ' . $asistencia->hora_entrada);
-        $salida = Carbon::parse($fechaBase . ' ' . $asistencia->hora_salida);
-        $horaOficial = Carbon::parse($fechaBase . ' 08:00:00');
-        $limiteMarcaSalida = Carbon::parse($fechaBase . ' 16:00:00');
-
-        return $salida->greaterThan($entrada)
-            && $entrada->greaterThan($horaOficial)
-            && $entrada->lessThan($limiteMarcaSalida);
+        return true;
     }
 
     private function asistenciaTieneJornadaValida(Asistencia $asistencia): bool
@@ -1733,6 +1751,8 @@ class NominaController extends Controller
             'horas_festivas_trabajadas' => $desglose['horas_festivas_trabajadas'],
             'dias_festivos_no_trabajados' => $desglose['dias_festivos_no_trabajados'],
             'pago_festivo_trabajado' => $desglose['pago_festivo_trabajado'],
+            'dias_descanso_trabajados' => $desglose['dias_descanso_trabajados'],
+            'pago_descanso_trabajado' => $desglose['pago_descanso_trabajado'],
             'horas_adeudo_descontadas' => $desglose['horas_adeudo_descontadas'],
             'horas_adeudo_generadas' => $desglose['horas_adeudo_generadas'],
             'horas_adeudo_miercoles_anterior' => $desglose['horas_adeudo_miercoles_anterior'],
@@ -1815,7 +1835,7 @@ class NominaController extends Controller
         }
 
         if (Schema::hasColumn('nominas', 'generated_by')) {
-            $datos['generated_by'] = auth()->id();
+            $datos['generated_by'] = Auth::id();
         }
 
         foreach ([
@@ -1825,6 +1845,8 @@ class NominaController extends Controller
             'dias_festivos_trabajados',
             'horas_festivas_trabajadas',
             'pago_festivo_trabajado',
+            'dias_descanso_trabajados',
+            'pago_descanso_trabajado',
         ] as $campo) {
             if (Schema::hasColumn('nominas', $campo)) {
                 $datos[$campo] = $desglose[$campo];

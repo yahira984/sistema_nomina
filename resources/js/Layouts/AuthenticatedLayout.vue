@@ -14,6 +14,9 @@ const flash = computed(() => page.props.flash ?? {})
 const isSidebarOpenMobile = ref(false)
 const isSidebarCollapsedDesktop = ref(Boolean(preferences.value.sidebar_collapsed))
 const openGroups = ref(new Set(['Principal', 'Operación', 'Sistema', 'Seguridad']))
+const openGroupsStorageKey = 'app:sidebar-open-groups'
+const sidebarNav = ref(null)
+const sidebarScrollStorageKey = `app:sidebar-scroll:${user.value?.id || 'default'}`
 const globalSearch = ref('')
 const searchFocused = ref(false)
 const showNotifications = ref(false)
@@ -108,6 +111,18 @@ const toggleGroup = label => {
     const next = new Set(openGroups.value)
     next.has(label) ? next.delete(label) : next.add(label)
     openGroups.value = next
+    window.localStorage.setItem(openGroupsStorageKey, JSON.stringify([...next]))
+}
+
+const saveSidebarScroll = () => {
+    if (!sidebarNav.value) return
+    window.sessionStorage.setItem(sidebarScrollStorageKey, String(sidebarNav.value.scrollTop))
+}
+
+const restoreSidebarScroll = () => {
+    const saved = Number(window.sessionStorage.getItem(sidebarScrollStorageKey) || 0)
+    if (!sidebarNav.value || !Number.isFinite(saved)) return
+    sidebarNav.value.scrollTop = Math.max(0, saved)
 }
 
 const toggleSidebar = () => {
@@ -238,7 +253,20 @@ watch(flash, showToast, { deep: true, immediate: true })
 onMounted(() => {
     applyPreferences()
     const active = visibleNavItems.value.find(group => group.links.some(item => isActive(item.route)))
-    openGroups.value = new Set(active ? [active.label] : ['Principal'])
+    try {
+        const saved = JSON.parse(window.localStorage.getItem(openGroupsStorageKey) || 'null')
+        if (Array.isArray(saved)) {
+            const visibleLabels = new Set(visibleNavItems.value.map(group => group.label))
+            openGroups.value = new Set(saved.filter(label => visibleLabels.has(label)))
+        }
+    } catch {
+        // Conserva los grupos predeterminados cuando la preferencia local está dañada.
+    }
+    if (active) {
+        openGroups.value = new Set([...openGroups.value, active.label])
+    }
+    window.localStorage.setItem(openGroupsStorageKey, JSON.stringify([...openGroups.value]))
+    nextTick(() => window.requestAnimationFrame(restoreSidebarScroll))
     window.addEventListener('online', updateOnline)
     window.addEventListener('offline', updateOnline)
     window.addEventListener('storage', syncActivity)
@@ -249,6 +277,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+    saveSidebarScroll()
     window.removeEventListener('online', updateOnline)
     window.removeEventListener('offline', updateOnline)
     window.removeEventListener('storage', syncActivity)
@@ -285,7 +314,7 @@ onBeforeUnmount(() => {
                 </div>
             </div>
 
-            <nav class="flex-1 overflow-y-auto p-2.5" aria-label="Navegación principal">
+            <nav ref="sidebarNav" class="flex-1 overflow-y-auto p-2.5" aria-label="Navegación principal" @scroll.passive="saveSidebarScroll">
                 <section v-for="group in visibleNavItems" :key="group.label" class="mb-2">
                     <button
                         v-if="!isSidebarCollapsedDesktop || isSidebarOpenMobile"

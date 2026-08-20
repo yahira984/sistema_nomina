@@ -8,6 +8,7 @@ use App\Models\IntegrationFailure;
 use App\Models\Nomina;
 use App\Models\SystemBackup;
 use App\Models\SystemOperation;
+use App\Support\EmployeeDocumentCatalog;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
@@ -57,6 +58,56 @@ class SystemHealthService
             ])
             ->values();
 
+        $activeEmployees = Empleado::query()
+            ->where('estatus', true)
+            ->when(Schema::hasTable('employee_documents'), fn ($query) => $query->with('documents:id,empleado_id,document_type'))
+            ->get([
+                'id', 'numero_empleado', 'nombre_completo', 'curp', 'nss', 'telefono',
+                'contacto_emergencia_nombre', 'contacto_emergencia_telefono', 'rfc', 'fecha_ingreso',
+            ]);
+
+        $missingDocuments = Schema::hasTable('employee_documents')
+            ? $activeEmployees->map(function (Empleado $employee) {
+                $loaded = $employee->documents->pluck('document_type')->all();
+                $missing = collect(EmployeeDocumentCatalog::TYPES)
+                    ->reject(fn (string $label, string $type) => in_array($type, $loaded, true))
+                    ->values()
+                    ->all();
+
+                return $missing === [] ? null : [
+                    'id' => $employee->id,
+                    'numero_empleado' => $employee->numero_empleado,
+                    'nombre_completo' => $employee->nombre_completo,
+                    'missing' => $missing,
+                    'missing_count' => count($missing),
+                ];
+            })->filter()->values()
+            : collect();
+
+        $requiredData = [
+            'curp' => 'CURP',
+            'nss' => 'Número de Seguro Social',
+            'telefono' => 'Celular personal',
+            'contacto_emergencia_nombre' => 'Nombre de emergencia',
+            'contacto_emergencia_telefono' => 'Teléfono de emergencia',
+            'rfc' => 'RFC',
+            'fecha_ingreso' => 'Fecha de ingreso',
+        ];
+        $missingEmployeeData = $activeEmployees->map(function (Empleado $employee) use ($requiredData) {
+            $missing = collect($requiredData)
+                ->filter(fn (string $label, string $field) => blank($employee->{$field}))
+                ->values()
+                ->all();
+
+            return $missing === [] ? null : [
+                'id' => $employee->id,
+                'numero_empleado' => $employee->numero_empleado,
+                'nombre_completo' => $employee->nombre_completo,
+                'missing' => $missing,
+                'missing_count' => count($missing),
+            ];
+        })->filter()->values();
+
         $orphanAttendance = Schema::hasTable('asistencias')
             ? Asistencia::query()->whereDoesntHave('empleado')->count()
             : 0;
@@ -70,11 +121,15 @@ class SystemHealthService
         return [
             'duplicate_employees' => $duplicateEmployees,
             'missing_photos' => $missingPhotos,
+            'missing_documents' => $missingDocuments,
+            'missing_employee_data' => $missingEmployeeData,
             'orphan_attendance' => $orphanAttendance,
             'orphan_payroll' => $orphanPayroll,
             'open_integration_failures' => $openFailures,
             'total' => $duplicateEmployees->sum('count')
                 + $missingPhotos->count()
+                + $missingDocuments->sum('missing_count')
+                + $missingEmployeeData->sum('missing_count')
                 + $orphanAttendance
                 + $orphanPayroll
                 + $openFailures,

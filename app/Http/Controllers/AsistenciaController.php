@@ -14,8 +14,11 @@ use App\Models\UserPreference;
 use App\Services\FirebaseSyncService;
 use App\Services\FirebaseJobDispatcher;
 use App\Services\SystemOperationService;
+use App\Services\StudentServiceSummaryService;
+use App\Services\WorkRuleResolver;
 use App\Support\HorarioLaboralEmpleado;
 use App\Support\HorasExtraEmpleado;
+use App\Support\JornadaLaboralEmpleado;
 use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -23,6 +26,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -58,6 +62,14 @@ class AsistenciaController extends Controller
             ->withQueryString();
         $empleadosBase = $empleadosPaginator->getCollection();
         $empleadoIds = $empleadosBase->pluck('id')->all();
+        $empleadosSelectorBase = Empleado::query()
+            ->where('estatus', true)
+            ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), id) AS UNSIGNED) ASC")
+            ->get([
+                'id', 'numero_empleado', 'numero_empleado_baja', 'nombre_completo',
+                'puesto', 'es_estudiante', 'estatus', 'fecha_ingreso', 'fecha_reingreso',
+            ]);
+        $empleadoIdsSemana = $empleadosSelectorBase->pluck('id')->all();
         $asistencias = Asistencia::query()
             ->select([
                 'id',
@@ -70,7 +82,7 @@ class AsistenciaController extends Controller
                 'horas_trabajadas',
                 'horas_extra',
             ])
-            ->whereIn('empleado_id', $empleadoIds)
+            ->whereIn('empleado_id', $empleadoIdsSemana)
             ->whereBetween('fecha', [
                 $inicioSemana->format('Y-m-d'),
                 $finSemana->format('Y-m-d'),
@@ -83,14 +95,7 @@ class AsistenciaController extends Controller
 
         return Inertia::render('Asistencias/Index', [
             'empleados' => $this->empleadosPantallaAsistencias($empleadosBase, $empleadoIds),
-            'empleadosSelector' => Empleado::query()
-                ->where('estatus', true)
-                ->orderByRaw("CAST(COALESCE(NULLIF(numero_empleado, ''), id) AS UNSIGNED) ASC")
-                ->get([
-                    'id', 'numero_empleado', 'numero_empleado_baja', 'nombre_completo',
-                    'puesto', 'es_estudiante', 'estatus', 'fecha_ingreso', 'fecha_reingreso',
-                ])
-                ->map(fn (Empleado $empleado) => [
+            'empleadosSelector' => $empleadosSelectorBase->map(fn (Empleado $empleado) => [
                     'id' => $empleado->id,
                     'numero_empleado' => $empleado->numero_empleado,
                     'numero_empleado_baja' => $empleado->numero_empleado_baja,
@@ -104,6 +109,10 @@ class AsistenciaController extends Controller
                     'horario_24x24' => HorarioLaboralEmpleado::esVigilancia24x24($empleado),
                     'sin_horas_extra' => ReglasNominaEmpleado::sinHorasExtra($empleado),
                     'sin_retardos' => ReglasNominaEmpleado::sinRetardos($empleado),
+                    'hora_entrada_laboral' => WorkRuleResolver::for($empleado)['hora_entrada'],
+                    'hora_salida_laboral' => WorkRuleResolver::for($empleado)['hora_salida'],
+                    'hora_salida_jueves' => WorkRuleResolver::for($empleado)['hora_salida_jueves'],
+                    'dias_laborales' => WorkRuleResolver::for($empleado)['dias_laborales'],
                 ]),
             'empleadosMeta' => [
                 'current_page' => $empleadosPaginator->currentPage(),
@@ -118,6 +127,9 @@ class AsistenciaController extends Controller
             'fechaSemana' => $fechaReferencia,
             'fechaInicioSemana' => $inicioSemana->format('Y-m-d'),
             'fechaFinSemana' => $finSemana->format('Y-m-d'),
+            'tabInicial' => in_array($request->input('tab'), ['captura', 'revision', 'vacaciones', 'faltas'], true)
+                ? $request->input('tab')
+                : '',
             'previewImportacion' => $this->previewImportacionDisponible($request),
             'operaciones' => app(SystemOperationService::class)->recentFor($request->user(), 8),
         ]);
@@ -184,6 +196,10 @@ class AsistenciaController extends Controller
                 'horario_24x24' => HorarioLaboralEmpleado::esVigilancia24x24($empleado),
                 'sin_horas_extra' => ReglasNominaEmpleado::sinHorasExtra($empleado),
                 'sin_retardos' => ReglasNominaEmpleado::sinRetardos($empleado),
+                'hora_entrada_laboral' => WorkRuleResolver::for($empleado)['hora_entrada'],
+                'hora_salida_laboral' => WorkRuleResolver::for($empleado)['hora_salida'],
+                'hora_salida_jueves' => WorkRuleResolver::for($empleado)['hora_salida_jueves'],
+                'dias_laborales' => WorkRuleResolver::for($empleado)['dias_laborales'],
                 'estatus' => $empleado->estatus,
                 'fecha_ingreso' => $empleado->fecha_ingreso,
                 'fecha_reingreso' => $empleado->fecha_reingreso,
@@ -258,14 +274,20 @@ class AsistenciaController extends Controller
         return Excel::download(new AsistenciasSemanalesExport($inicioSemana, $finSemana), $nombreArchivo);
     }
 
-    public function horasAlumnos(Request $request)
+    public function horasAlumnos(Request $request, StudentServiceSummaryService $studentSummary)
     {
         [$inicioSemana, $finSemana, $numeroSemana] = SemanaNomina::desdeCorte(
             $request->input('fecha_corte') ?: SemanaNomina::corteActual()->format('Y-m-d')
         );
 
+        $students = $this->queryAlumnosActivos()->get();
+        $summaries = $studentSummary->forEmployees($students);
+
         return Inertia::render('Asistencias/HorasAlumnos', [
-            'estudiantes' => $this->queryAlumnosActivos()->get(),
+            'estudiantes' => $students->map(function (Empleado $student) use ($summaries) {
+                $student->setAttribute('resumen_servicio', $summaries->get($student->id));
+                return $student;
+            }),
             'semanas' => SemanaNomina::disponibles(SemanaNomina::corteActual(), 14),
             'fechaCorteActual' => $finSemana->format('Y-m-d'),
             'numeroSemanaActual' => $numeroSemana,
@@ -273,11 +295,13 @@ class AsistenciaController extends Controller
         ]);
     }
 
-    public function imprimirHorasAlumnos(Request $request)
+    public function imprimirHorasAlumnos(Request $request, StudentServiceSummaryService $studentSummary)
     {
         $request->validate([
             'fecha_corte' => 'nullable|date',
+            'tipo' => 'nullable|in:semanal,acumulado',
         ]);
+        $acumulado = $request->input('tipo') === 'acumulado';
 
         [$inicioSemana, $finSemana, $numeroSemana] = SemanaNomina::desdeCorte(
             $request->input('fecha_corte') ?: SemanaNomina::corteActual()->format('Y-m-d')
@@ -287,44 +311,61 @@ class AsistenciaController extends Controller
         $empleados = $this->queryAlumnosActivos()
             ->when(count($empleadoIds) > 0, fn ($query) => $query->whereIn('id', $empleadoIds))
             ->get();
+        $resumenes = $studentSummary->forEmployees($empleados);
 
         $asistenciasPorAlumno = Asistencia::whereIn('empleado_id', $empleados->pluck('id')->all())
-            ->whereBetween('fecha', [$inicioSemana->format('Y-m-d'), $finSemana->format('Y-m-d')])
+            ->when(!$acumulado, fn ($query) => $query->whereBetween('fecha', [$inicioSemana->format('Y-m-d'), $finSemana->format('Y-m-d')]))
             ->where('tipo_asistencia', 'Normal')
             ->orderBy('fecha')
             ->get()
             ->groupBy('empleado_id');
 
-        $alumnos = $empleados->map(function (Empleado $empleado) use ($asistenciasPorAlumno) {
-            $registros = $this->registrosHorasServicio($asistenciasPorAlumno->get($empleado->id, collect()));
+        $alumnos = $empleados->map(function (Empleado $empleado) use ($asistenciasPorAlumno, $resumenes, $acumulado) {
+            $asistencias = $asistenciasPorAlumno->get($empleado->id, collect());
+            if ($acumulado) {
+                $inicio = $empleado->fecha_inicio_servicio ?: $empleado->inicioPeriodoActual();
+                if ($inicio) {
+                    $asistencias = $asistencias->filter(fn ($asistencia) => Carbon::parse($asistencia->fecha)->gte(Carbon::parse($inicio)->startOfDay()));
+                }
+            }
+            $registros = $this->registrosHorasServicio($asistencias);
 
             return [
                 'empleado' => $empleado,
                 'registros' => $registros,
                 'total_horas' => round($registros->sum('horas'), 2),
                 'total_horas_texto' => $this->formatoHorasServicio(round($registros->sum('horas'), 2)),
+                'resumen' => $resumenes->get($empleado->id),
             ];
         })->values();
 
-        $pdf = Pdf::loadView('pdf.horas_servicio_alumnos', [
+        $pdf = Pdf::loadView($acumulado ? 'pdf.horas_servicio_acumulado' : 'pdf.horas_servicio_alumnos', [
             'alumnos' => $alumnos,
-            'universidad' => '',
-            'horasCumplir' => '',
             'inicioSemana' => $inicioSemana,
             'finSemana' => $finSemana,
             'numeroSemana' => $numeroSemana,
             'rangoSemana' => $this->rangoSemanaTexto($inicioSemana, $finSemana),
         ])->setPaper('letter', 'portrait');
 
-        return $pdf->stream('Registro_Horas_Alumnos_Semana_' . $numeroSemana . '.pdf');
+        return $pdf->stream($acumulado
+            ? 'Historial_Total_Horas_Alumnos.pdf'
+            : 'Registro_Horas_Alumnos_Semana_' . $numeroSemana . '.pdf');
     }
 
     public function store(Request $request)
     {
         $request->validate([
             'empleado_id' => 'required|exists:empleados,id',
-            'fecha' => 'required|date',
+            'fecha' => [
+                'required',
+                'date',
+                Rule::unique('asistencias', 'fecha')->where(fn ($query) => $query->where('empleado_id', $request->empleado_id)),
+            ],
             'tipo_asistencia' => 'required|string|in:Normal,Falta,Incapacidad,Vacaciones',
+            'hora_entrada' => 'nullable|date_format:H:i',
+            'hora_salida' => 'nullable|date_format:H:i',
+        ], [
+            'fecha.unique' => 'Este empleado ya tiene una asistencia registrada en esa fecha. Edítala desde los registros existentes.',
         ]);
 
         $empleado = Empleado::findOrFail($request->empleado_id);
@@ -347,12 +388,23 @@ class AsistenciaController extends Controller
 
     public function update(Request $request, $id)
     {
+        $asistencia = Asistencia::findOrFail($id);
+
         $request->validate([
-            'fecha' => 'required|date',
+            'fecha' => [
+                'required',
+                'date',
+                Rule::unique('asistencias', 'fecha')
+                    ->where(fn ($query) => $query->where('empleado_id', $asistencia->empleado_id))
+                    ->ignore($id),
+            ],
             'tipo_asistencia' => 'required|string|in:Normal,Falta,Incapacidad,Vacaciones',
+            'hora_entrada' => 'nullable|date_format:H:i',
+            'hora_salida' => 'nullable|date_format:H:i',
+        ], [
+            'fecha.unique' => 'Este empleado ya tiene otro registro en esa fecha.',
         ]);
 
-        $asistencia = Asistencia::findOrFail($id);
         $datosCalculados = $this->calcularHoras($request->fecha, $request->hora_entrada, $request->hora_salida, $request->tipo_asistencia, $asistencia->empleado);
 
         $asistencia->update(array_merge([
@@ -1266,7 +1318,8 @@ class AsistenciaController extends Controller
             $fecha_carbon = Carbon::parse($fecha);
             $entrada = Carbon::parse($fecha . ' ' . $hora_entrada);
             $salida = Carbon::parse($fecha . ' ' . $hora_salida);
-            $hora_oficial = Carbon::parse($fecha . ' 08:00:00');
+            $horario = $empleado ? JornadaLaboralEmpleado::horario($empleado, $fecha_carbon) : ['entrada' => '08:00:00', 'salida' => '17:30:00'];
+            $hora_oficial = Carbon::parse($fecha . ' ' . $horario['entrada']);
 
             if ($salida->lessThanOrEqualTo($entrada)) {
                 return [
@@ -1276,14 +1329,14 @@ class AsistenciaController extends Controller
                 ];
             }
 
-            if ($entrada->greaterThan($hora_oficial)) {
-                $minutos_tarde = $hora_oficial->diffInMinutes($entrada);
-            }
+            $minutos_tarde = $empleado
+                ? JornadaLaboralEmpleado::minutosIncidencia($empleado, $fecha_carbon, $hora_entrada, $hora_salida)
+                : ($entrada->greaterThan($hora_oficial) ? $hora_oficial->diffInMinutes($entrada) : 0);
 
             if ($fecha_carbon->isWeekend()) {
                 $horas_extra_diarias = HorasExtraEmpleado::calcular($empleado, $fecha_carbon, $hora_entrada, $hora_salida);
             } else {
-                $limite_normal = Carbon::parse($fecha . ' 17:30:00');
+                $limite_normal = Carbon::parse($fecha . ' ' . $horario['salida']);
                 $inicioJornada = $entrada->lessThan($hora_oficial) || $minutos_tarde < 30
                     ? $hora_oficial
                     : $entrada;

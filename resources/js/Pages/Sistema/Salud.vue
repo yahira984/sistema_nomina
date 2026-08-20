@@ -74,7 +74,7 @@ const refresh = () => router.reload({ preserveScroll: true })
                     </span>
                 </div>
 
-                <div class="grid gap-px bg-slate-200 sm:grid-cols-2 dark:bg-slate-700">
+                <div class="grid gap-px bg-slate-200 sm:grid-cols-2 xl:grid-cols-3 dark:bg-slate-700">
                     <div class="bg-white p-4 dark:bg-slate-900">
                         <p class="metric-label">Números duplicados</p>
                         <p class="mt-2 text-2xl font-extrabold">{{ health.inconsistencies?.duplicate_employees?.length || 0 }}</p>
@@ -82,6 +82,14 @@ const refresh = () => router.reload({ preserveScroll: true })
                     <div class="bg-white p-4 dark:bg-slate-900">
                         <p class="metric-label">Fotografías faltantes</p>
                         <p class="mt-2 text-2xl font-extrabold">{{ health.inconsistencies?.missing_photos?.length || 0 }}</p>
+                    </div>
+                    <div class="bg-white p-4 dark:bg-slate-900">
+                        <p class="metric-label">Expedientes incompletos</p>
+                        <p class="mt-2 text-2xl font-extrabold">{{ health.inconsistencies?.missing_documents?.length || 0 }}</p>
+                    </div>
+                    <div class="bg-white p-4 dark:bg-slate-900">
+                        <p class="metric-label">Datos personales incompletos</p>
+                        <p class="mt-2 text-2xl font-extrabold">{{ health.inconsistencies?.missing_employee_data?.length || 0 }}</p>
                     </div>
                     <div class="bg-white p-4 dark:bg-slate-900">
                         <p class="metric-label">Asistencias huérfanas</p>
@@ -104,9 +112,39 @@ const refresh = () => router.reload({ preserveScroll: true })
                     <h3 class="text-sm font-bold">Empleados sin fotografía</h3>
                     <div class="mt-2 max-h-56 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
                         <div v-for="employee in health.inconsistencies.missing_photos" :key="employee.id" class="flex justify-between py-2 text-sm">
-                            <span class="truncate">{{ employee.nombre_completo }}</span>
+                            <a :href="route('empleados.show', { id: employee.id, action: 'photo' })" class="truncate font-semibold text-blue-700 hover:underline">{{ employee.nombre_completo }}</a>
                             <strong>#{{ employee.numero_empleado || 'S/N' }}</strong>
                         </div>
+                    </div>
+                </div>
+
+                <div v-if="health.inconsistencies?.missing_documents?.length" class="border-t border-slate-200 p-4 dark:border-slate-700">
+                    <h3 class="text-sm font-bold">Documentación pendiente</h3>
+                    <p class="mt-1 text-xs text-slate-500">Selecciona un empleado para completar su expediente.</p>
+                    <div class="mt-2 max-h-72 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+                        <a v-for="employee in health.inconsistencies.missing_documents" :key="employee.id" :href="route('empleados.show', { id: employee.id, tab: 'documentacion' })" class="block py-3 hover:bg-slate-50 dark:hover:bg-slate-800">
+                            <div class="flex items-center justify-between gap-3 text-sm">
+                                <span class="min-w-0 truncate font-bold text-blue-700 dark:text-blue-300">
+                                    <strong class="mr-1 text-slate-700 dark:text-slate-200">#{{ employee.numero_empleado || 'S/N' }}</strong>
+                                    {{ employee.nombre_completo }}
+                                </span>
+                                <span class="status-pill status-warning">{{ employee.missing_count }} faltante(s)</span>
+                            </div>
+                            <p class="mt-1 line-clamp-2 text-xs text-slate-500">{{ employee.missing.join(' · ') }}</p>
+                        </a>
+                    </div>
+                </div>
+
+                <div v-if="health.inconsistencies?.missing_employee_data?.length" class="border-t border-slate-200 p-4 dark:border-slate-700">
+                    <h3 class="text-sm font-bold">Información personal pendiente</h3>
+                    <div class="mt-2 max-h-72 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+                        <a v-for="employee in health.inconsistencies.missing_employee_data" :key="employee.id" :href="route('empleados.show', { id: employee.id, action: 'personal' })" class="block py-3 hover:bg-slate-50 dark:hover:bg-slate-800">
+                            <div class="flex items-center justify-between gap-3 text-sm">
+                                <span class="truncate font-bold text-blue-700 dark:text-blue-300">{{ employee.nombre_completo }}</span>
+                                <strong>#{{ employee.numero_empleado || 'S/N' }}</strong>
+                            </div>
+                            <p class="mt-1 text-xs text-slate-500">Falta: {{ employee.missing.join(' · ') }}</p>
+                        </a>
                     </div>
                 </div>
             </section>

@@ -78,7 +78,7 @@ const verificarRespaldo = (backup) => {
                         Sistema
                     </p>
                     <h2 class="mt-2 text-xl font-bold text-slate-950 sm:text-2xl">Respaldo de Base de Datos</h2>
-                    <p class="mt-1 text-sm text-slate-500">Exporta un respaldo SQL o restaura un respaldo generado por este sistema.</p>
+                    <p class="mt-1 text-sm text-slate-500">Protege la base, fotografías y expedientes, o restaura respaldos de versiones anteriores.</p>
                 </div>
             </div>
         </template>
@@ -137,7 +137,7 @@ const verificarRespaldo = (backup) => {
                                 </div>
                                 <div>
                                     <h3 class="panel-title">Exportar respaldo</h3>
-                                    <p class="panel-subtitle">Descarga un archivo SQL con tablas, estructura y datos.</p>
+                                    <p class="panel-subtitle">Descarga un SQL ligero con tablas, estructura y datos.</p>
                                 </div>
                             </div>
                         </div>
@@ -162,7 +162,7 @@ const verificarRespaldo = (backup) => {
                                 </div>
                                 <div>
                                     <h3 class="panel-title text-rose-900">Importar respaldo</h3>
-                                    <p class="panel-subtitle">Restaura un archivo SQL generado desde este sistema.</p>
+                                    <p class="panel-subtitle">Acepta paquetes integrales ZIP y respaldos SQL anteriores.</p>
                                 </div>
                             </div>
                         </div>
@@ -173,11 +173,11 @@ const verificarRespaldo = (backup) => {
                             </div>
 
                             <div>
-                                <label class="field-label">Archivo SQL</label>
+                                <label class="field-label">Archivo de respaldo</label>
                                 <input
                                     ref="archivoInput"
                                     type="file"
-                                    accept=".sql,.txt"
+                                    accept=".zip,.sql,.txt"
                                     class="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-900 file:px-4 file:py-2.5 file:text-sm file:font-bold file:text-white hover:file:bg-slate-800"
                                     @change="seleccionarArchivo"
                                 />
@@ -204,7 +204,7 @@ const verificarRespaldo = (backup) => {
                             <div class="soft-icon-emerald"><i class="ti ti-shield-check text-xl" aria-hidden="true"></i></div>
                             <div>
                                 <h3 class="panel-title">Respaldos automáticos</h3>
-                                <p class="panel-subtitle">Historial, integridad del archivo y última prueba de lectura.</p>
+                                <p class="panel-subtitle">Cada ZIP incluye base de datos, documentos privados y fotografías.</p>
                             </div>
                         </div>
                         <button type="button" class="btn-accent" :disabled="creandoRespaldo" @click="crearRespaldoAutomatico">
@@ -223,10 +223,16 @@ const verificarRespaldo = (backup) => {
                                     <td><span :class="backup.status === 'verified' ? 'status-success' : (backup.status === 'failed' ? 'status-danger' : 'status-warning')">{{ backup.status }}</span></td>
                                     <td>{{ backup.verification_message || 'Pendiente' }}</td>
                                     <td class="text-right">
+                                        <div class="flex justify-end gap-2">
+                                        <a :href="route('base-datos.respaldos.download', backup.id)" class="btn-secondary" title="Descargar respaldo integral">
+                                            <i class="ti ti-download" aria-hidden="true"></i>
+                                            Descargar
+                                        </a>
                                         <button type="button" class="btn-secondary" :disabled="verificandoRespaldo === backup.id" @click="verificarRespaldo(backup)">
                                             <i class="ti ti-file-check" aria-hidden="true"></i>
                                             {{ verificandoRespaldo === backup.id ? 'Verificando...' : 'Verificar' }}
                                         </button>
+                                        </div>
                                     </td>
                                 </tr>
                                 <tr v-if="backups.length === 0"><td colspan="6" class="empty-state">Todavía no hay respaldos automáticos registrados.</td></tr>

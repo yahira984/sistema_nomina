@@ -130,9 +130,12 @@ class NominaDiasFestivosTest extends TestCase
         Empleado $empleado,
         string $fecha,
         string $entrada = '08:00',
-        string $salida = '17:30',
-        float $horas = 9.5
+        ?string $salida = null,
+        ?float $horas = null
     ): void {
+        $salida ??= '17:30';
+        $horas ??= 9.5;
+
         Asistencia::create([
             'empleado_id' => $empleado->id,
             'fecha' => $fecha,

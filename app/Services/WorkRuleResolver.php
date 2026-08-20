@@ -34,6 +34,7 @@ class WorkRuleResolver
             'tope_horas_semanales' => 48.0,
             'hora_entrada' => '08:00:00',
             'hora_salida' => '17:30:00',
+            'hora_salida_jueves' => '17:30:00',
             'dias_laborales' => [1, 2, 3, 4, 5],
             'fecha_referencia_turno' => null,
             'rule_ids' => [],
@@ -70,6 +71,7 @@ class WorkRuleResolver
             'tope_horas_semanales',
             'hora_entrada',
             'hora_salida',
+            'hora_salida_jueves',
             'dias_laborales',
             'fecha_referencia_turno',
         ];

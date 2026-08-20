@@ -224,7 +224,7 @@ class AsistenciasSemanalesExport implements FromArray, WithColumnWidths, WithDra
     private function headerTitleRow(): array
     {
         return $this->rowWith([
-            1 => 'LUGARTH- PROMATEC    2026',
+            1 => 'LUGARTH- PROMATEC    ' . $this->inicioSemana->year,
         ]);
     }
 

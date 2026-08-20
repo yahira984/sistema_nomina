@@ -16,7 +16,7 @@ class HorasExtraEmpleadoTest extends TestCase
     use RefreshDatabase;
 
     #[DataProvider('horariosEntreSemana')]
-    public function test_entre_semana_cuenta_bloques_completos_de_media_hora(string $salida, float $esperado): void
+    public function test_entre_semana_aplica_tolerancia_maxima_de_siete_minutos(string $salida, float $esperado): void
     {
         $empleado = new Empleado([
             'numero_empleado' => '50',
@@ -31,15 +31,17 @@ class HorasExtraEmpleadoTest extends TestCase
     public static function horariosEntreSemana(): array
     {
         return [
-            'menos de media hora' => ['17:59', 0.0],
+            'faltan ocho minutos' => ['17:52', 0.0],
+            'faltan siete minutos' => ['17:53', 0.5],
             'media hora exacta' => ['18:00', 0.5],
-            'media hora con minutos adicionales' => ['18:29', 0.5],
+            'faltan ocho minutos para una hora' => ['18:22', 0.5],
+            'faltan siete minutos para una hora' => ['18:23', 1.0],
             'una hora exacta' => ['18:30', 1.0],
         ];
     }
 
     #[DataProvider('horariosFinDeSemana')]
-    public function test_fin_de_semana_redondea_a_la_media_hora_mas_cercana(string $salida, float $esperado): void
+    public function test_fin_de_semana_aplica_la_misma_tolerancia_de_siete_minutos(string $salida, float $esperado): void
     {
         $empleado = new Empleado([
             'numero_empleado' => '50',
@@ -54,10 +56,10 @@ class HorasExtraEmpleadoTest extends TestCase
     public static function horariosFinDeSemana(): array
     {
         return [
-            'antes del cuarto de hora' => ['13:14', 5.0],
-            'desde el cuarto de hora' => ['13:15', 5.5],
-            'antes de tres cuartos' => ['13:44', 5.5],
-            'desde tres cuartos' => ['13:45', 6.0],
+            'faltan ocho minutos para cinco y media' => ['13:22', 5.0],
+            'faltan siete minutos para cinco y media' => ['13:23', 5.5],
+            'faltan ocho minutos para seis' => ['13:52', 5.5],
+            'faltan siete minutos para seis' => ['13:53', 6.0],
         ];
     }
 

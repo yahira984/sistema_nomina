@@ -72,6 +72,7 @@ const ruleForm = useForm({
     use_schedule: false,
     hora_entrada: '',
     hora_salida: '',
+    hora_salida_jueves: '17:30',
     dias_laborales: [],
     fecha_referencia_turno: '',
     priority: 100,
@@ -149,7 +150,7 @@ const ruleImpacts = computed(() => {
     if (ruleForm.pago_por_hora_topado === true) impacts.push(`Nómina: limita el pago por hora a ${ruleForm.tope_horas_semanales || 48} horas semanales.`)
     if (ruleForm.pago_por_hora_topado === false) impacts.push('Nómina: cancela un tope heredado y usa el esquema normal de pago.')
     if (ruleForm.use_schedule) {
-        impacts.push(`Asistencia: espera jornada ${ruleForm.hora_entrada || '--:--'} a ${ruleForm.hora_salida || '--:--'} los días ${selectedDayLabels.value || 'aún no seleccionados'}.`)
+        impacts.push(`Asistencia: espera jornada ${ruleForm.hora_entrada || '--:--'} a ${ruleForm.hora_salida || '--:--'}; los jueves sale a ${ruleForm.hora_salida_jueves || ruleForm.hora_salida || '--:--'}.`)
     }
 
     return impacts
@@ -168,6 +169,7 @@ const submitRule = () => {
         ...data,
         hora_entrada: data.use_schedule ? data.hora_entrada : null,
         hora_salida: data.use_schedule ? data.hora_salida : null,
+        hora_salida_jueves: data.use_schedule ? data.hora_salida_jueves : null,
         dias_laborales: data.use_schedule ? data.dias_laborales : null,
     }))
 
@@ -198,6 +200,7 @@ const editRule = rule => {
         use_schedule: Boolean(rule.hora_entrada || rule.hora_salida || rule.dias_laborales),
         hora_entrada: rule.hora_entrada ? String(rule.hora_entrada).substring(0, 5) : '',
         hora_salida: rule.hora_salida ? String(rule.hora_salida).substring(0, 5) : '',
+        hora_salida_jueves: rule.hora_salida_jueves ? String(rule.hora_salida_jueves).substring(0, 5) : '17:30',
         dias_laborales: rule.dias_laborales || [],
         fecha_referencia_turno: rule.fecha_referencia_turno || '',
         priority: Number(rule.priority || 100),
@@ -218,6 +221,7 @@ const resetRule = () => {
     ruleForm.use_schedule = false
     ruleForm.hora_entrada = ''
     ruleForm.hora_salida = ''
+    ruleForm.hora_salida_jueves = '17:30'
     ruleForm.dias_laborales = []
     ruleForm.priority = 100
     ruleForm.active = true
@@ -377,7 +381,7 @@ const activeRules = computed(() => props.rules.filter(rule => rule.active).lengt
                         <span><strong class="block">Usar horario y días propios</strong><span class="mt-0.5 block text-xs font-medium text-slate-500 dark:text-slate-400">Actívalo si este grupo no trabaja con el horario general de lunes a viernes, 08:00 a 17:30.</span></span>
                     </label>
 
-                    <div v-if="ruleForm.use_schedule" class="grid grid-cols-2 gap-3">
+                    <div v-if="ruleForm.use_schedule" class="grid gap-3 sm:grid-cols-3">
                         <label>
                             <span class="field-label">Entrada</span>
                             <input v-model="ruleForm.hora_entrada" type="time" class="field-input" />
@@ -385,6 +389,12 @@ const activeRules = computed(() => props.rules.filter(rule => rule.active).lengt
                         <label>
                             <span class="field-label">Salida</span>
                             <input v-model="ruleForm.hora_salida" type="time" class="field-input" />
+                            <span class="help-text">Horario habitual.</span>
+                        </label>
+                        <label>
+                            <span class="field-label">Salida del jueves</span>
+                            <input v-model="ruleForm.hora_salida_jueves" type="time" class="field-input" />
+                            <span class="help-text">Por defecto 17:30. Cámbiala solo si ese puesto tiene otro horario los jueves.</span>
                         </label>
                     </div>
 

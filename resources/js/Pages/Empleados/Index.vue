@@ -533,7 +533,7 @@ const restaurarEmpleado = () => {
                             <span class="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-blue-600" aria-hidden="true">
                                 <i class="ti ti-search text-xl"></i>
                             </span>
-                            <input v-model="searchQuery" type="search" class="h-12 w-full rounded-lg border border-slate-200 bg-white pl-12 pr-4 text-sm font-semibold text-slate-800 shadow-sm transition-all placeholder:font-medium placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10" placeholder="Buscar por nombre o nÃºmero..." aria-label="Buscar empleado por nombre o nÃºmero" />
+                            <input v-model="searchQuery" type="search" class="h-12 w-full rounded-lg border border-slate-200 bg-white pl-12 pr-4 text-sm font-semibold text-slate-800 shadow-sm transition-all placeholder:font-medium placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10" placeholder="Buscar por nombre o número..." aria-label="Buscar empleado por nombre o número" />
                         </div>
                         <select v-model="criterioOrdenDirectorio" class="field-input h-10 w-full min-w-0 py-2" aria-label="Ordenar directorio">
                             <option value="num_asc">Número ascendente</option>

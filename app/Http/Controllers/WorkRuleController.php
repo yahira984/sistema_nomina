@@ -116,6 +116,7 @@ class WorkRuleController extends Controller
             'tope_horas_semanales' => ['nullable', 'numeric', 'min:0', 'max:168'],
             'hora_entrada' => ['nullable', 'date_format:H:i'],
             'hora_salida' => ['nullable', 'date_format:H:i'],
+            'hora_salida_jueves' => ['nullable', 'date_format:H:i'],
             'dias_laborales' => ['nullable', 'array'],
             'dias_laborales.*' => ['integer', 'between:1,7'],
             'fecha_referencia_turno' => ['nullable', 'date'],
