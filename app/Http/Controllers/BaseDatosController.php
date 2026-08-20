@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Throwable;
 
@@ -52,13 +53,24 @@ class BaseDatosController extends Controller
         );
     }
 
-    public function exportar()
+    public function descargarRespaldo(SystemBackup $systemBackup)
+    {
+        abort_unless(Storage::disk($systemBackup->disk)->exists($systemBackup->path), 404, 'El respaldo ya no existe.');
+
+        return Storage::disk($systemBackup->disk)->download(
+            $systemBackup->path,
+            $systemBackup->file_name,
+            ['Content-Type' => 'application/zip']
+        );
+    }
+
+    public function exportar(DatabaseBackupService $backups)
     {
         if (DB::getDriverName() !== 'mysql') {
             abort(422, 'La exportacion integrada esta preparada para MySQL.');
         }
 
-        $sql = $this->generarRespaldoSql();
+        $sql = $backups->generateSql();
         $nombreBase = preg_replace('/[^A-Za-z0-9_-]/', '_', DB::getDatabaseName() ?: 'base_datos');
         $archivo = 'respaldo_' . $nombreBase . '_' . now()->format('Ymd_His') . '.sql';
 
@@ -68,7 +80,7 @@ class BaseDatosController extends Controller
         ]);
     }
 
-    public function importar(Request $request)
+    public function importar(Request $request, DatabaseBackupService $backups)
     {
         if (DB::getDriverName() !== 'mysql') {
             return back()->withErrors([
@@ -77,28 +89,28 @@ class BaseDatosController extends Controller
         }
 
         $request->validate([
-            'archivo_sql' => 'required|file|max:102400',
+            'archivo_sql' => 'required|file|max:524288',
             'confirmacion' => 'required|in:RESTAURAR',
         ], [
             'archivo_sql.uploaded' => 'El respaldo no pudo subirse. Revisa que upload_max_filesize y post_max_size permitan este tamano.',
-            'archivo_sql.max' => 'El respaldo no debe pesar mas de 100 MB.',
+            'archivo_sql.max' => 'El respaldo no debe pesar más de 512 MB.',
             'confirmacion.in' => 'Escribe RESTAURAR para confirmar la importacion.',
         ]);
 
         $archivoSql = $request->file('archivo_sql');
         $extension = strtolower($archivoSql->getClientOriginalExtension());
 
-        if (!in_array($extension, ['sql', 'txt'], true)) {
+        if (!in_array($extension, ['sql', 'txt', 'zip'], true)) {
             return back()->withErrors([
-                'archivo_sql' => 'Selecciona un archivo .sql o .txt generado desde este sistema.',
+                'archivo_sql' => 'Selecciona un respaldo .zip, .sql o .txt generado desde este sistema.',
             ]);
         }
 
-        $contenido = file_get_contents($archivoSql->getRealPath());
-
-        if ($contenido === false) {
+        try {
+            $contenido = $backups->sqlFromPath($archivoSql->getRealPath(), $extension);
+        } catch (Throwable $exception) {
             return back()->withErrors([
-                'archivo_sql' => 'No se pudo leer el archivo seleccionado.',
+                'archivo_sql' => $exception->getMessage(),
             ]);
         }
 
@@ -142,11 +154,28 @@ class BaseDatosController extends Controller
 
         Artisan::call('migrate', ['--force' => true]);
 
+        $restoredAssets = ['documents' => 0, 'photos' => 0];
+        if ($extension === 'zip') {
+            try {
+                $restoredAssets = $backups->restoreAssetsFromArchive($archivoSql->getRealPath());
+            } catch (Throwable $exception) {
+                report($exception);
+
+                return back()->withErrors([
+                    'archivo_sql' => 'La base de datos se restauró, pero no fue posible recuperar todos los documentos y fotografías: '.$exception->getMessage(),
+                ]);
+            }
+        }
+
         AuditLog::record('database.import_finished', null, [
             'description' => 'Importacion de respaldo finalizada y migraciones aplicadas.',
         ]);
 
-        return back()->with('success', 'Base de datos restaurada correctamente.');
+        $message = $extension === 'zip'
+            ? "Respaldo integral restaurado: base de datos, {$restoredAssets['documents']} documento(s) y {$restoredAssets['photos']} fotografía(s)."
+            : 'Base de datos antigua restaurada y actualizada con las migraciones vigentes.';
+
+        return back()->with('success', $message);
     }
 
     private function generarRespaldoSql(): string

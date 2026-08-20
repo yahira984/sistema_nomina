@@ -18,12 +18,21 @@ class HorasExtraEmpleado
         ?string $horaEntrada,
         ?string $horaSalida
     ): float {
+        return self::detalle($empleado, $fecha, $horaEntrada, $horaSalida)['horas'];
+    }
+
+    public static function detalle(
+        ?Empleado $empleado,
+        Carbon|string $fecha,
+        ?string $horaEntrada,
+        ?string $horaSalida
+    ): array {
         if (!$horaEntrada || !$horaSalida) {
-            return 0;
+            return ['horas' => 0.0, 'minutos_tolerancia' => 0];
         }
 
         if ($empleado && ReglasNominaEmpleado::sinHorasExtra($empleado)) {
-            return 0;
+            return ['horas' => 0.0, 'minutos_tolerancia' => 0];
         }
 
         $dia = $fecha instanceof Carbon
@@ -34,23 +43,40 @@ class HorasExtraEmpleado
         $salida = Carbon::parse($dia->format('Y-m-d').' '.$horaSalida);
 
         if ($salida->lessThanOrEqualTo($entrada)) {
-            return 0;
+            return ['horas' => 0.0, 'minutos_tolerancia' => 0];
         }
 
         if ($dia->isWeekend()) {
             $horaInicio = Carbon::parse($dia->format('Y-m-d').' '.($rule['hora_entrada'] ?? self::HORA_INICIO));
             $inicioExtra = $entrada->lessThan($horaInicio) ? $horaInicio : $entrada;
 
-            return self::redondearMediaHoraCercana($inicioExtra->diffInMinutes($salida) / 60);
+            return self::redondearMinutosConTolerancia($inicioExtra->diffInMinutes($salida));
         }
 
-        $limiteOrdinario = Carbon::parse($dia->format('Y-m-d').' '.($rule['hora_salida'] ?? self::HORA_FIN_ORDINARIA));
+        $horario = $empleado
+            ? JornadaLaboralEmpleado::horario($empleado, $dia)
+            : ['salida' => self::HORA_FIN_ORDINARIA];
+        $limiteOrdinario = Carbon::parse($dia->format('Y-m-d').' '.$horario['salida']);
 
         if (!$salida->greaterThan($limiteOrdinario)) {
-            return 0;
+            return ['horas' => 0.0, 'minutos_tolerancia' => 0];
         }
 
-        return self::redondearMediaHoraInferior($limiteOrdinario->diffInMinutes($salida) / 60);
+        return self::redondearMinutosConTolerancia($limiteOrdinario->diffInMinutes($salida));
+    }
+
+    public static function redondearMinutosConTolerancia(int $minutos): array
+    {
+        $minutos = max(0, $minutos);
+        $bloquesCompletos = intdiv($minutos, 30);
+        $residuo = $minutos % 30;
+        $faltantes = $residuo === 0 ? 0 : 30 - $residuo;
+        $minutosTolerancia = $faltantes >= 1 && $faltantes <= 7 ? $faltantes : 0;
+
+        return [
+            'horas' => ($bloquesCompletos + ($minutosTolerancia > 0 ? 1 : 0)) / 2,
+            'minutos_tolerancia' => $minutosTolerancia,
+        ];
     }
 
     public static function redondearMediaHoraInferior(float $horas): float

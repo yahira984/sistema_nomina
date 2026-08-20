@@ -102,7 +102,8 @@ class User extends Authenticatable
 
         $permissions = collect($permissions);
         $legacyExpansions = [
-            'empleados.manage' => ['empleados.deactivate', 'empleados.restore', 'empleados.photo', 'empleados.app_access'],
+            'empleados.manage' => ['empleados.deactivate', 'empleados.restore', 'empleados.photo', 'empleados.app_access', 'empleados.documents.view', 'empleados.documents.manage'],
+            'empleados.documents.manage' => ['empleados.documents.view'],
             'sistema.backups' => ['sistema.backups.create', 'sistema.backups.verify', 'sistema.backups.restore'],
         ];
         foreach ($legacyExpansions as $legacy => $expanded) {

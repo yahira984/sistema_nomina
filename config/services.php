@@ -41,7 +41,7 @@ return [
         'auth_login_domain' => env('FIREBASE_AUTH_LOGIN_DOMAIN', 'mi-lugarth.app'),
         'connect_timeout' => env('FIREBASE_CONNECT_TIMEOUT', 2),
         'timeout' => env('FIREBASE_TIMEOUT', 8),
-        'queue_connection' => env('FIREBASE_QUEUE_CONNECTION', 'deferred'),
+        'queue_connection' => env('FIREBASE_QUEUE_CONNECTION', 'database'),
     ],
 
 ];

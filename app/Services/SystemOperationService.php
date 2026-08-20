@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\PrepareAttendanceImportJob;
 use App\Models\SystemOperation;
 use App\Models\User;
 use Carbon\Carbon;
@@ -71,22 +72,35 @@ class SystemOperationService
     {
         $configured = (string) config("queue.workload_connections.{$workload}", 'auto');
 
-        if ($configured !== '' && $configured !== 'auto') {
+        if (in_array($configured, ['sync', 'deferred'], true)) {
             return $configured;
         }
 
-        $heartbeat = Cache::get('system:queue-heartbeat');
+        return $this->workerIsActive()
+            ? ($configured !== '' && $configured !== 'auto' ? $configured : (string) config('queue.default', 'database'))
+            : 'deferred';
+    }
 
-        try {
-            $workerIsActive = $heartbeat
-                && abs(now()->diffInMinutes(Carbon::parse($heartbeat))) <= 3;
-        } catch (Throwable) {
-            $workerIsActive = false;
+    public function recoverWithoutWorker(SystemOperation $operation): void
+    {
+        if ($operation->type !== 'attendance_import_preview'
+            || $operation->status !== 'queued'
+            || $this->workerIsActive()
+            || $operation->updated_at?->gt(now()->subSeconds(3))) {
+            return;
         }
 
-        return $workerIsActive
-            ? (string) config('queue.default', 'database')
-            : 'deferred';
+        if (!Cache::add("system:operation-recovery:{$operation->id}", true, 120)) {
+            return;
+        }
+
+        $this->cleanupQueuedJob($operation);
+        $operation->forceFill([
+            'progress' => max(2, (int) $operation->progress),
+            'message' => 'Procesando sin worker para evitar que la carga quede detenida...',
+        ])->save();
+
+        PrepareAttendanceImportJob::dispatch($operation->id)->onConnection('deferred');
     }
 
     public function dismiss(SystemOperation $operation): void
@@ -196,5 +210,17 @@ class SystemOperationService
         DB::table('jobs')
             ->where('payload', 'like', '%' . $operation->id . '%')
             ->delete();
+    }
+
+    private function workerIsActive(): bool
+    {
+        $heartbeat = Cache::get('system:queue-heartbeat');
+
+        try {
+            return $heartbeat
+                && abs(now()->diffInMinutes(Carbon::parse($heartbeat))) <= 3;
+        } catch (Throwable) {
+            return false;
+        }
     }
 }

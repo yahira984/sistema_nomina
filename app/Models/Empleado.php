@@ -15,6 +15,19 @@ class Empleado extends Model
 
     protected $guarded = [];
 
+    protected function casts(): array
+    {
+        return [
+            'es_estudiante' => 'boolean',
+            'servicio_pausado' => 'boolean',
+            'horas_servicio_requeridas' => 'decimal:2',
+            'fecha_inicio_servicio' => 'date:Y-m-d',
+            'fecha_limite_servicio' => 'date:Y-m-d',
+            'fecha_termino_servicio' => 'date:Y-m-d',
+            'evaluacion_estadia' => 'decimal:2',
+        ];
+    }
+
     // Agregamos las faltas totales al appends
     protected $appends = [
         'antiguedad_anios', 
@@ -36,6 +49,11 @@ class Empleado extends Model
     public function nominas()
     {
         return $this->hasMany(Nomina::class);
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(EmployeeDocument::class)->orderBy('document_type');
     }
 
     public function reingresos(): HasMany

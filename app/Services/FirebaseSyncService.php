@@ -6,6 +6,7 @@ use App\Models\Asistencia;
 use App\Models\Empleado;
 use App\Models\Nomina;
 use App\Support\HorasExtraEmpleado;
+use App\Support\JornadaLaboralEmpleado;
 use App\Support\ReglasNominaEmpleado;
 use App\Support\SemanaNomina;
 use Carbon\Carbon;
@@ -548,12 +549,26 @@ class FirebaseSyncService
             'antiguedad_anios' => (int) ($empleado->antiguedad_anios ?? 0),
             'forma_pago' => $empleado->forma_pago,
             'banco' => $empleado->banco,
+            'universidad' => $empleado->universidad,
+            'carrera' => $empleado->carrera,
+            'matricula_estudiante' => $empleado->matricula_estudiante,
+            'encargado_estadias_escuela' => $empleado->encargado_estadias_escuela,
+            'fecha_inicio_servicio' => self::fecha($empleado->fecha_inicio_servicio),
+            'fecha_limite_servicio' => self::fecha($empleado->fecha_limite_servicio),
+            'fecha_termino_servicio' => self::fecha($empleado->fecha_termino_servicio),
+            'evaluacion_estadia' => self::numero($empleado->evaluacion_estadia),
+            'area_proyecto_servicio' => $empleado->area_proyecto_servicio,
+            'observaciones_servicio' => $empleado->observaciones_servicio,
             'updated_at' => now()->toISOString(),
         ];
     }
 
     private static function datosResumenEmpleado(Empleado $empleado): array
     {
+        $servicioSocial = (bool) ($empleado->es_estudiante ?? false)
+            ? app(StudentServiceSummaryService::class)->forEmployee($empleado)
+            : null;
+
         return [
             'vacaciones' => [
                 'dias_totales' => self::numero($empleado->dias_vacaciones_totales ?? 0),
@@ -572,6 +587,7 @@ class FirebaseSyncService
             ],
             'retardos' => self::resumenRetardosEmpleado($empleado),
             'ultima_nomina_pagada' => self::ultimaNominaPagadaEmpleado($empleado),
+            'servicio_social' => $servicioSocial,
             'updated_at' => now()->toISOString(),
         ];
     }
@@ -596,7 +612,14 @@ class FirebaseSyncService
             'tipo_asistencia' => $asistencia->tipo_asistencia,
             'hora_entrada' => self::hora($asistencia->hora_entrada),
             'hora_salida' => self::hora($asistencia->hora_salida),
-            'minutos_tarde' => (int) ($asistencia->minutos_tarde ?? 0),
+            'minutos_tarde' => $asistencia->empleado
+                ? JornadaLaboralEmpleado::minutosIncidencia(
+                    $asistencia->empleado,
+                    $asistencia->fecha,
+                    $asistencia->hora_entrada,
+                    $asistencia->hora_salida
+                )
+                : (int) ($asistencia->minutos_tarde ?? 0),
             'horas_trabajadas' => self::numero($asistencia->horas_trabajadas ?? 0),
             'horas_extra' => self::numero($horasExtra),
             'es_falta' => $asistencia->tipo_asistencia === 'Falta',
@@ -691,38 +714,26 @@ class FirebaseSyncService
         $asistencias = Asistencia::where('empleado_id', $empleado->id)
             ->where('tipo_asistencia', 'Normal')
             ->whereBetween('fecha', [$inicio->format('Y-m-d'), $fin->format('Y-m-d')])
-            ->where('minutos_tarde', '>', 0)
             ->get()
-            ->filter(fn (Asistencia $asistencia) => self::retardoDescontable($asistencia));
+            ->filter(fn (Asistencia $asistencia) => JornadaLaboralEmpleado::minutosIncidencia(
+                $empleado,
+                $asistencia->fecha,
+                $asistencia->hora_entrada,
+                $asistencia->hora_salida
+            ) > 0);
+
+        $minutos = $asistencias->map(fn (Asistencia $asistencia) => JornadaLaboralEmpleado::minutosIncidencia(
+            $empleado,
+            $asistencia->fecha,
+            $asistencia->hora_entrada,
+            $asistencia->hora_salida
+        ));
 
         return [
-            'minutos' => (int) $asistencias->sum('minutos_tarde'),
-            'dias' => $asistencias->count(),
-            'mayor_retardo' => (int) $asistencias->max('minutos_tarde'),
+            'minutos' => (int) $minutos->sum(),
+            'dias' => $minutos->filter(fn (int $value) => $value > 0)->count(),
+            'mayor_retardo' => (int) ($minutos->max() ?? 0),
         ];
-    }
-
-    private static function retardoDescontable(Asistencia $asistencia): bool
-    {
-        if (!$asistencia->hora_entrada || !$asistencia->hora_salida) {
-            return false;
-        }
-
-        $fecha = Carbon::parse($asistencia->fecha);
-
-        if ($fecha->isWeekend()) {
-            return false;
-        }
-
-        $fechaBase = $fecha->format('Y-m-d');
-        $entrada = Carbon::parse($fechaBase . ' ' . $asistencia->hora_entrada);
-        $salida = Carbon::parse($fechaBase . ' ' . $asistencia->hora_salida);
-        $horaOficial = Carbon::parse($fechaBase . ' 08:00:00');
-        $limiteMarcaSalida = Carbon::parse($fechaBase . ' 16:00:00');
-
-        return $salida->greaterThan($entrada)
-            && $entrada->greaterThan($horaOficial)
-            && $entrada->lessThan($limiteMarcaSalida);
     }
 
     private static function ultimaNominaPagadaEmpleado(Empleado $empleado): ?array

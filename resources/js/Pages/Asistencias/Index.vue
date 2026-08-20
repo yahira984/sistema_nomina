@@ -37,6 +37,10 @@ const props = defineProps({
         type: String,
         default: '',
     },
+    tabInicial: {
+        type: String,
+        default: '',
+    },
     previewImportacion: {
         type: Object,
         default: null,
@@ -61,9 +65,12 @@ const fechaActualLocal = () => {
 };
 
 const tiposAsistencia = ['Normal', 'Falta', 'Incapacidad', 'Vacaciones'];
+const tabSolicitadaPermitida = ['captura', 'revision', 'vacaciones', 'faltas'].includes(props.tabInicial)
+    && (props.tabInicial !== 'revision' || canImport.value)
+    && (props.tabInicial !== 'captura' || canManage.value || canImport.value);
 const tabActiva = ref(props.previewImportacion && canImport.value
     ? 'revision'
-    : ((canManage.value || canImport.value) ? 'captura' : 'vacaciones')
+    : (tabSolicitadaPermitida ? props.tabInicial : ((canManage.value || canImport.value) ? 'captura' : 'vacaciones'))
 );
 const busquedaGlobal = ref(props.filtrosAsistencia.employee_search || '');
 const busquedaEmpleadoManual = ref('');
@@ -71,6 +78,7 @@ const busquedaRevision = ref('');
 const filtroRevision = ref('todas');
 const busquedaUltimosRegistros = ref('');
 const empleadoRegistrosId = ref('');
+const vistaRegistros = ref('todos');
 const ordenUltimosRegistros = ref('fecha_desc');
 const ordenControlEmpleados = ref('num_asc');
 const empleadoFaltasExpandido = ref(null);
@@ -104,6 +112,7 @@ const form = useForm({
     hora_entrada: '08:00',
     hora_salida: '17:00',
 });
+const errorCaptura = computed(() => Object.values(form.errors || {})[0] || '');
 
 const formUpload = useForm({
     archivo_reloj: null,
@@ -119,6 +128,7 @@ const formRevision = useForm({
     idempotency_key: nuevaClaveOperacion(),
 });
 const operacionActiva = ref(null);
+const tiposOperacionAsistencias = new Set(['attendance_import_preview', 'attendance_import_approval']);
 const operationTimers = new Set();
 
 let cargaSemanaTimer = null;
@@ -353,7 +363,7 @@ const seguirOperacion = async (operationId) => {
 watch(
     () => props.operaciones,
     (operations) => {
-        const active = operations?.find((operation) => ['queued', 'running'].includes(operation.status));
+        const active = operations?.find((operation) => tiposOperacionAsistencias.has(operation.type) && ['queued', 'running'].includes(operation.status));
         if (active && active.id !== operacionActiva.value?.id) seguirOperacion(active.id);
     },
     { immediate: true },
@@ -481,6 +491,27 @@ const esFinDeSemana = (fecha) => {
 
 const redondearMediaHoraInferior = (horas) => Math.max(0, Math.floor(horas * 2) / 2);
 const redondearMediaHoraCercana = (horas) => Math.max(0, Math.round(horas * 2) / 2);
+const redondearMinutosExtraConTolerancia = (minutos) => {
+    const minutosValidos = Math.max(0, Math.round(Number(minutos) || 0));
+    const bloques = Math.floor(minutosValidos / 30);
+    const residuo = minutosValidos % 30;
+    const faltantes = residuo === 0 ? 0 : 30 - residuo;
+    const tolerancia = faltantes >= 1 && faltantes <= 7 ? faltantes : 0;
+
+    return {
+        horas: (bloques + (tolerancia > 0 ? 1 : 0)) / 2,
+        minutos_tolerancia: tolerancia,
+    };
+};
+
+const limiteLaboralMinutos = (asistencia, empleado) => {
+    const esJueves = crearFechaLocal(asistencia.fecha).getDay() === 4;
+    const hora = esJueves
+        ? (empleado?.hora_salida_jueves || empleado?.hora_salida_laboral || '17:30')
+        : (empleado?.hora_salida_laboral || '17:30');
+
+    return minutosDesdeHora(hora) ?? ((17 * 60) + 30);
+};
 
 const normalizarHorasExtraAsistencia = (asistencia, empleado) => {
     if (!asistencia || asistencia.tipo_asistencia !== 'Normal') {
@@ -490,7 +521,7 @@ const normalizarHorasExtraAsistencia = (asistencia, empleado) => {
     if (esEmpleadoEstudiante(empleado)
         || esVigilancia24x24(empleado)
         || Boolean(empleado?.sin_horas_extra)) {
-        return { ...asistencia, horas_extra: 0 };
+        return { ...asistencia, horas_extra: 0, minutos_tolerancia_extra: 0 };
     }
 
     const entrada = minutosDesdeHora(asistencia.hora_entrada);
@@ -500,21 +531,35 @@ const normalizarHorasExtraAsistencia = (asistencia, empleado) => {
         return asistencia;
     }
 
-    let horasExtra = 0;
+    const sinRetardos = Boolean(empleado?.sin_retardos);
 
     if (esFinDeSemana(asistencia.fecha)) {
         const inicio = Math.max(entrada, 8 * 60);
-        horasExtra = redondearMediaHoraCercana((salida - inicio) / 60);
-    } else {
-        const limiteNormal = (17 * 60) + 30;
-        horasExtra = salida > limiteNormal
-            ? redondearMediaHoraInferior((salida - limiteNormal) / 60)
-            : 0;
+        const detalle = redondearMinutosExtraConTolerancia(salida - inicio);
+
+        return {
+            ...asistencia,
+            horas_extra: detalle.horas,
+            minutos_tolerancia_extra: detalle.minutos_tolerancia,
+            minutos_tarde: sinRetardos ? 0 : detalle.minutos_tolerancia,
+        };
     }
+
+    const entradaLaboral = minutosDesdeHora(empleado?.hora_entrada_laboral || '08:00') ?? (8 * 60);
+    const limiteNormal = limiteLaboralMinutos(asistencia, empleado);
+    const detalle = salida > limiteNormal
+        ? redondearMinutosExtraConTolerancia(salida - limiteNormal)
+        : { horas: 0, minutos_tolerancia: 0 };
+    const minutosEntrada = Math.max(0, entrada - entradaLaboral);
+    const minutosSalidaTemprana = Math.max(0, limiteNormal - salida);
 
     return {
         ...asistencia,
-        horas_extra: horasExtra,
+        horas_extra: detalle.horas,
+        minutos_tolerancia_extra: detalle.minutos_tolerancia,
+        minutos_tarde: sinRetardos
+            ? 0
+            : minutosEntrada + minutosSalidaTemprana + detalle.minutos_tolerancia,
     };
 };
 
@@ -646,7 +691,11 @@ const asistenciasPorEmpleadoFecha = computed(() => {
 });
 
 const empleadosMatrizRegistros = computed(() => {
-    let resultado = [...props.empleados];
+    let resultado = [...(props.empleadosSelector.length ? props.empleadosSelector : props.empleados)];
+
+    if (vistaRegistros.value === 'empleado' && !empleadoRegistrosId.value) {
+        return [];
+    }
 
     if (empleadoRegistrosId.value) {
         resultado = resultado.filter((empleado) => Number(empleado.id) === Number(empleadoRegistrosId.value));
@@ -994,6 +1043,12 @@ watch([busquedaUltimosRegistros, empleadoRegistrosId, ordenUltimosRegistros, fec
     paginaUltimosRegistros.value = 1;
 });
 
+watch(vistaRegistros, (vista) => {
+    if (vista === 'todos') empleadoRegistrosId.value = '';
+    busquedaUltimosRegistros.value = '';
+    paginaUltimosRegistros.value = 1;
+});
+
 watch(filasMatrizAsistencias, () => {
     if (paginaUltimosRegistros.value > totalPaginasUltimosRegistros.value) {
         paginaUltimosRegistros.value = totalPaginasUltimosRegistros.value;
@@ -1079,6 +1134,7 @@ const enfocarUltimosRegistros = () => {
 
 const verRegistrosEmpleadoSeleccionado = () => {
     if (!form.empleado_id) return;
+    vistaRegistros.value = 'empleado';
     empleadoRegistrosId.value = form.empleado_id;
     busquedaUltimosRegistros.value = '';
     paginaUltimosRegistros.value = 1;
@@ -1086,6 +1142,7 @@ const verRegistrosEmpleadoSeleccionado = () => {
 };
 
 const limpiarFiltrosRegistros = () => {
+    vistaRegistros.value = 'todos';
     empleadoRegistrosId.value = '';
     busquedaUltimosRegistros.value = '';
     ordenUltimosRegistros.value = 'fecha_desc';
@@ -1169,16 +1226,10 @@ const aplicarReglasFilaRevision = (fila) => {
         return;
     }
 
-    if (Number.isNaN(entrada.getTime()) || Number.isNaN(salida.getTime())) {
-        fila.minutos_tarde = 0;
-        fila.horas_trabajadas = 0;
-        fila.horas_extra = 0;
-        return;
-    }
-
     if (esVigilancia24x24(empleado)) {
         fila.minutos_tarde = 0;
         fila.horas_extra = 0;
+        fila.minutos_tolerancia_extra = 0;
         return;
     }
 
@@ -1208,14 +1259,24 @@ const calcularHorasFilaRevision = (fila) => {
 
     const entrada = new Date(`${fila.fecha}T${fila.hora_entrada}:00`);
     const salida = new Date(`${fila.fecha}T${fila.hora_salida}:00`);
-    const horaOficial = new Date(`${fila.fecha}T08:00:00`);
     const empleado = empleadosPorId.value.get(Number(fila.empleado_id));
+    const horaEntradaLaboral = empleado?.hora_entrada_laboral || '08:00';
+    const horaOficial = new Date(`${fila.fecha}T${String(horaEntradaLaboral).substring(0, 5)}:00`);
+
+    if (Number.isNaN(entrada.getTime()) || Number.isNaN(salida.getTime())) {
+        fila.minutos_tarde = 0;
+        fila.horas_trabajadas = 0;
+        fila.horas_extra = 0;
+        fila.minutos_tolerancia_extra = 0;
+        return;
+    }
 
     if (esVigilancia24x24(empleado)) {
         salida.setDate(salida.getDate() + 1);
         fila.minutos_tarde = 0;
         fila.horas_trabajadas = Math.max(0, (salida - entrada) / 3600000);
         fila.horas_extra = 0;
+        fila.minutos_tolerancia_extra = 0;
 
         if (fila.estado === 'incompleta') {
             fila.estado = 'detectada';
@@ -1230,6 +1291,7 @@ const calcularHorasFilaRevision = (fila) => {
         fila.minutos_tarde = 0;
         fila.horas_trabajadas = 0;
         fila.horas_extra = 0;
+        fila.minutos_tolerancia_extra = 0;
         return;
     }
 
@@ -1244,23 +1306,35 @@ const calcularHorasFilaRevision = (fila) => {
     if (entrada.getDay() === 0 || entrada.getDay() === 6) {
         const inicioSabado = entrada < horaOficial ? horaOficial : entrada;
         fila.horas_trabajadas = 0;
-        fila.horas_extra = redondearMediaHoraCercana((salida - inicioSabado) / 3600000);
+        const detalle = redondearMinutosExtraConTolerancia((salida - inicioSabado) / 60000);
+        fila.horas_extra = detalle.horas;
+        fila.minutos_tolerancia_extra = detalle.minutos_tolerancia;
+        fila.minutos_tarde = 0;
         aplicarReglasFilaRevision(fila);
         return;
     }
 
-    const limiteNormal = new Date(`${fila.fecha}T17:30:00`);
+    const esJueves = entrada.getDay() === 4;
+    const horaSalidaLaboral = esJueves
+        ? (empleado?.hora_salida_jueves || empleado?.hora_salida_laboral || '17:30')
+        : (empleado?.hora_salida_laboral || '17:30');
+    const limiteNormal = new Date(`${fila.fecha}T${String(horaSalidaLaboral).substring(0, 5)}:00`);
     const inicioJornada = entrada < horaOficial || fila.minutos_tarde < 30 ? horaOficial : entrada;
 
     if (salida > limiteNormal) {
         fila.horas_trabajadas = Math.max(0, (limiteNormal - inicioJornada) / 3600000);
-        fila.horas_extra = redondearMediaHoraInferior((salida - limiteNormal) / 3600000);
+        const detalle = redondearMinutosExtraConTolerancia((salida - limiteNormal) / 60000);
+        fila.horas_extra = detalle.horas;
+        fila.minutos_tolerancia_extra = detalle.minutos_tolerancia;
+        fila.minutos_tarde += detalle.minutos_tolerancia;
         aplicarReglasFilaRevision(fila);
         return;
     }
 
     fila.horas_trabajadas = Math.max(0, (salida - inicioJornada) / 3600000);
     fila.horas_extra = 0;
+    fila.minutos_tolerancia_extra = 0;
+    fila.minutos_tarde += salida < limiteNormal ? Math.round((limiteNormal - salida) / 60000) : 0;
     aplicarReglasFilaRevision(fila);
 };
 
@@ -1483,7 +1557,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                 </div>
 
                 <AppPagination
-                    v-if="tabActiva !== 'revision'"
+                    v-if="['vacaciones', 'faltas'].includes(tabActiva)"
                     :meta="empleadosMeta"
                     @change="cargarPaginaEmpleados"
                 />
@@ -1542,6 +1616,44 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                             <progress v-if="formUpload.progress" :value="formUpload.progress.percentage" max="100" class="lg:col-span-5 w-full"></progress>
                         </form>
                     </section>
+
+                    <Teleport to="body">
+                        <Transition name="fade">
+                            <div
+                                v-if="formUpload.processing"
+                                class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-[2px]"
+                                role="status"
+                                aria-live="polite"
+                                aria-label="Cargando archivo CSV"
+                            >
+                                <div class="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                                    <div class="flex items-start gap-4">
+                                        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300">
+                                            <i class="ti ti-file-upload animate-pulse text-2xl" aria-hidden="true"></i>
+                                        </div>
+                                        <div class="min-w-0 flex-1">
+                                            <h3 class="text-base font-black text-slate-950 dark:text-white">Cargando archivo del reloj</h3>
+                                            <p class="mt-1 truncate text-sm font-semibold text-slate-500 dark:text-slate-300" :title="archivoRelojNombre">
+                                                {{ archivoRelojNombre }}
+                                            </p>
+                                        </div>
+                                        <span class="text-sm font-black text-emerald-700 dark:text-emerald-300">
+                                            {{ formUpload.progress?.percentage ?? 0 }}%
+                                        </span>
+                                    </div>
+                                    <div class="mt-5 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                                        <div
+                                            class="h-full rounded-full bg-emerald-500 transition-[width] duration-200"
+                                            :style="{ width: `${formUpload.progress?.percentage ?? 4}%` }"
+                                        ></div>
+                                    </div>
+                                    <p class="mt-3 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                        No cierres esta pestaña mientras se envía el archivo. Después podrás continuar trabajando mientras se analiza.
+                                    </p>
+                                </div>
+                            </div>
+                        </Transition>
+                    </Teleport>
 
                     <section v-if="canManage" class="app-panel" :class="editando ? 'ring-2 ring-amber-400/70' : ''">
                         <div class="panel-header border-b border-slate-100">
@@ -1635,6 +1747,9 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                             </div>
 
                             <form @submit.prevent="guardarAsistencia" class="grid grid-cols-1 items-end gap-5 md:grid-cols-4">
+                                <div v-if="errorCaptura" class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800 md:col-span-4" role="alert">
+                                    <i class="ti ti-alert-circle mr-1" aria-hidden="true"></i>{{ errorCaptura }}
+                                </div>
                                 <div>
                                     <label class="field-label">Fecha <span class="text-rose-500">*</span></label>
                                     <input v-model="form.fecha" type="date" required class="field-input-soft" />
@@ -1732,17 +1847,26 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                 </div>
                             </div>
 
-                            <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_14rem_minmax(16rem,1fr)_auto] lg:items-end">
-                                <label class="block">
+                            <div class="mt-4 flex w-full rounded-lg bg-slate-200/70 p-1 sm:w-fit" aria-label="Vista de asistencias">
+                                <button type="button" class="min-h-10 flex-1 rounded-md px-4 text-xs font-black transition sm:flex-none" :class="vistaRegistros === 'todos' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-600'" @click="vistaRegistros = 'todos'">
+                                    <i class="ti ti-users mr-1" aria-hidden="true"></i> Todos
+                                </button>
+                                <button type="button" class="min-h-10 flex-1 rounded-md px-4 text-xs font-black transition sm:flex-none" :class="vistaRegistros === 'empleado' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'" @click="vistaRegistros = 'empleado'">
+                                    <i class="ti ti-user-search mr-1" aria-hidden="true"></i> Por empleado
+                                </button>
+                            </div>
+
+                            <div class="mt-3 grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_14rem_minmax(16rem,1fr)_auto] lg:items-end">
+                                <label v-if="vistaRegistros === 'empleado'" class="block lg:col-span-2">
                                     <span class="field-label mb-1">Empleado</span>
                                     <select v-model="empleadoRegistrosId" class="field-input-soft">
-                                        <option value="">Todos los empleados</option>
+                                        <option value="" disabled>Selecciona un empleado</option>
                                         <option v-for="empleado in empleadosOrdenadosFiltro" :key="empleado.id" :value="empleado.id">
                                             {{ etiquetaEmpleado(empleado) }}
                                         </option>
                                     </select>
                                 </label>
-                                <label class="block">
+                                <label v-if="vistaRegistros === 'todos'" class="block">
                                     <span class="field-label mb-1">Ordenar por</span>
                                     <select v-model="ordenUltimosRegistros" class="field-input-soft">
                                         <option value="fecha_desc">Fecha reciente</option>
@@ -1752,7 +1876,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                         <option value="nombre_desc">Nombre Z - A</option>
                                     </select>
                                 </label>
-                                <div>
+                                <div v-if="vistaRegistros === 'todos'">
                                     <span class="field-label mb-1 block">Buscar</span>
                                     <div class="relative">
                                         <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
@@ -1783,11 +1907,11 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                             <span class="text-xs text-slate-500">Página {{ paginaUltimosRegistros }} de {{ totalPaginasUltimosRegistros }}</span>
                         </div>
 
-                        <div class="overflow-x-auto custom-scrollbar">
+                        <div class="asistencia-table-scroll custom-scrollbar">
                             <table class="asistencia-week-table">
                                 <thead>
                                     <tr class="asistencia-title-row">
-                                        <th colspan="13">LUGARTH - PROMATEC 2026 - NOMINA PACHUCA</th>
+                                        <th colspan="13">LUGARTH - PROMATEC {{ new Date(fechaInicioSemana + 'T12:00:00').getFullYear() }} - NOMINA PACHUCA</th>
                                     </tr>
                                     <tr>
                                         <th class="w-14">No.</th>
@@ -1829,6 +1953,9 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                                     <span>H.E. {{ formatoHorasResumen(dia.asistencia.horas_extra) }}</span>
                                                     <span>Ret. {{ Number(dia.asistencia.minutos_tarde || 0) }}</span>
                                                 </div>
+                                                <p v-if="Number(dia.asistencia.minutos_tolerancia_extra || 0) > 0" class="mt-1 rounded-md bg-blue-50 px-2 py-1 text-[9px] font-bold leading-tight text-blue-700">
+                                                    Se completa el siguiente bloque de H.E. y se agregan {{ dia.asistencia.minutos_tolerancia_extra }} min al retardo semanal.
+                                                </p>
                                                 <div class="cell-actions">
                                                     <button v-if="canManage" @click="editarAsistencia(dia.asistencia)" type="button" title="Editar">
                                                         <i class="ti ti-pencil" aria-hidden="true"></i>
@@ -1992,18 +2119,9 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                 </button>
                             </div>
 
-                            <div class="sticky top-16 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
-                                <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-bold" aria-label="Leyenda de estados">
-                                    <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-full bg-emerald-500"></i> Asistencia</span>
-                                    <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-full bg-rose-500"></i> Falta</span>
-                                    <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-full bg-amber-500"></i> Incompleta</span>
-                                    <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-full bg-blue-500"></i> Especial</span>
-                                    <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-full bg-violet-500"></i> Incapacidad / vacaciones</span>
-                                </div>
-                                <div class="flex gap-1">
+                            <div class="flex justify-end gap-1">
                                     <button type="button" class="icon-button" title="Incompleta anterior (Alt + flecha arriba)" aria-label="Ir a la incompleta anterior" @click="navegarIncompleta(-1)"><i class="ti ti-arrow-up"></i></button>
                                     <button type="button" class="icon-button" title="Siguiente incompleta (Alt + flecha abajo)" aria-label="Ir a la siguiente incompleta" @click="navegarIncompleta(1)"><i class="ti ti-arrow-down"></i></button>
-                                </div>
                             </div>
 
                             <div class="flex items-start gap-3 rounded-lg border border-cyan-100 bg-cyan-50/70 px-4 py-3 text-sm text-cyan-950">
@@ -2015,7 +2133,7 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                 Vista semanal del CSV: <span class="text-blue-700">{{ rangoSemanaRevision }}</span>
                             </div>
 
-                            <div class="overflow-x-auto custom-scrollbar rounded-2xl border border-slate-200/80 bg-white">
+                            <div class="asistencia-table-scroll custom-scrollbar rounded-lg border border-slate-200/80 bg-white">
                                 <table class="asistencia-week-table revision-week-table">
                                     <thead>
                                         <tr class="asistencia-title-row">
@@ -2104,6 +2222,9 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
                                                         <span>{{ formatoHorasResumen(dia.fila.horas_extra) }} H.E.</span>
                                                         <span>{{ Number(dia.fila.minutos_tarde || 0) }} ret.</span>
                                                     </div>
+                                                    <p v-if="Number(dia.fila.minutos_tolerancia_extra || 0) > 0" class="mt-2 rounded-md bg-blue-50 px-2 py-1 text-[10px] font-bold leading-tight text-blue-700">
+                                                        Se completa el siguiente bloque de H.E. y se agregan {{ dia.fila.minutos_tolerancia_extra }} min al retardo semanal.
+                                                    </p>
                                                     <p v-if="dia.fila.mensaje" class="mt-2 line-clamp-2 text-[10px] font-semibold text-slate-500">
                                                         {{ dia.fila.mensaje }}
                                                     </p>
@@ -2514,11 +2635,46 @@ const fechasFaltasEmpleadoPorAnio = (empleado) => {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    overflow: hidden;
+    overflow: visible;
     border: 1px solid rgba(203, 213, 225, 0.86);
     border-radius: 1.15rem;
     background: #ffffff;
     font-size: 12px;
+}
+
+.asistencia-table-scroll {
+    max-height: min(68vh, 720px);
+    overflow: auto;
+    position: relative;
+    isolation: isolate;
+    background: #ffffff;
+}
+
+.asistencia-week-table thead tr:nth-child(2) th:first-child,
+.asistencia-week-table tbody td:first-child {
+    position: sticky;
+    left: 0;
+    width: 56px;
+    min-width: 56px;
+    z-index: 20;
+    background: #ffffff;
+}
+
+.asistencia-week-table thead tr:nth-child(2) th:nth-child(2),
+.asistencia-week-table tbody td:nth-child(2) {
+    position: sticky;
+    left: 56px;
+    width: 288px;
+    min-width: 288px;
+    z-index: 20;
+    background: #ffffff;
+    box-shadow: 8px 0 12px -12px rgba(15, 23, 42, 0.6);
+}
+
+.asistencia-week-table thead tr:nth-child(2) th:first-child,
+.asistencia-week-table thead tr:nth-child(2) th:nth-child(2) {
+    z-index: 30;
+    background: #f8fafc;
 }
 
 .asistencia-week-table th,

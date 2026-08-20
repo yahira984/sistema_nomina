@@ -59,7 +59,7 @@ class HorarioLaboralEmpleado
         return $fechas;
     }
 
-    private static function fechaReferencia24x24(Empleado $empleado): Carbon
+    public static function fechaReferencia24x24(Empleado $empleado): Carbon
     {
         $configured = WorkRuleResolver::for($empleado)['fecha_referencia_turno'] ?? null;
 
@@ -71,9 +71,7 @@ class HorarioLaboralEmpleado
             return $empleado->inicioPeriodoActual();
         }
 
-        $numero = (int) (ReglasNominaEmpleado::numero($empleado) ?? $empleado->id ?? 0);
-
-        return Carbon::create(2026, 1, 1)->addDays(abs($numero) % 2)->startOfDay();
+        return Carbon::parse($empleado->created_at ?? now())->startOfDay();
     }
 
     private static function estaDentroDeRelacionLaboral(Empleado $empleado, Carbon $fecha): bool

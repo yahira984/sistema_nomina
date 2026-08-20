@@ -6,8 +6,11 @@ use App\Models\Empleado;
 use App\Models\AuditLog;
 use App\Services\FirebaseSyncService;
 use App\Services\FirebaseJobDispatcher;
+use App\Services\StudentServiceSummaryService;
+use App\Services\StudentTerminationLetterService;
 use App\Models\UserPreference;
 use App\Support\DiasLaborados;
+use App\Support\EmployeeDocumentCatalog;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -86,18 +89,35 @@ class EmpleadoController extends Controller
     // ... tu funcion index() ...
 
     // 🔥 NUEVA FUNCIÓN PARA EL EXPEDIENTE DIGITAL
-    public function show($id)
+    public function show(Request $request, $id, StudentServiceSummaryService $studentSummary)
     {
-        // Jalamos al empleado y sus últimos 30 días de asistencia para no saturar
-        $empleado = Empleado::with([
+        $canViewDocuments = (bool) $request->user()?->hasPermission('empleados.documents.view');
+        $relations = [
             'asistencias' => function ($query) {
                 $query->orderBy('fecha', 'desc')->take(30);
             },
             'reingresos.usuarioRegistro:id,name',
-        ])->findOrFail($id);
+        ];
+        if ($canViewDocuments && Schema::hasTable('employee_documents')) {
+            $relations[] = 'documents.uploadedBy:id,name';
+        }
+
+        // Jalamos al empleado y sus últimos 30 días de asistencia para no saturar
+        $empleado = Empleado::with($relations)->findOrFail($id);
 
         return Inertia::render('Empleados/Show', [
             'empleado' => $empleado,
+            'resumenServicio' => $empleado->es_estudiante ? $studentSummary->forEmployee($empleado) : null,
+            'documentTypes' => $canViewDocuments ? EmployeeDocumentCatalog::options() : [],
+            'canManageDocuments' => (bool) $request->user()?->hasPermission('empleados.documents.manage'),
+            'canEditPersonalData' => (bool) $request->user()?->hasPermission('empleados.manage'),
+            'canChangePhoto' => (bool) $request->user()?->hasPermission('empleados.photo'),
+            'initialAction' => in_array($request->query('action'), ['photo', 'personal'], true)
+                ? $request->query('action')
+                : null,
+            'initialTab' => $request->query('tab') === 'documentacion' && $canViewDocuments
+                ? 'documentacion'
+                : 'perfil',
             'accesoApp' => Inertia::defer(
                 fn () => FirebaseSyncService::obtenerAccesoApp($empleado),
                 'perfil-remoto'
@@ -119,6 +139,90 @@ class EmpleadoController extends Controller
                     'user' => $log->user?->name,
                 ]), 'perfil-remoto'),
         ]);
+    }
+
+    public function actualizarDatosPersonales(Request $request, Empleado $empleado)
+    {
+        $data = $request->validate([
+            'curp' => ['nullable', 'string', 'max:18'],
+            'nss' => ['nullable', 'string', 'max:20'],
+            'rfc' => ['nullable', 'string', 'max:20'],
+            'telefono' => ['nullable', 'string', 'max:20'],
+            'contacto_emergencia_nombre' => ['nullable', 'string', 'max:255'],
+            'contacto_emergencia_telefono' => ['nullable', 'string', 'max:20'],
+            'fecha_ingreso' => ['nullable', 'date', 'before_or_equal:today'],
+        ], [
+            'fecha_ingreso.before_or_equal' => 'La fecha de ingreso no puede ser futura.',
+        ]);
+
+        foreach ($data as $field => $value) {
+            if (is_string($value)) {
+                $data[$field] = trim($value) !== '' ? trim($value) : null;
+            }
+        }
+        foreach (['curp', 'rfc'] as $field) {
+            if (!empty($data[$field])) {
+                $data[$field] = strtoupper($data[$field]);
+            }
+        }
+
+        $before = $empleado->only(array_keys($data));
+        $empleado->update($data);
+
+        AuditLog::record('employee.personal_data_updated', $empleado, [
+            'description' => 'Información personal del expediente actualizada.',
+            'old_values' => $before,
+            'new_values' => $empleado->fresh()->only(array_keys($data)),
+        ]);
+        FirebaseJobDispatcher::employee($empleado->fresh());
+
+        return back()->with('success', 'Información personal actualizada correctamente.');
+    }
+
+    public function actualizarServicioAlumno(Request $request, Empleado $empleado)
+    {
+        abort_unless((bool) $empleado->es_estudiante, 422, 'Este expediente no corresponde a un alumno.');
+
+        $data = $request->validate([
+            'universidad' => ['required', 'string', 'max:255'],
+            'carrera' => ['nullable', 'string', 'max:255'],
+            'matricula_estudiante' => ['nullable', 'string', 'max:100'],
+            'encargado_estadias_escuela' => ['nullable', 'string', 'max:255'],
+            'horas_servicio_requeridas' => ['required', 'numeric', 'min:0', 'max:999999.99'],
+            'fecha_inicio_servicio' => ['nullable', 'date'],
+            'fecha_limite_servicio' => ['nullable', 'date', 'after_or_equal:fecha_inicio_servicio'],
+            'fecha_termino_servicio' => ['nullable', 'date', 'after_or_equal:fecha_inicio_servicio'],
+            'evaluacion_estadia' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'area_proyecto_servicio' => ['nullable', 'string', 'max:255'],
+            'observaciones_servicio' => ['nullable', 'string', 'max:2000'],
+            'servicio_pausado' => ['nullable', 'boolean'],
+        ], [
+            'universidad.required' => 'Indica la universidad o institución del alumno.',
+            'horas_servicio_requeridas.required' => 'Indica cuántas horas debe cumplir.',
+            'fecha_limite_servicio.after_or_equal' => 'La fecha límite no puede ser anterior al inicio del servicio.',
+            'fecha_termino_servicio.after_or_equal' => 'La fecha de término no puede ser anterior al inicio del servicio.',
+        ]);
+
+        $data['servicio_pausado'] = $request->boolean('servicio_pausado');
+        $empleado->update($data);
+
+        FirebaseJobDispatcher::employee($empleado->fresh());
+
+        return back()->with('success', 'Información de servicio actualizada correctamente.');
+    }
+
+    public function descargarCartaTermino(
+        Empleado $empleado,
+        StudentServiceSummaryService $studentSummary,
+        StudentTerminationLetterService $letterService
+    ) {
+        $document = $letterService->generate($empleado, $studentSummary->forEmployee($empleado));
+
+        return response()->download(
+            $document['path'],
+            $document['filename'],
+            ['Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+        )->deleteFileAfterSend(true);
     }
 
     public function actualizarFechaBaja(Request $request, Empleado $empleado)
@@ -459,6 +563,7 @@ class EmpleadoController extends Controller
         ]);
 
         $this->reemplazarFotoEmpleado($empleado, $validated['foto']);
+        FirebaseJobDispatcher::employee($empleado->fresh());
 
         return back()->with('success', 'Fotografía actualizada correctamente.');
     }

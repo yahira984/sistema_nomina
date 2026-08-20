@@ -1384,6 +1384,9 @@ const enviarConciliacion = () => {
                                                         <span v-if="Number(resumenNomina(empleado).pago_festivo_trabajado || 0) > 0" class="rounded-md bg-white border border-teal-200 px-2 py-1 text-teal-700 shadow-sm">
                                                             Festivo trabajado: ${{ moneda(resumenNomina(empleado).pago_festivo_trabajado) }}
                                                         </span>
+                                                        <span v-if="Number(resumenNomina(empleado).pago_descanso_trabajado || 0) > 0" class="rounded-md bg-white border border-blue-200 px-2 py-1 text-blue-700 shadow-sm">
+                                                            Descanso trabajado: {{ resumenNomina(empleado).dias_descanso_trabajados }} día(s) · ${{ moneda(resumenNomina(empleado).pago_descanso_trabajado) }}
+                                                        </span>
                                                         <span v-if="Number(resumenNomina(empleado).dias_festivos_no_trabajados || 0) > 0" class="rounded-md bg-white border border-teal-100 px-2 py-1 text-teal-600 shadow-sm">
                                                             Festivo pagado normal: {{ resumenNomina(empleado).dias_festivos_no_trabajados }}
                                                         </span>

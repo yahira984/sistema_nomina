@@ -163,9 +163,10 @@
                             ? \Carbon\Carbon::parse($empleado->fecha_ingreso)->format('d/m/Y')
                             : '';
                         $numeroEmpleado = $empleado->numero_empleado ?? $empleado->numero_empleado_baja ?? 'S/N';
-                        $horasCumplirTexto = $horasCumplir !== '' && $horasCumplir !== null
-                            ? rtrim(rtrim(number_format((float) $horasCumplir, 2, '.', ''), '0'), '.')
-                            : '';
+                        $resumen = $alumno['resumen'] ?? [];
+                        $formatearHoras = fn ($valor) => rtrim(rtrim(number_format((float) ($valor ?? 0), 2, '.', ''), '0'), '.');
+                        $horasCumplirTexto = $formatearHoras($resumen['horas_requeridas'] ?? $empleado->horas_servicio_requeridas);
+                        $horasRestantesTexto = $formatearHoras($resumen['horas_restantes'] ?? 0);
                     @endphp
 
                     <div class="slot">
@@ -181,13 +182,13 @@
                                 </tr>
                                 <tr>
                                     <td class="label">Universidad:</td>
-                                    <td class="line" colspan="3">{{ strtoupper($universidad ?? '') }}</td>
+                                    <td class="line" colspan="3">{{ strtoupper($empleado->universidad ?? 'NO REGISTRADA') }}</td>
                                 </tr>
                                 <tr>
                                     <td class="label">Fecha de ingreso:</td>
                                     <td class="line">{{ $fechaIngreso }}</td>
-                                    <td class="label" style="width: 1.15in;">Por cumplir:</td>
-                                    <td class="line">{{ $horasCumplirTexto ? $horasCumplirTexto . ' horas' : '' }}</td>
+                                    <td class="label" style="width: 1.15in;">Requeridas / Restantes:</td>
+                                    <td class="line">{{ $horasCumplirTexto }} / {{ $horasRestantesTexto }} horas</td>
                                 </tr>
                             </table>
 
@@ -234,6 +235,7 @@
 
                             <div class="footer-total">
                                 Total de horas registradas: {{ $alumno['total_horas'] > 0 ? rtrim(rtrim(number_format((float) $alumno['total_horas'], 2, '.', ''), '0'), '.') : '0' }} hrs
+                                · Acumuladas: {{ $formatearHoras($resumen['horas_cumplidas'] ?? 0) }} hrs
                                 <span style="float: right;">{{ strtoupper($rangoSemana) }}</span>
                             </div>
                         </div>

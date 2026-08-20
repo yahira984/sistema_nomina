@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\EmpleadoController;
+use App\Http\Controllers\EmployeeDocumentController;
 use App\Http\Controllers\AsistenciaController;
 use App\Http\Controllers\NominaController;
 use App\Http\Controllers\DashboardController; // <-- Agregado
@@ -71,6 +72,7 @@ Route::middleware(['auth', 'approved', 'audit'])->group(function () {
     Route::post('/sistema/base-datos/importar', [BaseDatosController::class, 'importar'])->middleware('permission:sistema.backups.restore')->name('base-datos.importar');
     Route::post('/sistema/base-datos/respaldos', [BaseDatosController::class, 'crearRespaldo'])->middleware('permission:sistema.backups.create')->name('base-datos.respaldos.store');
     Route::post('/sistema/base-datos/respaldos/{systemBackup}/verificar', [BaseDatosController::class, 'verificarRespaldo'])->middleware('permission:sistema.backups.verify')->name('base-datos.respaldos.verify');
+    Route::get('/sistema/base-datos/respaldos/{systemBackup}/descargar', [BaseDatosController::class, 'descargarRespaldo'])->middleware('permission:sistema.backups')->name('base-datos.respaldos.download');
     Route::get('/sistema/dias-festivos', [DiaFestivoController::class, 'index'])->middleware('permission:sistema.dias_festivos')->name('dias-festivos.index');
     Route::post('/sistema/dias-festivos', [DiaFestivoController::class, 'store'])->middleware('permission:sistema.dias_festivos')->name('dias-festivos.store');
     Route::put('/sistema/dias-festivos/{diaFestivo}', [DiaFestivoController::class, 'update'])->middleware('permission:sistema.dias_festivos')->name('dias-festivos.update');
@@ -94,13 +96,20 @@ Route::middleware(['auth', 'approved', 'audit'])->group(function () {
     Route::get('/empleados', [EmpleadoController::class, 'index'])->middleware('permission:empleados.view')->name('empleados.index');
     Route::post('/empleados', [EmpleadoController::class, 'store'])->middleware('permission:empleados.manage')->name('empleados.store');
     Route::put('/empleados/{empleado}', [EmpleadoController::class, 'update'])->middleware('permission:empleados.manage')->name('empleados.update');
+    Route::patch('/empleados/{empleado}/datos-personales', [EmpleadoController::class, 'actualizarDatosPersonales'])->middleware('permission:empleados.manage')->name('empleados.datos-personales.actualizar');
+    Route::patch('/empleados/{empleado}/servicio-alumno', [EmpleadoController::class, 'actualizarServicioAlumno'])->middleware('permission:empleados.manage')->name('empleados.servicio-alumno.actualizar');
+    Route::get('/empleados/{empleado}/servicio-alumno/carta-termino', [EmpleadoController::class, 'descargarCartaTermino'])->middleware('permission:empleados.view')->name('empleados.servicio-alumno.carta-termino');
+    Route::post('/empleados/{empleado}/documentos', [EmployeeDocumentController::class, 'store'])->middleware('permission:empleados.documents.manage')->name('empleados.documentos.store');
+    Route::get('/empleados/{empleado}/documentos/{document}/ver', [EmployeeDocumentController::class, 'view'])->middleware('permission:empleados.documents.view')->name('empleados.documentos.view');
+    Route::get('/empleados/{empleado}/documentos/{document}/descargar', [EmployeeDocumentController::class, 'download'])->middleware('permission:empleados.documents.view')->name('empleados.documentos.download');
+    Route::delete('/empleados/{empleado}/documentos/{document}', [EmployeeDocumentController::class, 'destroy'])->middleware('permission:empleados.documents.manage')->name('empleados.documentos.destroy');
     Route::delete('/empleados/{empleado}', [EmpleadoController::class, 'destroy'])->middleware('permission:empleados.deactivate')->name('empleados.destroy');
     Route::put('/empleados/{empleado}/restaurar', [EmpleadoController::class, 'restaurar'])->middleware('permission:empleados.restore')->name('empleados.restaurar');
     Route::patch('/empleados/{empleado}/fecha-reingreso', [EmpleadoController::class, 'actualizarFechaReingreso'])->middleware('permission:empleados.restore')->name('empleados.fecha-reingreso.actualizar');
     Route::post('/empleados/{empleado}/foto', [EmpleadoController::class, 'actualizarFoto'])->middleware('permission:empleados.photo')->name('empleados.foto.actualizar');
     Route::post('/empleados/{empleado}/acceso-app', [EmpleadoController::class, 'guardarAccesoApp'])->middleware('permission:empleados.app_access')->name('empleados.acceso-app.guardar');
     Route::delete('/empleados/{empleado}/acceso-app', [EmpleadoController::class, 'desactivarAccesoApp'])->middleware('permission:empleados.app_access')->name('empleados.acceso-app.desactivar');
-    Route::patch('/empleados/{empleado}/fecha-baja', [EmpleadoController::class, 'actualizarFechaBaja'])->name('empleados.fecha-baja.actualizar');
+    Route::patch('/empleados/{empleado}/fecha-baja', [EmpleadoController::class, 'actualizarFechaBaja'])->middleware('permission:empleados.deactivate')->name('empleados.fecha-baja.actualizar');
     Route::get('/empleados/fotos/{empleado}', function (Empleado $empleado) {
         $limpiarClave = fn ($valor) => preg_replace('/[^A-Za-z0-9_-]/', '', (string) ($valor ?? ''));
         $clavesId = collect([

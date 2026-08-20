@@ -7,7 +7,7 @@ use App\Services\SystemOperationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class SystemOperationController extends Controller
 {
@@ -21,6 +21,7 @@ class SystemOperationController extends Controller
     public function show(Request $request, SystemOperation $operation, SystemOperationService $service): JsonResponse
     {
         $this->authorizeOperation($request, $operation);
+        $service->recoverWithoutWorker($operation);
 
         return response()->json($service->payload($operation->fresh()));
     }
@@ -40,14 +41,14 @@ class SystemOperationController extends Controller
         ]);
     }
 
-    public function download(Request $request, SystemOperation $operation): StreamedResponse
+    public function download(Request $request, SystemOperation $operation): BinaryFileResponse
     {
         $this->authorizeOperation($request, $operation);
         abort_unless($operation->status === 'completed' && $operation->result_path, 404);
         abort_unless(Storage::disk('local')->exists($operation->result_path), 404);
 
-        return Storage::disk('local')->download(
-            $operation->result_path,
+        return response()->download(
+            Storage::disk('local')->path($operation->result_path),
             $operation->download_name ?: basename($operation->result_path)
         );
     }

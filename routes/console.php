@@ -9,6 +9,7 @@ use App\Jobs\QueueHeartbeatJob;
 use App\Jobs\CreateVerifiedBackupJob;
 use App\Models\SystemOperation;
 use App\Services\AnnualArchiveService;
+use App\Services\SystemStorageCleanupService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -163,6 +164,11 @@ Artisan::command('system:health', function (SystemHealthService $health) {
     $this->line("Inconsistencias detectadas: {$snapshot['inconsistencies']['total']}");
 })->purpose('Muestra el estado de base de datos, colas, Firebase, almacenamiento y respaldos.');
 
+Artisan::command('system:cleanup', function (DatabaseBackupService $backups, SystemStorageCleanupService $storage) {
+    $this->info('Respaldos eliminados: ' . $backups->cleanup(30));
+    $this->info('Exportaciones eliminadas: ' . $storage->cleanupExports(14));
+})->purpose('Elimina respaldos antiguos y exportaciones temporales vencidas.');
+
 Schedule::command('system:backup-queue')->dailyAt('23:30')->withoutOverlapping();
 Schedule::command('system:backup-verify')->weeklyOn(1, '02:00')->withoutOverlapping();
 Schedule::command('system:backup-restore-test')->monthlyOn(1, '02:30')->withoutOverlapping();
@@ -172,4 +178,5 @@ Schedule::job(new QueueHeartbeatJob())
     ->withoutOverlapping();
 Schedule::command('queue:prune-failed --hours=336')->dailyAt('03:00');
 Schedule::command('model:prune')->dailyAt('03:30');
+Schedule::command('system:cleanup')->dailyAt('03:45')->withoutOverlapping();
 Schedule::command('system:archive-year')->yearlyOn(1, 2, '04:00')->withoutOverlapping();

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\WorkRuleResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -20,6 +21,12 @@ class WorkRule extends Model
         'priority' => 'integer',
         'active' => 'boolean',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(fn () => WorkRuleResolver::forget());
+        static::deleted(fn () => WorkRuleResolver::forget());
+    }
 
     public function empleado(): BelongsTo
     {
